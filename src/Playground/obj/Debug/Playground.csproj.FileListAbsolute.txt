@@ -14,3 +14,6 @@ D:\work\projects\git\xod\src\Playground\obj\Debug\Playground.exe
 D:\work\projects\git\xod\src\Playground\obj\Debug\Playground.pdb
 D:\work\projects\git\xod\src\Playground\bin\Debug\Xod.dll
 D:\work\projects\git\xod\src\Playground\bin\Debug\Xod.pdb
+D:\work\projects\github\xod\src\Playground\bin\Debug\Playground.exe.config
+D:\work\projects\github\xod\src\Playground\obj\Debug\Playground.exe
+D:\work\projects\github\xod\src\Playground\obj\Debug\Playground.pdb
