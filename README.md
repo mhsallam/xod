@@ -1,5 +1,5 @@
 # XOD 
-![XOD](https://raw.githubusercontent.com/mhsallam/xod/master/xod.png)
+![XOD](https://raw.githubusercontent.com/mhsallam/xod/master/logo.jpg)
 
 
 ## Introduction
@@ -42,6 +42,7 @@ This little documentation gives you brief guide lines for how to utilize XOD for
 [Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/XOD-DB-Guide.pdf)
 
 
-## Note
-More description and examples will be added soon..
-Playground sample application is not finished yet, but it will be soon..
+## Notes
+More description and examples will be added soon.
+
+Playground sample application is not finished yet, but it will be soon as well.
