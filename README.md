@@ -1,5 +1,4 @@
 # XOD 
-XML-Based Object Oriented Relational Database
 ![XOD](https://raw.githubusercontent.com/mhsallam/xod/master/xod.png)
 
 
@@ -12,14 +11,14 @@ This little documentation gives you brief guide lines for how to utilize XOD for
 ## Features
 1. Support all CRUD Operations: Create, Read, Update and Delete
 2. Supported data types:
-     a. Primitive data types
-     b. Value type properties like struct and enum
-     c. String and DateTime objects are treated as value types as well
-     d. Reference type objects
-     e. Complex types (explained in [ForeignKey] Attribute and Complex Types sections)
-     f. Anonymous reference types … awesome! (explained in Anonymous (Dynamic) Types section)
-     g. One dimensional arrays of any of the above types
-     h. One dimensional generic collection of any of the above types (e.g. List<int>, List<Book>)
+     * Primitive data types
+     * Value type properties like struct and enum
+     * String and DateTime objects are treated as value types as well
+     * Reference type objects
+     * Complex types (explained in [ForeignKey] Attribute and Complex Types sections)
+     * Anonymous reference types … awesome! (explained in Anonymous (Dynamic) Types section)
+     * One dimensional arrays of any of the above types
+     * One dimensional generic collection of any of the above types (e.g. List<int>, List<Book>)
 2. Queries
 3. Self-join
 4. Triggers
