@@ -1,0 +1,16 @@
+G:\projects\git\xod\src\Playground\bin\Debug\Playground.exe.config
+G:\projects\git\xod\src\Playground\obj\Debug\Playground.exe
+G:\projects\git\xod\src\Playground\obj\Debug\Playground.pdb
+G:\projects\git\xod\src\Playground\bin\Debug\Playground.exe
+G:\projects\git\xod\src\Playground\bin\Debug\Playground.pdb
+G:\projects\git\xod\src\Playground\bin\Debug\Aces.Xod.dll
+G:\projects\git\xod\src\Playground\bin\Debug\Aces.Xod.pdb
+G:\projects\git\xod\src\Playground\obj\Debug\Playground.csprojResolveAssemblyReference.cache
+D:\work\projects\git\xod\src\Playground\bin\Debug\Playground.exe.config
+D:\work\projects\git\xod\src\Playground\bin\Debug\Playground.exe
+D:\work\projects\git\xod\src\Playground\bin\Debug\Playground.pdb
+D:\work\projects\git\xod\src\Playground\obj\Debug\Playground.csprojResolveAssemblyReference.cache
+D:\work\projects\git\xod\src\Playground\obj\Debug\Playground.exe
+D:\work\projects\git\xod\src\Playground\obj\Debug\Playground.pdb
+D:\work\projects\git\xod\src\Playground\bin\Debug\Xod.dll
+D:\work\projects\git\xod\src\Playground\bin\Debug\Xod.pdb

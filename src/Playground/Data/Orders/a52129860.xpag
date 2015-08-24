@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TablePage>
+  <Rows dataType="Xod.PageRow" collType="generic" refType="complex">
+    <Row code="7a0b16f3f">
+      <ProductItem>
+        <Id>ceba2a97-5676-4e29-944e-67fa6ce2b9bb</Id>
+        <Name>Product 1</Name>
+        <Price>15.5</Price>
+      </ProductItem>
+    </Row>
+  </Rows>
+</TablePage>

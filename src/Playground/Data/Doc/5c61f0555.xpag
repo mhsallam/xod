@@ -1,0 +1,21 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TablePage>
+  <Rows dataType="Aces.Data.Xod.PageRow" collType="generic" refType="complex">
+    <Row code="6af204a06">
+      <CredentialsDetails>
+        <Id>1</Id>
+        <UserName>emp1</UserName>
+        <Password dataType="System.Byte" collType="array">
+          <Byte>49</Byte>
+          <Byte>50</Byte>
+          <Byte>51</Byte>
+          <Byte>52</Byte>
+          <Byte>53</Byte>
+          <Byte>54</Byte>
+          <Byte>55</Byte>
+          <Byte>56</Byte>
+        </Password>
+      </CredentialsDetails>
+    </Row>
+  </Rows>
+</TablePage>

@@ -1,0 +1,5 @@
+D:\Personal\Projects\Xrdb\Xdb\bin\Release\Ajad.Xdb.dll
+D:\Personal\Projects\Xrdb\Xdb\bin\Release\Ajad.Xdb.pdb
+D:\Personal\Projects\Xrdb\Xdb\obj\Release\ResolveAssemblyReference.cache
+D:\Personal\Projects\Xrdb\Xdb\obj\Release\Ajad.Xdb.dll
+D:\Personal\Projects\Xrdb\Xdb\obj\Release\Ajad.Xdb.pdb

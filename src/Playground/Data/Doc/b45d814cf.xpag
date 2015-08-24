@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TablePage>
+  <Rows dataType="Aces.Data.Xod.PageRow" collType="generic" refType="complex">
+    <Row code="2dede0b80">
+      <Employee>
+        <Id>1</Id>
+        <Name>Employee 1</Name>
+        <BirthDate>1981-05-29T00:00:00</BirthDate>
+        <BasicSalary>2000</BasicSalary>
+        <Contacts dataType="Xod.Playground.Samples.Doc.Contact" collType="generic" refType="complex">
+          <Contact>8b61b3802.67d34622b</Contact>
+        </Contacts>
+        <Credentials refType="complex">5c61f0555.6af204a06</Credentials>
+      </Employee>
+    </Row>
+  </Rows>
+</TablePage>

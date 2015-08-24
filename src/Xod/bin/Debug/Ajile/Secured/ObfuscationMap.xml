@@ -1,0 +1,1015 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<AgileDotNet Version="6.3.0.19" Time="7/10/2014 5:52:41 PM">
+  <Module N="Aces.Xod, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+    <Type N="&lt;Module&gt;" />
+    <Type N="Aces.Data.Xod.ForeignKeyAttribute">
+      <Method N="Void .ctor(String localProp)" />
+      <Method N="Void .ctor(String localProp, String remoteProp)" />
+      <Field N="&lt;LocalProperty&gt;k__BackingField" ON="oRM=" />
+      <Field N="&lt;RemoteProperty&gt;k__BackingField" ON="ohM=" />
+    </Type>
+    <Type N="Aces.Data.Xod.ChildrenAttribute">
+      <Method N="Void .ctor()" />
+      <Field N="&lt;RemoteParentProperty&gt;k__BackingField" ON="phM=" />
+    </Type>
+    <Type N="Aces.Data.Xod.RelationshipAttribute">
+      <Method N="Void .ctor(String name)" />
+      <Field N="&lt;Name&gt;k__BackingField" ON="pxM=" />
+    </Type>
+    <Type N="Aces.Data.Xod.ParentKeyAttribute">
+      <Method N="Void .ctor()" />
+      <Method N="Void .ctor(String localProperty)" />
+      <Method N="Void .ctor(String localProperty, String remoteProperty)" />
+      <Field N="&lt;LocalProperty&gt;k__BackingField" ON="oRM=" />
+      <Field N="&lt;RemoteProperty&gt;k__BackingField" ON="ohM=" />
+    </Type>
+    <Type N="Aces.Data.Xod.GenericTypePropertyAttribute">
+      <Method N="Void .ctor(String name)" />
+      <Field N="&lt;Name&gt;k__BackingField" ON="pxM=" />
+    </Type>
+    <Type N="Aces.Data.Xod.InheritedAttribute">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.PropertyAttribute">
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Position&gt;k__BackingField" ON="rRM=" />
+      <Field N="&lt;Cascade&gt;k__BackingField" ON="rhM=" />
+      <Field N="&lt;IsAutoNumber&gt;k__BackingField" ON="rxM=" />
+      <Field N="&lt;OverrideAutoNumber&gt;k__BackingField" ON="sBM=" />
+      <Field N="&lt;IsIndexed&gt;k__BackingField" ON="sRM=" />
+      <Field N="&lt;DefaultValue&gt;k__BackingField" ON="shM=" />
+      <Field N="&lt;IdentitySeed&gt;k__BackingField" ON="sxM=" />
+      <Field N="&lt;IdentityIncrement&gt;k__BackingField" ON="tBM=" />
+    </Type>
+    <Type N="Aces.Data.Xod.CryptoAttribute">
+      <Method N="Void .ctor()" />
+      <Method N="Void .ctor(Aces.Data.Xod.CryptoMethod method)" />
+      <Field N="&lt;Method&gt;k__BackingField" ON="tRM=" />
+    </Type>
+    <Type N="Aces.Data.Xod.PrimaryKeyAttribute">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.UniqueKeyAttribute">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.NotMappedAttribute">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.MarkupAttribute">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.RequiredAttribute">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.ValuePosition" />
+    <Type N="Aces.Data.Xod.CascadeOptions" />
+    <Type N="Aces.Data.Xod.CryptoMethod" />
+    <Type N="Aces.Data.Xod.RequiredPropertyException">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.GenericTypeNotDefinedException">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.MissingParentKeyException">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.MissingPrimaryKeyValueException">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.PropertyKeyNameException">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.PrimaryKeyDataTypeException">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.AutoNumberDataTypeException">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.ReservedPrimaryKeyException">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.ReservedChildException">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.ReservedKeyWordException">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.SecurityException">
+      <Method N="Void .ctor()" />
+      <Method N="Void .ctor(String message)" />
+    </Type>
+    <Type N="Aces.Data.Xod.CollectionExtensions">
+      <Method N="Void Add(System.Collections.Generic.IList&lt;!0&gt; source, Object item)" />
+      <Method N="Void AddRange(System.Collections.Generic.IList&lt;!0&gt; source, Object[] items)" />
+      <Method N="Void AddRangeFromString(System.Collections.Generic.IList&lt;!0&gt; source, Object[] items)" />
+      <Method N="Boolean DictionaryEqual(System.Collections.Generic.IDictionary&lt;!0, !1&gt; first, System.Collections.Generic.IDictionary&lt;!0, !1&gt; second)" />
+    </Type>
+    <Type N="Aces.Data.Xod.NumericOperations">
+      <Method N="!0 Sum(Object[] args)" />
+    </Type>
+    <Type N="Aces.Data.Xod.StringExtensions">
+      <Method N="String Compress(String data)" />
+      <Method N="String Decompress(String data)" />
+    </Type>
+    <Type N="Aces.Data.Xod.TypeExtentions">
+      <Method N="System.Type ActualType(!0 param)" />
+      <Method N="System.Type GetActualType(Object param)" />
+      <Method N="Boolean ArraysEqual(!0[] a1, !0[] a2)" />
+      <Method N="Boolean ListsEqual(System.Collections.Generic.List&lt;!0&gt; l1, System.Collections.Generic.List&lt;!0&gt; l2)" />
+    </Type>
+    <Type N="Aces.Data.Xod.CryptoHelper">
+      <Method N="String GenerateKey()" />
+      <Method N="String GetSHA1HashData(String data)" />
+      <Method N="String GetSHA256HashData(String data)" />
+      <Method N="String GetSHA512HashData(String data)" />
+      <Method N="String GetMD5HashData(String data)" />
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.FileCryptoHelper" ON="uRM=.uBM=">
+      <Method N="Void EncryptFile(String inputFile, String outputFile, String key)" ON="uhM=" />
+      <Method N="Void EncryptContent(String content, String outputFile, String key)" ON="vhM=" />
+      <Method N="Void DecryptFile(String inputFile, String outputFile, String key)" ON="whM=" />
+      <Method N="String DecryptContent(String inputFile, String key)" ON="xhM=" />
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.PropertiesHelper" ON="uRM=.yRM=">
+      <Property N="LoadedTypes" ON="0BM=">
+        <Getter N="System.Collections.Generic.List&lt;System.Type&gt; get_LoadedTypes()" ON="zRM=" />
+        <Setter N="Void set_LoadedTypes(System.Collections.Generic.List&lt;System.Type&gt; value)" ON="zhM=" />
+      </Property>
+      <Property N="PropertyItems" ON="1BM=">
+        <Getter N="System.Collections.Generic.List&lt;Aces.Data.Xod.PropertyInfoItem&gt; get_PropertyItems()" ON="0RM=" />
+        <Setter N="Void set_PropertyItems(System.Collections.Generic.List&lt;Aces.Data.Xod.PropertyInfoItem&gt; value)" ON="0hM=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Method N="Void LoadType(System.Type type)" ON="1RM=" />
+      <Method N="Void UnloadType(System.Type type)" ON="1xM=" />
+      <Method N="Aces.Data.Xod.PropertyTypeCategory GetRefType(System.Type type)" ON="2RM=" />
+      <Method N="Aces.Data.Xod.PropertyTypeCategory GetRefType(String typeName)" ON="2RM=" />
+      <Method N="Void CheckReservedKeywords(System.Type type)" ON="3BM=" />
+      <Method N="Boolean IsReservedKeyword(String keyword)" ON="3hM=" />
+      <Method N="Boolean &lt;LoadType&gt;b__1(System.Reflection.PropertyInfo s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__2(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__3(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__4(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__5(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__6(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__7(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__8(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__9(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__a(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__b(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__c(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__d(Object s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__f(System.Reflection.PropertyInfo s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__10(System.Reflection.PropertyInfo s)" />
+      <Method N="System.Reflection.PropertyInfo &lt;LoadType&gt;b__12(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;LoadType&gt;b__12" />
+      <Method N="System.Reflection.PropertyInfo &lt;CheckReservedKeywords&gt;b__2e(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;CheckReservedKeywords&gt;b__2e" />
+      <Field N="keywords" ON="yhM=" />
+      <Field N="&lt;LoadedTypes&gt;k__BackingField" ON="yxM=" />
+      <Field N="&lt;PropertyItems&gt;k__BackingField" ON="zBM=" />
+    </Type>
+    <Type N="Aces.Data.Xod.ReadCacheHelper" ON="uRM=.4BM=">
+      <Property N="Data" ON="5RM=">
+        <Getter N="System.Collections.Generic.List&lt;Aces.Data.Xod.ItemCache&gt; get_Data()" ON="4hM=" />
+        <Setter N="Void set_Data(System.Collections.Generic.List&lt;Aces.Data.Xod.ItemCache&gt; value)" ON="4xM=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Method N="Void AddItem(System.Type type, String code, Object item)" ON="5hM=" />
+      <Method N="Object GetItem(String code)" ON="6hM=" />
+      <Method N="Void Clear()" ON="7BM=" />
+      <Field N="&lt;Data&gt;k__BackingField" ON="4RM=" />
+    </Type>
+    <Type N="Aces.Data.Xod.AutoNumberHelper" ON="uRM=.7RM=">
+      <Property N="variables" ON="8hM=">
+        <Getter N="System.Collections.Generic.List&lt;Aces.Data.Xod.VariableItem&gt; get_variables()" ON="7xM=" />
+        <Setter N="Void set_variables(System.Collections.Generic.List&lt;Aces.Data.Xod.VariableItem&gt; value)" ON="8BM=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Method N="Boolean Contains(System.Type type, String propertyName)" ON="8xM=" />
+      <Method N="Object GetNext(System.Type, String type, Object propertyName)" ON="9hM=" />
+      <Method N="Void Set(System.Type type, String propertyName, System.Reflection.MethodInfo method, Object value)" ON="/xM=" />
+      <Method N="Void Update(System.Type type, String propertyName, Object value)" ON="BBQ=" />
+      <Method N="Void Remove(System.Type type)" ON="CBQ=" />
+      <Field N="&lt;variables&gt;k__BackingField" ON="7hM=" />
+    </Type>
+    <Type N="Aces.Data.Xod.Database" ON="uRM=.ChQ=">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.Table" ON="uRM=.CxQ=">
+      <Property N="Name" ON="EBQ=">
+        <Getter N="String get_Name()" ON="DRQ=" />
+        <Setter N="Void set_Name(String value)" ON="DhQ=" />
+      </Property>
+      <Property N="Pages" ON="FBQ=">
+        <Getter N="System.Collections.Generic.List&lt;Aces.Data.Xod.TablePage&gt; get_Pages()" ON="ERQ=" />
+        <Setter N="Void set_Pages(System.Collections.Generic.List&lt;Aces.Data.Xod.TablePage&gt; value)" ON="EhQ=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Name&gt;k__BackingField" ON="pxM=" />
+      <Field N="&lt;Pages&gt;k__BackingField" ON="DBQ=" />
+    </Type>
+    <Type N="Aces.Data.Xod.TablePage" ON="uRM=.FRQ=">
+      <Property N="Full" ON="GxQ=">
+        <Getter N="Boolean get_Full()" ON="GBQ=" />
+        <Setter N="Void set_Full(Boolean value)" ON="GRQ=" />
+      </Property>
+      <Property N="Rows" ON="HxQ=">
+        <Getter N="System.Collections.Generic.List&lt;Aces.Data.Xod.PageRow&gt; get_Rows()" ON="HBQ=" />
+        <Setter N="Void set_Rows(System.Collections.Generic.List&lt;Aces.Data.Xod.PageRow&gt; value)" ON="HRQ=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Full&gt;k__BackingField" ON="FhQ=" />
+      <Field N="&lt;Rows&gt;k__BackingField" ON="FxQ=" />
+    </Type>
+    <Type N="Aces.Data.Xod.PageRow" ON="uRM=.IBQ=">
+      <Property N="File" ON="JRQ=">
+        <Getter N="String get_File()" ON="IhQ=" />
+        <Setter N="Void set_File(String value)" ON="IxQ=" />
+      </Property>
+      <Property N="Full" ON="GxQ=">
+        <Getter N="Boolean get_Full()" ON="GBQ=" />
+        <Setter N="Void set_Full(Boolean value)" ON="GRQ=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;File&gt;k__BackingField" ON="IRQ=" />
+      <Field N="&lt;Full&gt;k__BackingField" ON="FhQ=" />
+    </Type>
+    <Type N="Aces.Data.Xod.XRowTree" ON="uRM=.JxQ=">
+      <Property N="Table" ON="LRQ=">
+        <Getter N="Aces.Data.Xod.XFile get_Table()" ON="KhQ=" />
+        <Setter N="Void set_Table(Aces.Data.Xod.XFile value)" ON="KxQ=" />
+      </Property>
+      <Property N="Page" ON="MRQ=">
+        <Getter N="Aces.Data.Xod.XFile get_Page()" ON="LhQ=" />
+        <Setter N="Void set_Page(Aces.Data.Xod.XFile value)" ON="LxQ=" />
+      </Property>
+      <Property N="Rows" ON="HxQ=">
+        <Getter N="System.Collections.Generic.List&lt;System.Xml.Linq.XElement&gt; get_Rows()" ON="HBQ=" />
+        <Setter N="Void set_Rows(System.Collections.Generic.List&lt;System.Xml.Linq.XElement&gt; value)" ON="HRQ=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Table&gt;k__BackingField" ON="KBQ=" />
+      <Field N="&lt;Page&gt;k__BackingField" ON="KRQ=" />
+      <Field N="&lt;Rows&gt;k__BackingField" ON="FxQ=" />
+    </Type>
+    <Type N="Aces.Data.Xod.XRow" ON="uRM=.MxQ=">
+      <Property N="Table" ON="LRQ=">
+        <Getter N="Aces.Data.Xod.XFile get_Table()" ON="KhQ=" />
+        <Setter N="Void set_Table(Aces.Data.Xod.XFile value)" ON="KxQ=" />
+      </Property>
+      <Property N="Page" ON="MRQ=">
+        <Getter N="Aces.Data.Xod.XFile get_Page()" ON="LhQ=" />
+        <Setter N="Void set_Page(Aces.Data.Xod.XFile value)" ON="LxQ=" />
+      </Property>
+      <Property N="Row" ON="OhQ=">
+        <Getter N="System.Xml.Linq.XElement get_Row()" ON="NxQ=" />
+        <Setter N="Void set_Row(System.Xml.Linq.XElement value)" ON="OBQ=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Table&gt;k__BackingField" ON="KBQ=" />
+      <Field N="&lt;Page&gt;k__BackingField" ON="KRQ=" />
+      <Field N="&lt;Row&gt;k__BackingField" ON="NBQ=" />
+    </Type>
+    <Type N="Aces.Data.Xod.XCreatedItem" ON="uRM=.OxQ=">
+      <Property N="Code" ON="QRQ=">
+        <Getter N="String get_Code()" ON="PhQ=" />
+        <Setter N="Void set_Code(String value)" ON="PxQ=" />
+      </Property>
+      <Property N="Item" ON="RRQ=">
+        <Getter N="Object get_Item()" ON="QhQ=" />
+        <Setter N="Void set_Item(Object value)" ON="QxQ=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Code&gt;k__BackingField" ON="PBQ=" />
+      <Field N="&lt;Item&gt;k__BackingField" ON="PRQ=" />
+    </Type>
+    <Type N="Aces.Data.Xod.XMasterDetails" ON="uRM=.RhQ=">
+      <Property N="Master" ON="TBQ=">
+        <Getter N="Aces.Data.Xod.XFile get_Master()" ON="SRQ=" />
+        <Setter N="Void set_Master(Aces.Data.Xod.XFile value)" ON="ShQ=" />
+      </Property>
+      <Property N="Details" ON="UBQ=">
+        <Getter N="System.Collections.Generic.List&lt;Aces.Data.Xod.XMasterDetails&gt; get_Details()" ON="TRQ=" />
+        <Setter N="Void set_Details(System.Collections.Generic.List&lt;Aces.Data.Xod.XMasterDetails&gt; value)" ON="ThQ=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Master&gt;k__BackingField" ON="RxQ=" />
+      <Field N="&lt;Details&gt;k__BackingField" ON="SBQ=" />
+    </Type>
+    <Type N="Aces.Data.Xod.XFile" ON="uRM=.URQ=">
+      <Property N="Document" ON="WxQ=">
+        <Getter N="System.Xml.Linq.XDocument get_Document()" ON="WBQ=" />
+        <Setter N="Void set_Document(System.Xml.Linq.XDocument value)" ON="WRQ=" />
+      </Property>
+      <Property N="Locker" ON="XxQ=">
+        <Getter N="System.IO.FileStream get_Locker()" ON="XBQ=" />
+        <Setter N="Void set_Locker(System.IO.FileStream value)" ON="XRQ=" />
+      </Property>
+      <Property N="Path" ON="YxQ=">
+        <Getter N="String get_Path()" ON="YBQ=" />
+        <Setter N="Void set_Path(String value)" ON="YRQ=" />
+      </Property>
+      <Property N="Type" ON="ZxQ=">
+        <Getter N="System.Type get_Type()" ON="ZBQ=" />
+        <Setter N="Void set_Type(System.Type value)" ON="ZRQ=" />
+      </Property>
+      <Event N="Changed" ON="bBQ=">
+        <Add N="Void add_Changed(System.EventHandler value)" ON="aBQ=" />
+        <Remove N="Void remove_Changed(System.EventHandler value)" ON="ahQ=" />
+      </Event>
+      <Method N="Void .ctor(String fileName, System.Type type, String password)" />
+      <Method N="Void .ctor(System.Xml.Linq.XDocument document, String fileName, System.Type type, String password)" />
+      <Method N="Void Save()" ON="dBQ=" />
+      <Method N="Void Save(String fileName)" ON="dBQ=" />
+      <Method N="Int64 Size()" ON="dhQ=" />
+      <Method N="String GetFileCode()" ON="dxQ=" />
+      <Method N="Aces.Data.Xod.XFile Load(String fileName, System.Type type, String password)" ON="eBQ=" />
+      <Method N="Void Delete()" ON="fBQ=" />
+      <Field N="password" ON="UhQ=" />
+      <Field N="Changed" ON="UxQ=" />
+      <Field N="&lt;Document&gt;k__BackingField" ON="VBQ=" />
+      <Field N="&lt;Locker&gt;k__BackingField" ON="VRQ=" />
+      <Field N="&lt;Path&gt;k__BackingField" ON="VhQ=" />
+      <Field N="&lt;Type&gt;k__BackingField" ON="VxQ=" />
+    </Type>
+    <Type N="Aces.Data.Xod.AttributeInfoItem" ON="uRM=.fRQ=">
+      <Property N="Type" ON="ZxQ=">
+        <Getter N="System.Type get_Type()" ON="ZBQ=" />
+        <Setter N="Void set_Type(System.Type value)" ON="ZRQ=" />
+      </Property>
+      <Property N="PropertyName" ON="hxQ=">
+        <Getter N="String get_PropertyName()" ON="hBQ=" />
+        <Setter N="Void set_PropertyName(String value)" ON="hRQ=" />
+      </Property>
+      <Property N="Property" ON="ixQ=">
+        <Getter N="System.Reflection.PropertyInfo get_Property()" ON="iBQ=" />
+        <Setter N="Void set_Property(System.Reflection.PropertyInfo value)" ON="iRQ=" />
+      </Property>
+      <Property N="Attribute" ON="kBQ=">
+        <Getter N="Object get_Attribute()" ON="jBQ=" />
+        <Setter N="Void set_Attribute(Object value)" ON="jhQ=" />
+      </Property>
+      <Property N="TypeCategory" ON="lBQ=">
+        <Getter N="Aces.Data.Xod.PropertyTypeCategory get_TypeCategory()" ON="kRQ=" />
+        <Setter N="Void set_TypeCategory(Aces.Data.Xod.PropertyTypeCategory value)" ON="khQ=" />
+      </Property>
+      <Property N="AttributeType" ON="mBQ=">
+        <Getter N="System.Type get_AttributeType()" ON="lRQ=" />
+        <Setter N="Void set_AttributeType(System.Type value)" ON="lhQ=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Type&gt;k__BackingField" ON="VxQ=" />
+      <Field N="&lt;PropertyName&gt;k__BackingField" ON="fhQ=" />
+      <Field N="&lt;Property&gt;k__BackingField" ON="fxQ=" />
+      <Field N="&lt;Attribute&gt;k__BackingField" ON="gBQ=" />
+      <Field N="&lt;TypeCategory&gt;k__BackingField" ON="gRQ=" />
+      <Field N="&lt;AttributeType&gt;k__BackingField" ON="ghQ=" />
+    </Type>
+    <Type N="Aces.Data.Xod.ItemCache" ON="uRM=.mRQ=">
+      <Property N="Code" ON="QRQ=">
+        <Getter N="String get_Code()" ON="PhQ=" />
+        <Setter N="Void set_Code(String value)" ON="PxQ=" />
+      </Property>
+      <Property N="Type" ON="ZxQ=">
+        <Getter N="System.Type get_Type()" ON="ZBQ=" />
+        <Setter N="Void set_Type(System.Type value)" ON="ZRQ=" />
+      </Property>
+      <Property N="Item" ON="RRQ=">
+        <Getter N="Object get_Item()" ON="QhQ=" />
+        <Setter N="Void set_Item(Object value)" ON="QxQ=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Code&gt;k__BackingField" ON="PBQ=" />
+      <Field N="&lt;Type&gt;k__BackingField" ON="VxQ=" />
+      <Field N="&lt;Item&gt;k__BackingField" ON="PRQ=" />
+    </Type>
+    <Type N="Aces.Data.Xod.PropertyInfoItem" ON="uRM=.nRQ=">
+      <Property N="Type" ON="ZxQ=">
+        <Getter N="System.Type get_Type()" ON="ZBQ=" />
+        <Setter N="Void set_Type(System.Type value)" ON="ZRQ=" />
+      </Property>
+      <Property N="PropertyName" ON="hxQ=">
+        <Getter N="String get_PropertyName()" ON="hBQ=" />
+        <Setter N="Void set_PropertyName(String value)" ON="hRQ=" />
+      </Property>
+      <Property N="PropertyType" ON="tBQ=">
+        <Getter N="System.Type get_PropertyType()" ON="sRQ=" />
+        <Setter N="Void set_PropertyType(System.Type value)" ON="shQ=" />
+      </Property>
+      <Property N="Property" ON="ixQ=">
+        <Getter N="System.Reflection.PropertyInfo get_Property()" ON="iBQ=" />
+        <Setter N="Void set_Property(System.Reflection.PropertyInfo value)" ON="iRQ=" />
+      </Property>
+      <Property N="TypeCategory" ON="lBQ=">
+        <Getter N="Aces.Data.Xod.PropertyTypeCategory get_TypeCategory()" ON="kRQ=" />
+        <Setter N="Void set_TypeCategory(Aces.Data.Xod.PropertyTypeCategory value)" ON="khQ=" />
+      </Property>
+      <Property N="ReferenceType" ON="uhQ=">
+        <Getter N="Aces.Data.Xod.PropertyReferenceType get_ReferenceType()" ON="txQ=" />
+        <Setter N="Void set_ReferenceType(Aces.Data.Xod.PropertyReferenceType value)" ON="uBQ=" />
+      </Property>
+      <Property N="Cascade" ON="vhQ=">
+        <Getter N="Aces.Data.Xod.CascadeOptions get_Cascade()" ON="uxQ=" />
+        <Setter N="Void set_Cascade(Aces.Data.Xod.CascadeOptions value)" ON="vBQ=" />
+      </Property>
+      <Property N="ChildParentProperty" ON="whQ=">
+        <Getter N="String get_ChildParentProperty()" ON="vxQ=" />
+        <Setter N="Void set_ChildParentProperty(String value)" ON="wBQ=" />
+      </Property>
+      <Property N="CollectionItemType" ON="xhQ=">
+        <Getter N="System.Type get_CollectionItemType()" ON="wxQ=" />
+        <Setter N="Void set_CollectionItemType(System.Type value)" ON="xBQ=" />
+      </Property>
+      <Property N="IsGenericType" ON="yhQ=">
+        <Getter N="Boolean get_IsGenericType()" ON="xxQ=" />
+        <Setter N="Void set_IsGenericType(Boolean value)" ON="yBQ=" />
+      </Property>
+      <Property N="GenericTypeProperty" ON="zhQ=">
+        <Getter N="String get_GenericTypeProperty()" ON="yxQ=" />
+        <Setter N="Void set_GenericTypeProperty(String value)" ON="zBQ=" />
+      </Property>
+      <Property N="ForeignKeys" ON="0hQ=">
+        <Getter N="System.Collections.Generic.List&lt;Aces.Data.Xod.ForeignKeyAttribute&gt; get_ForeignKeys()" ON="zxQ=" />
+        <Setter N="Void set_ForeignKeys(System.Collections.Generic.List&lt;Aces.Data.Xod.ForeignKeyAttribute&gt; value)" ON="0BQ=" />
+      </Property>
+      <Property N="ParentKeys" ON="1hQ=">
+        <Getter N="System.Collections.Generic.List&lt;Aces.Data.Xod.ParentKeyAttribute&gt; get_ParentKeys()" ON="0xQ=" />
+        <Setter N="Void set_ParentKeys(System.Collections.Generic.List&lt;Aces.Data.Xod.ParentKeyAttribute&gt; value)" ON="1BQ=" />
+      </Property>
+      <Property N="RelationshipName" ON="2hQ=">
+        <Getter N="String get_RelationshipName()" ON="1xQ=" />
+        <Setter N="Void set_RelationshipName(String value)" ON="2BQ=" />
+      </Property>
+      <Property N="IsPrimaryKey" ON="3hQ=">
+        <Getter N="Boolean get_IsPrimaryKey()" ON="2xQ=" />
+        <Setter N="Void set_IsPrimaryKey(Boolean value)" ON="3BQ=" />
+      </Property>
+      <Property N="IsRequired" ON="4hQ=">
+        <Getter N="Boolean get_IsRequired()" ON="3xQ=" />
+        <Setter N="Void set_IsRequired(Boolean value)" ON="4BQ=" />
+      </Property>
+      <Property N="IsUnique" ON="5hQ=">
+        <Getter N="Boolean get_IsUnique()" ON="4xQ=" />
+        <Setter N="Void set_IsUnique(Boolean value)" ON="5BQ=" />
+      </Property>
+      <Property N="IsNotMapped" ON="6hQ=">
+        <Getter N="Boolean get_IsNotMapped()" ON="5xQ=" />
+        <Setter N="Void set_IsNotMapped(Boolean value)" ON="6BQ=" />
+      </Property>
+      <Property N="IsMarkup" ON="7hQ=">
+        <Getter N="Boolean get_IsMarkup()" ON="6xQ=" />
+        <Setter N="Void set_IsMarkup(Boolean value)" ON="7BQ=" />
+      </Property>
+      <Property N="IsInherited" ON="8hQ=">
+        <Getter N="Boolean get_IsInherited()" ON="7xQ=" />
+        <Setter N="Void set_IsInherited(Boolean value)" ON="8BQ=" />
+      </Property>
+      <Property N="IsIndexed" ON="9hQ=">
+        <Getter N="Boolean get_IsIndexed()" ON="8xQ=" />
+        <Setter N="Void set_IsIndexed(Boolean value)" ON="9BQ=" />
+      </Property>
+      <Property N="IsAutoNumber" ON="/hQ=">
+        <Getter N="Boolean get_IsAutoNumber()" ON="9xQ=" />
+        <Setter N="Void set_IsAutoNumber(Boolean value)" ON="/BQ=" />
+      </Property>
+      <Property N="OverrideAutoNumber" ON="AhU=">
+        <Getter N="Boolean get_OverrideAutoNumber()" ON="/xQ=" />
+        <Setter N="Void set_OverrideAutoNumber(Boolean value)" ON="ABU=" />
+      </Property>
+      <Property N="IdentityIncrement" ON="BxU=">
+        <Getter N="Object get_IdentityIncrement()" ON="AxU=" />
+        <Setter N="Void set_IdentityIncrement(Object value)" ON="BRU=" />
+      </Property>
+      <Property N="IdentitySeed" ON="DBU=">
+        <Getter N="Object get_IdentitySeed()" ON="CBU=" />
+        <Setter N="Void set_IdentitySeed(Object value)" ON="ChU=" />
+      </Property>
+      <Property N="ValuePosition" ON="EBU=">
+        <Getter N="Aces.Data.Xod.ValuePosition get_ValuePosition()" ON="DRU=" />
+        <Setter N="Void set_ValuePosition(Aces.Data.Xod.ValuePosition value)" ON="DhU=" />
+      </Property>
+      <Property N="DefaultValue" ON="FRU=">
+        <Getter N="Object get_DefaultValue()" ON="ERU=" />
+        <Setter N="Void set_DefaultValue(Object value)" ON="ExU=" />
+      </Property>
+      <Property N="Encryption" ON="GRU=">
+        <Getter N="Aces.Data.Xod.CryptoMethod get_Encryption()" ON="FhU=" />
+        <Setter N="Void set_Encryption(Aces.Data.Xod.CryptoMethod value)" ON="FxU=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Type&gt;k__BackingField" ON="VxQ=" />
+      <Field N="&lt;PropertyName&gt;k__BackingField" ON="fhQ=" />
+      <Field N="&lt;PropertyType&gt;k__BackingField" ON="nhQ=" />
+      <Field N="&lt;Property&gt;k__BackingField" ON="fxQ=" />
+      <Field N="&lt;TypeCategory&gt;k__BackingField" ON="gRQ=" />
+      <Field N="&lt;ReferenceType&gt;k__BackingField" ON="nxQ=" />
+      <Field N="&lt;Cascade&gt;k__BackingField" ON="rhM=" />
+      <Field N="&lt;ChildParentProperty&gt;k__BackingField" ON="oBQ=" />
+      <Field N="&lt;CollectionItemType&gt;k__BackingField" ON="oRQ=" />
+      <Field N="&lt;IsGenericType&gt;k__BackingField" ON="ohQ=" />
+      <Field N="&lt;GenericTypeProperty&gt;k__BackingField" ON="oxQ=" />
+      <Field N="&lt;ForeignKeys&gt;k__BackingField" ON="pBQ=" />
+      <Field N="&lt;ParentKeys&gt;k__BackingField" ON="pRQ=" />
+      <Field N="&lt;RelationshipName&gt;k__BackingField" ON="phQ=" />
+      <Field N="&lt;IsPrimaryKey&gt;k__BackingField" ON="pxQ=" />
+      <Field N="&lt;IsRequired&gt;k__BackingField" ON="qBQ=" />
+      <Field N="&lt;IsUnique&gt;k__BackingField" ON="qRQ=" />
+      <Field N="&lt;IsNotMapped&gt;k__BackingField" ON="qhQ=" />
+      <Field N="&lt;IsMarkup&gt;k__BackingField" ON="qxQ=" />
+      <Field N="&lt;IsInherited&gt;k__BackingField" ON="rBQ=" />
+      <Field N="&lt;IsIndexed&gt;k__BackingField" ON="sRM=" />
+      <Field N="&lt;IsAutoNumber&gt;k__BackingField" ON="rxM=" />
+      <Field N="&lt;OverrideAutoNumber&gt;k__BackingField" ON="sBM=" />
+      <Field N="&lt;IdentityIncrement&gt;k__BackingField" ON="tBM=" />
+      <Field N="&lt;IdentitySeed&gt;k__BackingField" ON="sxM=" />
+      <Field N="&lt;ValuePosition&gt;k__BackingField" ON="rRQ=" />
+      <Field N="&lt;DefaultValue&gt;k__BackingField" ON="shM=" />
+      <Field N="&lt;Encryption&gt;k__BackingField" ON="rhQ=" />
+    </Type>
+    <Type N="Aces.Data.Xod.VariableItem" ON="uRM=.GhU=">
+      <Property N="Type" ON="ZxQ=">
+        <Getter N="System.Type get_Type()" ON="ZBQ=" />
+        <Setter N="Void set_Type(System.Type value)" ON="ZRQ=" />
+      </Property>
+      <Property N="PropertyName" ON="hxQ=">
+        <Getter N="String get_PropertyName()" ON="hBQ=" />
+        <Setter N="Void set_PropertyName(String value)" ON="hRQ=" />
+      </Property>
+      <Property N="Value" ON="IhU=">
+        <Getter N="Object get_Value()" ON="HhU=" />
+        <Setter N="Void set_Value(Object value)" ON="IBU=" />
+      </Property>
+      <Property N="Method" ON="JhU=">
+        <Getter N="System.Reflection.MethodInfo get_Method()" ON="IxU=" />
+        <Setter N="Void set_Method(System.Reflection.MethodInfo value)" ON="JBU=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Type&gt;k__BackingField" ON="VxQ=" />
+      <Field N="&lt;PropertyName&gt;k__BackingField" ON="fhQ=" />
+      <Field N="&lt;Value&gt;k__BackingField" ON="GxU=" />
+      <Field N="&lt;Method&gt;k__BackingField" ON="tRM=" />
+    </Type>
+    <Type N="Aces.Data.Xod.ReadWriteTrack" ON="uRM=.JxU=">
+      <Property N="Item" ON="RRQ=">
+        <Getter N="Object get_Item()" ON="QhQ=" />
+        <Setter N="Void set_Item(Object value)" ON="QxQ=" />
+      </Property>
+      <Property N="Type" ON="ZxQ=">
+        <Getter N="System.Type get_Type()" ON="ZBQ=" />
+        <Setter N="Void set_Type(System.Type value)" ON="ZRQ=" />
+      </Property>
+      <Property N="Code" ON="QRQ=">
+        <Getter N="String get_Code()" ON="PhQ=" />
+        <Setter N="Void set_Code(String value)" ON="PxQ=" />
+      </Property>
+      <Property N="Parent" ON="LxU=">
+        <Getter N="Aces.Data.Xod.ReadWriteTrack get_Parent()" ON="LBU=" />
+        <Setter N="Void set_Parent(Aces.Data.Xod.ReadWriteTrack value)" ON="LRU=" />
+      </Property>
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Item&gt;k__BackingField" ON="PRQ=" />
+      <Field N="&lt;Type&gt;k__BackingField" ON="VxQ=" />
+      <Field N="&lt;Code&gt;k__BackingField" ON="PBQ=" />
+      <Field N="&lt;Parent&gt;k__BackingField" ON="KBU=" />
+    </Type>
+    <Type N="Aces.Data.Xod.PropertyTypeCategory" ON="uRM=.MBU=">
+      <Field N="None" ON="MRU=" />
+      <Field N="Class" ON="MhU=" />
+      <Field N="Array" ON="MxU=" />
+      <Field N="GenericCollection" ON="NBU=" />
+      <Field N="ValueTypeCollection" ON="NRU=" />
+      <Field N="ValueTypeArray" ON="NhU=" />
+    </Type>
+    <Type N="Aces.Data.Xod.PropertyReferenceType" ON="uRM=.NxU=">
+      <Field N="None" ON="MRU=" />
+      <Field N="Foreign" ON="OBU=" />
+      <Field N="SelfForeign" ON="ORU=" />
+      <Field N="Reference" ON="OhU=" />
+      <Field N="Complex" ON="OxU=" />
+      <Field N="Children" ON="PBU=" />
+      <Field N="Parent" ON="PRU=" />
+    </Type>
+    <Type N="Aces.Data.Xod.TriggerEventArgs">
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Item&gt;k__BackingField" ON="PRQ=" />
+      <Field N="&lt;Type&gt;k__BackingField" ON="VxQ=" />
+      <Field N="&lt;Action&gt;k__BackingField" ON="PhU=" />
+      <Field N="&lt;Cancel&gt;k__BackingField" ON="PxU=" />
+    </Type>
+    <Type N="Aces.Data.Xod.DatabaseActions" />
+    <Type N="Aces.Data.Xod.DatabaseOptions">
+      <Method N="Void .ctor()" />
+      <Field N="&lt;InitialCreate&gt;k__BackingField" ON="QBU=" />
+      <Field N="&lt;DropTriggerOff&gt;k__BackingField" ON="QRU=" />
+      <Field N="&lt;LazyLoad&gt;k__BackingField" ON="QhU=" />
+    </Type>
+    <Type N="Aces.Data.Xod.UpdateFilter">
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Properties&gt;k__BackingField" ON="QxU=" />
+      <Field N="&lt;Behavior&gt;k__BackingField" ON="RBU=" />
+    </Type>
+    <Type N="Aces.Data.Xod.LazyLoadFilter">
+      <Method N="Void .ctor()" />
+      <Field N="&lt;Properties&gt;k__BackingField" ON="QxU=" />
+    </Type>
+    <Type N="Aces.Data.Xod.UpdateFilterBehavior" />
+    <Type N="Aces.Data.Xod.XodContext">
+      <Method N="Void .ctor(String dbFile, String password, Aces.Data.Xod.DatabaseOptions defaultOptions)" />
+      <Method N="System.Collections.Generic.IEnumerable&lt;!0&gt; Select(Boolean lazyLoad)" />
+      <Method N="System.Collections.Generic.IEnumerable&lt;Object&gt; Select(System.Type type, Boolean lazyLoad)" />
+      <Method N="Object Insert(Object item, Boolean lazyLoad)" />
+      <Method N="Object Insert(!0 item, Boolean lazyLoad)" />
+      <Method N="Object Insert(System.Type type, Object item, Boolean lazyLoad)" />
+      <Method N="Object InsertOrUpdate(Object item, Boolean lazyLoad, Aces.Data.Xod.UpdateFilter filter)" />
+      <Method N="Object InsertOrUpdate(!0 item, Boolean lazyLoad, Aces.Data.Xod.UpdateFilter filter)" />
+      <Method N="Object InsertOrUpdate(System.Type type, Object item, Boolean lazyLoad, Aces.Data.Xod.UpdateFilter filter)" />
+      <Method N="Boolean Update(Object item, Object newItem, Aces.Data.Xod.UpdateFilter filter)" />
+      <Method N="Boolean Update(!0 item, !0 newItem, Aces.Data.Xod.UpdateFilter filter)" />
+      <Method N="Boolean Update(System.Type type, Object item, Object newItem, Aces.Data.Xod.UpdateFilter filter)" />
+      <Method N="Boolean Update(!0 item, Aces.Data.Xod.UpdateFilter filter)" />
+      <Method N="Boolean Update(Object item, Aces.Data.Xod.UpdateFilter filter)" />
+      <Method N="Boolean Update(System.Type type, Object item, Aces.Data.Xod.UpdateFilter filter)" />
+      <Method N="Boolean Delete(!0 item)" />
+      <Method N="Boolean Delete(Object item)" />
+      <Method N="Boolean Delete(System.Type type, Object item)" />
+      <Method N="Boolean Drop()" />
+      <Method N="Boolean DropAll()" />
+      <Method N="Void Secure(String password)" />
+      <Method N="Void ChangePassword(String currentPassword, String newPassword)" />
+      <Method N="Void Loose(String password)" />
+      <Method N="Void RegisterType()" />
+      <Method N="Void RegisterType(System.Type type)" />
+      <Method N="System.Collections.Generic.IEnumerable&lt;System.Type&gt; RegisteredTypes()" />
+      <Method N="Void Dispose()" />
+      <Method N="!0 Default()" />
+      <Method N="Object Default(System.Type type)" />
+      <Method N="Object DefaultOf(System.Type type)" />
+      <Method N="String Create(System.Type type, Object item, Boolean lazyLoad, Aces.Data.Xod.ReadWriteTrack writeTrack)" ON="VRU=" />
+      <Method N="String AddToPage(System.Type type, Object item, Boolean lazyLoad, Aces.Data.Xod.ReadWriteTrack writeTrack)" ON="WhU=" />
+      <Method N="System.Xml.Linq.XElement Write(System.Type type, Object item, Boolean lazyLoad, Aces.Data.Xod.ReadWriteTrack writeTrack, Aces.Data.Xod.UpdateFilter filter)" ON="XxU=" />
+      <Method N="System.Xml.Linq.XElement WriteProperty(System.Type type, Object item, System.Xml.Linq.XElement xItem, Aces.Data.Xod.PropertyInfoItem prop, Boolean lazyLoad, Aces.Data.Xod.ReadWriteTrack writeTrack)" ON="ZRU=" />
+      <Method N="System.Xml.Linq.XElement Rewrite(System.Type type, Object item, System.Xml.Linq.XElement xItem, System.Collections.Generic.List&lt;Aces.Data.Xod.PropertyInfoItem&gt; selectedProps, Boolean lazyLoad, Aces.Data.Xod.ReadWriteTrack writeTrack)" ON="bBU=" />
+      <Method N="Object Read(System.Type type, System.Xml.Linq.XElement element, Boolean lazyLoad, Aces.Data.Xod.ReadWriteTrack track)" ON="cxU=" />
+      <Method N="Object ReadValue(Aces.Data.Xod.PropertyInfoItem prop, String stringValue)" ON="eBU=" />
+      <Method N="Boolean UpdateItem(System.Type type, Object item, Object newItem, Aces.Data.Xod.ReadWriteTrack track, Aces.Data.Xod.UpdateFilter filter)" ON="exU=" />
+      <Method N="Boolean ClosedCircle(Aces.Data.Xod.ReadWriteTrack track, Aces.Data.Xod.ReadWriteTrack parent)" ON="gRU=" />
+      <Method N="Boolean DropType(System.Type type)" ON="hBU=" />
+      <Method N="System.Collections.Generic.Dictionary&lt;String, Object&gt; GetPrimaryValues(System.Type type, Object item)" ON="hhU=" />
+      <Method N="System.Collections.Generic.Dictionary&lt;String, Object&gt; GetPrimaryNodes(System.Type type, System.Xml.Linq.XElement item)" ON="iRU=" />
+      <Method N="System.Collections.Generic.Dictionary&lt;String, Object&gt; GetPropertyValues(System.Type type, Object item, System.Collections.Generic.IEnumerable&lt;String&gt; propNames)" ON="jBU=" />
+      <Method N="System.Collections.Generic.Dictionary&lt;String, Object&gt; GetPropertyValues(System.Type type, Object item, System.Collections.Generic.Dictionary&lt;String, String&gt; propNames)" ON="jBU=" />
+      <Method N="Boolean IsReservedKey(System.Type type, Object item)" ON="kxU=" />
+      <Method N="Object NextNumber(System.Type, Aces.Data.Xod.PropertyInfoItem type)" ON="lhU=" />
+      <Method N="Boolean IsNumeric(Object value)" ON="mhU=" />
+      <Method N="Boolean IsNumeric(System.Type type)" ON="mhU=" />
+      <Method N="Void ParseChildren(System.Type type, Object item, System.Type childType, System.Collections.Generic.IEnumerable&lt;Object&gt; children, Aces.Data.Xod.PropertyInfoItem prop, System.Xml.Linq.XElement xProp, Boolean lazyLoad, Aces.Data.Xod.ReadWriteTrack writeTrack)" ON="nRU=" />
+      <Method N="String SetChildItem(System.Type type, Object item, System.Collections.Generic.Dictionary&lt;String, Object&gt; itemPrimarySets, Boolean lazyLoad, Aces.Data.Xod.ReadWriteTrack writeTrack)" ON="phU=" />
+      <Method N="Void ParseReference(System.Type type, Object item, Object value, Aces.Data.Xod.PropertyInfoItem prop, System.Xml.Linq.XElement xItem, Aces.Data.Xod.ReadWriteTrack writeTrack)" ON="rBU=" />
+      <Method N="Void ParseItem(System.Type type, Object item, Object value, Aces.Data.Xod.PropertyInfoItem prop, System.Xml.Linq.XElement xItem, System.Collections.Generic.IEnumerable&lt;Aces.Data.Xod.ForeignKeyAttribute&gt; foreignKeyAtts, Aces.Data.Xod.ReadWriteTrack writeTrack)" ON="sxU=" />
+      <Method N="Void LinkItem(System.Type type, Object item, Object value, Aces.Data.Xod.PropertyInfoItem prop, System.Xml.Linq.XElement xItem, System.Collections.Generic.Dictionary&lt;String, Object&gt; refKeySets)" ON="uxU=" />
+      <Method N="System.Collections.Generic.Dictionary&lt;String, String&gt; LinkRef(System.Type type, System.Type propType, Object propItem, Aces.Data.Xod.PropertyInfoItem prop, System.Xml.Linq.XElement xItem, System.Collections.Generic.Dictionary&lt;String, Object&gt; refKeySets)" ON="whU=" />
+      <Method N="Void SetMappingValues(System.Type type, Object item, System.Type propType, Object value, System.Xml.Linq.XElement xItem, System.Collections.Generic.Dictionary&lt;String, String&gt; relationshipProps)" ON="yRU=" />
+      <Method N="System.Xml.Linq.XElement WriteItem(String name, System.Type type, Object item, System.Collections.Generic.Dictionary&lt;String, Object&gt; refKeySets, Aces.Data.Xod.ReadWriteTrack writeTrack)" ON="0BU=" />
+      <Method N="Object GetRefItem(System.Type type, System.Collections.Generic.Dictionary&lt;String, Object&gt; keyPropSets)" ON="1hU=" />
+      <Method N="System.Xml.Linq.XElement GetRefRow(String code)" ON="2RU=" />
+      <Method N="System.Type GetRefType(String code)" ON="2RM=" />
+      <Method N="String GetRefPage(System.Type type, String code)" ON="3BU=" />
+      <Method N="System.Type GetPageType(String xpagCode)" ON="3xU=" />
+      <Method N="Aces.Data.Xod.XRow SelectXRow(System.Type type, Object item)" ON="4RU=" />
+      <Method N="Aces.Data.Xod.XRowTree FirstRowTree(System.Type type, Object item)" ON="5BU=" />
+      <Method N="System.Collections.Generic.List&lt;Aces.Data.Xod.XRowTree&gt; RowTrees(System.Type type, Object item)" ON="5xU=" />
+      <Method N="Boolean TestAgainstXElement(System.Type type, Object item, System.Xml.Linq.XElement xItem, System.Collections.Generic.IEnumerable&lt;Aces.Data.Xod.PropertyInfoItem&gt; primaryProps)" ON="6hU=" />
+      <Method N="String BaseMarkup(System.Xml.Linq.XElement element)" ON="7xU=" />
+      <Method N="System.Xml.Linq.XElement OrderElement(System.Xml.Linq.XElement xElement)" ON="8RU=" />
+      <Method N="String PickCode()" ON="8xU=" />
+      <Method N="Boolean FileExists(String path)" ON="9BU=" />
+      <Method N="Aces.Data.Xod.XFile OpenFileOrCreate(String fileName, Boolean onlyFile, Boolean autoSave)" ON="9hU=" />
+      <Method N="Aces.Data.Xod.XFile OpenFileOrCreate(String fileName, System.Type type, Boolean onlyFile, Boolean autoSave)" ON="9hU=" />
+      <Method N="Void ClearCache()" ON="AhY=" />
+      <Method N="Void file_Changed(Object sender, System.EventArgs e)" ON="AxY=" />
+      <Method N="Boolean &lt;Select&gt;b__1(System.Xml.Linq.XElement s)" />
+      <Method N="System.Collections.Generic.IEnumerable&lt;System.Xml.Linq.XElement&gt; &lt;Select&gt;b__2(System.Xml.Linq.XElement s)" />
+      <Method N="Boolean &lt;Update&gt;b__9(System.Reflection.PropertyInfo s)" />
+      <Method N="Object &lt;Delete&gt;b__12(Object child)" />
+      <Method N="Boolean &lt;Secure&gt;b__23(String s)" />
+      <Method N="Boolean &lt;Loose&gt;b__25(String s)" />
+      <Method N="Boolean &lt;Default&gt;b__27(System.Reflection.PropertyInfo row)" />
+      <Method N="&lt;&gt;f__AnonymousType0&lt;System.Reflection.PropertyInfo, Object&gt; &lt;Default&gt;b__28(System.Reflection.PropertyInfo row)" />
+      <Method N="Boolean &lt;AddToPage&gt;b__33(System.Xml.Linq.XElement s)" />
+      <Method N="Boolean &lt;Write&gt;b__3a(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Write&gt;b__3a" />
+      <Method N="Object &lt;WriteProperty&gt;b__42(Object row)" />
+      <Method N="Boolean &lt;Rewrite&gt;b__44(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Rewrite&gt;b__44" />
+      <Method N="Boolean &lt;Rewrite&gt;b__45(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Rewrite&gt;b__45" />
+      <Method N="Boolean &lt;Read&gt;b__5c(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Read&gt;b__5c" />
+      <Method N="Boolean &lt;Read&gt;b__5d(System.Xml.Linq.XElement s)" />
+      <Method N="String &lt;Read&gt;b__5e(System.Xml.Linq.XElement s)" />
+      <Method N="System.Xml.Linq.XElement &lt;Read&gt;b__5f(String s)" />
+      <Method N="Boolean &lt;Read&gt;b__60(System.Xml.Linq.XElement s)" />
+      <Method N="Boolean &lt;Read&gt;b__62(Object s)" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__77(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__77" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__79(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__79" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__7b(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__7b" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__7d(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__7d" />
+      <Method N="String &lt;UpdateItem&gt;b__7e(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__7e" />
+      <Method N="System.Collections.Generic.IEnumerable&lt;System.Xml.Linq.XElement&gt; &lt;UpdateItem&gt;b__80(System.Xml.Linq.XElement s)" />
+      <Method N="System.Collections.Generic.IEnumerable&lt;System.Xml.Linq.XElement&gt; &lt;UpdateItem&gt;b__82(System.Xml.Linq.XElement s)" />
+      <Method N="String &lt;UpdateItem&gt;b__83(System.Xml.Linq.XElement s)" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__85(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__85" />
+      <Method N="Object &lt;UpdateItem&gt;b__8a(Object r)" />
+      <Method N="Object &lt;UpdateItem&gt;b__8b(Object r)" />
+      <Method N="Object &lt;UpdateItem&gt;b__8c(Object child)" />
+      <Method N="Aces.Data.Xod.XFile &lt;DropType&gt;b__ac(System.Xml.Linq.XElement row)" ON="&lt;DropType&gt;b__ac" />
+      <Method N="String &lt;GetPrimaryValues&gt;b__af(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;GetPrimaryValues&gt;b__af" />
+      <Method N="System.Reflection.PropertyInfo &lt;GetPrimaryValues&gt;b__b0(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;GetPrimaryValues&gt;b__b0" />
+      <Method N="String &lt;GetPrimaryNodes&gt;b__b6(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;GetPrimaryNodes&gt;b__b6" />
+      <Method N="String &lt;ParseReference&gt;b__d8(Aces.Data.Xod.ForeignKeyAttribute s)" />
+      <Method N="String &lt;ParseReference&gt;b__d9(Aces.Data.Xod.ForeignKeyAttribute s)" />
+      <Method N="String &lt;ParseReference&gt;b__da(Aces.Data.Xod.ForeignKeyAttribute s)" />
+      <Method N="String &lt;ParseReference&gt;b__db(Aces.Data.Xod.ParentKeyAttribute s)" />
+      <Method N="String &lt;ParseReference&gt;b__dc(Aces.Data.Xod.ParentKeyAttribute s)" />
+      <Method N="String &lt;ParseItem&gt;b__ea(Aces.Data.Xod.ForeignKeyAttribute s)" />
+      <Method N="String &lt;ParseItem&gt;b__eb(Aces.Data.Xod.ForeignKeyAttribute s)" />
+      <Method N="String &lt;ParseItem&gt;b__ec(Aces.Data.Xod.ForeignKeyAttribute s)" />
+      <Method N="String &lt;LinkRef&gt;b__f0(Aces.Data.Xod.ParentKeyAttribute s)" />
+      <Method N="String &lt;LinkRef&gt;b__f1(Aces.Data.Xod.ParentKeyAttribute s)" />
+      <Method N="String &lt;LinkRef&gt;b__f2(Aces.Data.Xod.ForeignKeyAttribute s)" />
+      <Method N="String &lt;LinkRef&gt;b__f3(Aces.Data.Xod.ForeignKeyAttribute s)" />
+      <Method N="Boolean &lt;WriteItem&gt;b__f8(System.Reflection.PropertyInfo s)" />
+      <Method N="String &lt;GetRefPage&gt;b__108(System.Xml.Linq.XElement s)" />
+      <Method N="Boolean &lt;SelectXRow&gt;b__117(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;SelectXRow&gt;b__117" />
+      <Method N="Aces.Data.Xod.XFile &lt;SelectXRow&gt;b__118(System.Xml.Linq.XElement s)" ON="&lt;SelectXRow&gt;b__118" />
+      <Method N="Aces.Data.Xod.XFile &lt;FirstRowTree&gt;b__126(System.Xml.Linq.XElement row)" ON="&lt;FirstRowTree&gt;b__126" />
+      <Method N="Aces.Data.Xod.XFile &lt;RowTrees&gt;b__134(System.Xml.Linq.XElement row)" ON="&lt;RowTrees&gt;b__134" />
+      <Method N="Boolean &lt;BaseMarkup&gt;b__141(System.Xml.Linq.XElement s)" />
+      <Method N="String &lt;OrderElement&gt;b__146(System.Xml.Linq.XElement s)" />
+      <Field N="PAGE_SIZE" ON="RRU=" />
+      <Field N="CACHE_SIZE" ON="RhU=" />
+      <Field N="dbRoot" ON="RxU=" />
+      <Field N="dbPath" ON="SBU=" />
+      <Field N="cachedFiles" ON="SRU=" />
+      <Field N="readCacheHelper" ON="ShU=" />
+      <Field N="propsHelper" ON="SxU=" />
+      <Field N="autoNumberHelper" ON="TBU=" />
+      <Field N="BeforeAction" ON="TRU=" />
+      <Field N="AfterAction" ON="ThU=" />
+      <Field N="&lt;Password&gt;k__BackingField" ON="TxU=" />
+      <Field N="&lt;DisableDropTrigger&gt;k__BackingField" ON="UBU=" />
+      <Field N="&lt;LazyLoad&gt;k__BackingField" ON="QhU=" />
+      <Field N="&lt;IsNew&gt;k__BackingField" ON="URU=" />
+    </Type>
+    <Type N="Aces.Data.Xod.NumericOperations+&lt;Sum&gt;o__SiteContainer0`1" />
+    <Type N="Aces.Data.Xod.PropertiesHelper+&lt;&gt;c__DisplayClass25" ON="uRM=.yRM=+&lt;&gt;c__DisplayClass25">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;LoadType&gt;b__e(System.Reflection.PropertyInfo s)" />
+      <Method N="Boolean &lt;LoadType&gt;b__11(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;LoadType&gt;b__11" />
+    </Type>
+    <Type N="Aces.Data.Xod.PropertiesHelper+&lt;&gt;c__DisplayClass28" ON="uRM=.yRM=+&lt;&gt;c__DisplayClass28">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;UnloadType&gt;b__27(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UnloadType&gt;b__27" />
+    </Type>
+    <Type N="Aces.Data.Xod.PropertiesHelper+&lt;&gt;c__DisplayClass2b" ON="uRM=.yRM=+&lt;&gt;c__DisplayClass2b">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetRefType&gt;b__2a(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;GetRefType&gt;b__2a" />
+    </Type>
+    <Type N="Aces.Data.Xod.PropertiesHelper+&lt;&gt;c__DisplayClass32" ON="uRM=.yRM=+&lt;&gt;c__DisplayClass32">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;CheckReservedKeywords&gt;b__2d(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;CheckReservedKeywords&gt;b__2d" />
+      <Method N="Boolean &lt;CheckReservedKeywords&gt;b__2f(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;CheckReservedKeywords&gt;b__2f" />
+      <Method N="Boolean &lt;CheckReservedKeywords&gt;b__30(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;CheckReservedKeywords&gt;b__30" />
+    </Type>
+    <Type N="Aces.Data.Xod.ReadCacheHelper+&lt;&gt;c__DisplayClass2" ON="uRM=.4BM=+&lt;&gt;c__DisplayClass2">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;AddItem&gt;b__1(Aces.Data.Xod.ItemCache s)" ON="&lt;AddItem&gt;b__1" />
+    </Type>
+    <Type N="Aces.Data.Xod.ReadCacheHelper+&lt;&gt;c__DisplayClass6" ON="uRM=.4BM=+&lt;&gt;c__DisplayClass6">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetItem&gt;b__4(Aces.Data.Xod.ItemCache s)" ON="&lt;GetItem&gt;b__4" />
+    </Type>
+    <Type N="Aces.Data.Xod.AutoNumberHelper+&lt;&gt;c__DisplayClass1" ON="uRM=.7RM=+&lt;&gt;c__DisplayClass1">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Contains&gt;b__0(Aces.Data.Xod.VariableItem s)" ON="&lt;Contains&gt;b__0" />
+    </Type>
+    <Type N="Aces.Data.Xod.AutoNumberHelper+&lt;&gt;c__DisplayClass4" ON="uRM=.7RM=+&lt;&gt;c__DisplayClass4">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetNext&gt;b__3(Aces.Data.Xod.VariableItem s)" ON="&lt;GetNext&gt;b__3" />
+    </Type>
+    <Type N="Aces.Data.Xod.AutoNumberHelper+&lt;&gt;c__DisplayClass9" ON="uRM=.7RM=+&lt;&gt;c__DisplayClass9">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Set&gt;b__7(Aces.Data.Xod.VariableItem s)" ON="&lt;Set&gt;b__7" />
+    </Type>
+    <Type N="Aces.Data.Xod.AutoNumberHelper+&lt;&gt;c__DisplayClassc" ON="uRM=.7RM=+&lt;&gt;c__DisplayClassc">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Update&gt;b__b(Aces.Data.Xod.VariableItem s)" ON="&lt;Update&gt;b__b" />
+    </Type>
+    <Type N="Aces.Data.Xod.AutoNumberHelper+&lt;&gt;c__DisplayClassf" ON="uRM=.7RM=+&lt;&gt;c__DisplayClassf">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Remove&gt;b__e(Aces.Data.Xod.VariableItem s)" ON="&lt;Remove&gt;b__e" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass7">
+      <Method N="Void .ctor()" />
+      <Method N="Object &lt;Select&gt;b__3(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassc">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Update&gt;b__a(Object oldItem)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass1a">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Delete&gt;b__10(System.Xml.Linq.XElement s)" />
+      <Method N="Boolean &lt;Delete&gt;b__11(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Delete&gt;b__11" />
+      <Method N="Boolean &lt;Delete&gt;b__13(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Delete&gt;b__13" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass1c">
+      <Method N="Void .ctor()" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass1f">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Delete&gt;b__14(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Delete&gt;b__14" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass21">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Delete&gt;b__15(Object child)" />
+    </Type>
+    <Type N="&lt;&gt;f__AnonymousType0`2">
+      <Method N="Void .ctor(!0 Property, !1 DefaultValue)" />
+      <Method N="String ToString()" />
+      <Method N="Boolean Equals(Object value)" />
+      <Method N="Int32 GetHashCode()" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;Create&gt;o__SiteContainer2c" />
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass30">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Create&gt;b__2e(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Create&gt;b__2e" />
+      <Method N="Boolean &lt;Create&gt;b__2f(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Create&gt;b__2f" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass37">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;AddToPage&gt;b__34(System.Xml.Linq.XElement row)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass40">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Write&gt;b__39(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Write&gt;b__39" />
+      <Method N="Boolean &lt;Write&gt;b__3b(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Write&gt;b__3b" />
+      <Method N="Boolean &lt;Write&gt;b__3c(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Write&gt;b__3c" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;Read&gt;o__SiteContainer4a" />
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass6b">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Read&gt;b__5a(System.Type s)" />
+      <Method N="Boolean &lt;Read&gt;b__5b(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Read&gt;b__5b" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass6e">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Read&gt;b__63(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;Read&gt;b__63" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass71">
+      <Method N="Void .ctor()" />
+      <Method N="Object &lt;Read&gt;b__61(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass73">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;Read&gt;b__64(System.Type s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass9d">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__76(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__76" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__78(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__78" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__7a(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__7a" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__7c(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassa0">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__89(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassa2">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__7f(System.Xml.Linq.XElement s)" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__81(System.Xml.Linq.XElement s)" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__84(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassa6">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__87(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__87" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__88(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__88" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassa9">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;UpdateItem&gt;b__86(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;UpdateItem&gt;b__86" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassb3">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetPrimaryValues&gt;b__ae(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;GetPrimaryValues&gt;b__ae" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassb8">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetPrimaryNodes&gt;b__b5(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;GetPrimaryNodes&gt;b__b5" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassbb">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;IsReservedKey&gt;b__ba(Object s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;NextNumber&gt;o__SiteContainerbd" />
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClasscc">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;ParseChildren&gt;b__c3(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;ParseChildren&gt;b__c3" />
+      <Method N="Boolean &lt;ParseChildren&gt;b__c4(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;ParseChildren&gt;b__c4" />
+      <Method N="Boolean &lt;ParseChildren&gt;b__c8(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;ParseChildren&gt;b__c8" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassd1">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;ParseChildren&gt;b__c5(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;ParseChildren&gt;b__c5" />
+      <Method N="Boolean &lt;ParseChildren&gt;b__c6(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;ParseChildren&gt;b__c6" />
+      <Method N="Boolean &lt;ParseChildren&gt;b__c7(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;ParseChildren&gt;b__c7" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassd5">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;SetChildItem&gt;b__d3(Object s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClasse5">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;ParseReference&gt;b__dd(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;ParseReference&gt;b__dd" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClasse8">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;ParseReference&gt;b__de(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassfb">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetRefItem&gt;b__fa(Object s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClassff">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetRefRow&gt;b__fd(System.Xml.Linq.XElement row)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass104">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetRefType&gt;b__101(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass106">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetRefType&gt;b__102(System.Type s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass10c">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetRefPage&gt;b__109(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass111">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetPageType&gt;b__10e(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass113">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;GetPageType&gt;b__10f(System.Type s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass11e">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;SelectXRow&gt;b__116(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;SelectXRow&gt;b__116" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass122">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;SelectXRow&gt;b__119(System.Xml.Linq.XElement s)" />
+      <Method N="Boolean &lt;SelectXRow&gt;b__11a(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass12c">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;FirstRowTree&gt;b__127(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;FirstRowTree&gt;b__127" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass12f">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;FirstRowTree&gt;b__129(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass131">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;FirstRowTree&gt;b__128(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass13a">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;RowTrees&gt;b__135(Aces.Data.Xod.PropertyInfoItem s)" ON="&lt;RowTrees&gt;b__135" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass13d">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;RowTrees&gt;b__137(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass13f">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;RowTrees&gt;b__136(System.Xml.Linq.XElement s)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass144">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;BaseMarkup&gt;b__142(System.Type s2)" />
+      <Method N="Boolean &lt;BaseMarkup&gt;b__143(System.Type s2)" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass149">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;OpenFileOrCreate&gt;b__148(Aces.Data.Xod.XFile s)" ON="&lt;OpenFileOrCreate&gt;b__148" />
+    </Type>
+    <Type N="Aces.Data.Xod.XodContext+&lt;&gt;c__DisplayClass14c">
+      <Method N="Void .ctor()" />
+      <Method N="Boolean &lt;file_Changed&gt;b__14b(Aces.Data.Xod.XFile s)" ON="&lt;file_Changed&gt;b__14b" />
+    </Type>
+    <Type N="SecureTeam.Attributes.ObfuscatedByAgileDotNetAttribute">
+      <Method N="Void .ctor()" />
+    </Type>
+  </Module>
+</AgileDotNet>

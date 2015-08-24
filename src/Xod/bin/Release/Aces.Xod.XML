@@ -1,0 +1,247 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Aces.Xod</name>
+    </assembly>
+    <members>
+        <member name="T:Aces.Data.Xod.UniqueKeyAttribute">
+            <summary>
+            Not implemented yet
+            </summary>
+        </member>
+        <member name="T:Aces.Data.Xod.NotMappedAttribute">
+            <summary>
+            For runtime properties that are not persisted in the database files
+            </summary>
+        </member>
+        <member name="T:Aces.Data.Xod.MarkupAttribute">
+            <summary>
+            For the properties that contains markup value like HTML content
+            </summary>
+        </member>
+        <member name="T:Aces.Data.Xod.ValuePosition">
+            <summary>
+            Where the value will be stored in the struction of the database file
+            </summary>
+        </member>
+        <member name="T:Aces.Data.Xod.CascadeOptions">
+            <summary>
+            Relationship cascade opetions
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.CryptoHelper.GetSHA1HashData(System.String)">
+            <summary>
+            take any string and encrypt it using SHA1 then
+            return the encrypted data
+            </summary>
+            <param name="data">input text you will enterd to encrypt it</param>
+            <returns>return the encrypted text as hexadecimal string</returns>
+        </member>
+        <member name="M:Aces.Data.Xod.CryptoHelper.GetSHA256HashData(System.String)">
+            <summary>
+            take any string and encrypt it using SHA1 then
+            return the encrypted data
+            </summary>
+            <param name="data">input text you will enterd to encrypt it</param>
+            <returns>return the encrypted text as hexadecimal string</returns>
+        </member>
+        <member name="M:Aces.Data.Xod.CryptoHelper.GetSHA512HashData(System.String)">
+            <summary>
+            take any string and encrypt it using SHA1 then
+            return the encrypted data
+            </summary>
+            <param name="data">input text you will enterd to encrypt it</param>
+            <returns>return the encrypted text as hexadecimal string</returns>
+        </member>
+        <member name="M:Aces.Data.Xod.CryptoHelper.GetMD5HashData(System.String)">
+            <summary>
+            take any string and encrypt it using MD5 then
+            return the encrypted data 
+            </summary>
+            <param name="data">input text you will enterd to encrypt it</param>
+            <returns>return the encrypted text as hexadecimal string</returns>
+        </member>
+        <member name="T:Aces.Data.Xod.TriggerEventArgs">
+            <summary>
+            Trigger action associated object
+            </summary>
+        </member>
+        <member name="T:Aces.Data.Xod.DatabaseActions">
+            <summary>
+            Trigger action type
+            </summary>
+        </member>
+        <member name="T:Aces.Data.Xod.XodContext">
+            <summary>
+            Xml based relational OOP database
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.#ctor(System.String,System.String,Aces.Data.Xod.DatabaseOptions)">
+            <summary>
+            Creates new or opens instance of XOD database
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Select``1(System.Boolean)">
+            <summary>
+            Gets all registered objects of a specific type. Use linq for querying
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Select(System.Type,System.Boolean)">
+            <summary>
+            Gets all registered objects of a specific type. Use linq for querying
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Insert(System.Object,System.Boolean)">
+            <summary>
+            Adds new object of a specific type to the database
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Insert``1(``0,System.Boolean)">
+            <summary>
+            Adds new object of a specific type to the database
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Insert(System.Type,System.Object,System.Boolean)">
+            <summary>
+            Adds new object of a specific type to the database
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.InsertOrUpdate(System.Object,System.Boolean,Aces.Data.Xod.UpdateFilter)">
+            <summary>
+            Replaces one object of a specific type by another one, but if it's not exists yest then creates it
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.InsertOrUpdate``1(``0,System.Boolean,Aces.Data.Xod.UpdateFilter)">
+            <summary>
+            Replaces one object of a specific type by another one, but if it's not exists yest then creates it
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.InsertOrUpdate(System.Type,System.Object,System.Boolean,Aces.Data.Xod.UpdateFilter)">
+            <summary>
+            Replaces one object of a specific type by another one, but if it's not exists yest then creates it
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Update(System.Object,System.Object,Aces.Data.Xod.UpdateFilter)">
+            <summary>
+            Replaces one object of a specific type by another one
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Update``1(``0,``0,Aces.Data.Xod.UpdateFilter)">
+            <summary>
+            Replaces one object of a specific type by another one
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Update(System.Type,System.Object,System.Object,Aces.Data.Xod.UpdateFilter)">
+            <summary>
+            Replaces one object of a specific type by another one
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Update``1(``0,Aces.Data.Xod.UpdateFilter)">
+            <summary>
+            Updates one object of a specific type
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Update(System.Object,Aces.Data.Xod.UpdateFilter)">
+            <summary>
+            Updates one object of a specific type
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Update(System.Type,System.Object,Aces.Data.Xod.UpdateFilter)">
+            <summary>
+            Updates one object of a specific type
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Delete``1(``0)">
+            <summary>
+            Deletes one object of a specific type
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Delete(System.Object)">
+            <summary>
+            Deletes one object of a specific type
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Delete(System.Type,System.Object)">
+            <summary>
+            Deletes one object of a specific type
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Drop``1">
+            <summary>
+            Drops one type table from the database. To make it functional
+            use BeforeAction trigger to confirm each call.
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.DropAll">
+            <summary>
+            Drops all registered types and clear the database. To make it functional
+            use BeforeAction trigger to confirm drop process of each type.
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Secure(System.String)">
+            <summary>
+            Protect xod database with password
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.ChangePassword(System.String,System.String)">
+            <summary>
+            Change xod database password
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Loose(System.String)">
+            <summary>
+            Remove database protection
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.RegisterType``1">
+            <summary>
+            Introduce a new generic type to XOD for objetc-type properties
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.RegisteredTypes">
+            <summary>
+            Returns an enumeration of all the registered types in the database
+            </summary>
+        </member>
+        <member name="M:Aces.Data.Xod.XodContext.Dispose">
+            <summary>
+            Disposes the database instance
+            </summary>
+        </member>
+        <member name="E:Aces.Data.Xod.XodContext.BeforeAction">
+            <summary>
+            Use BeforeAction trigger to control individual operations before execution
+            </summary>
+        </member>
+        <member name="E:Aces.Data.Xod.XodContext.AfterAction">
+            <summary>
+            Use AfterAction trigger to add additional process after individual execution of operations
+            </summary>
+        </member>
+        <member name="P:Aces.Data.Xod.XodContext.Path">
+            <summary>
+            Gets the database file path
+            </summary>
+        </member>
+        <member name="P:Aces.Data.Xod.XodContext.Password">
+            <summary>
+            Gets or sets database password
+            </summary>
+        </member>
+        <member name="P:Aces.Data.Xod.XodContext.DisableDropTrigger">
+            <summary>
+            Gets or sets auto activated trigger of drop operations
+            </summary>
+        </member>
+        <member name="P:Aces.Data.Xod.XodContext.LazyLoad">
+            <summary>
+            Gets or sets the default data loading mode
+            </summary>
+        </member>
+        <member name="P:Aces.Data.Xod.XodContext.IsNew">
+            <summary>
+            Indicates whether of the database has been created for the first time or not
+            </summary>
+        </member>
+    </members>
+</doc>

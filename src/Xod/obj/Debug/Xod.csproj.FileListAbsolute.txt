@@ -1,0 +1,10 @@
+D:\Personal\Projects\Xod\Windows\Xod\bin\Debug\Ajad.Xod.dll
+D:\Personal\Projects\Xod\Windows\Xod\bin\Debug\Ajad.Xod.pdb
+D:\Personal\Projects\Xod\Windows\Xod\obj\Debug\ResolveAssemblyReference.cache
+D:\Personal\Projects\Xod\Windows\Xod\obj\Debug\Ajad.Xod.dll
+D:\Personal\Projects\Xod\Windows\Xod\obj\Debug\Ajad.Xod.pdb
+D:\work\projects\git\xod\src\Xod\bin\Debug\Xod.dll
+D:\work\projects\git\xod\src\Xod\bin\Debug\Xod.pdb
+D:\work\projects\git\xod\src\Xod\obj\Debug\Xod.dll
+D:\work\projects\git\xod\src\Xod\obj\Debug\Xod.pdb
+D:\work\projects\git\xod\src\Xod\obj\Debug\Xod.csprojResolveAssemblyReference.cache

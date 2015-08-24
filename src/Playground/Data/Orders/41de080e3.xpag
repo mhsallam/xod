@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TablePage>
+  <Rows dataType="Xod.PageRow" collType="generic" refType="complex">
+    <Row code="7d64bb123">
+      <Customer>
+        <Id>1</Id>
+        <Name>Sallam</Name>
+        <Orders dataType="Xod.Playground.Samples.Orders.Order" collType="generic" refType="children">
+          <Order Id="1">53288d636.5b45fee13</Order>
+        </Orders>
+      </Customer>
+    </Row>
+  </Rows>
+</TablePage>

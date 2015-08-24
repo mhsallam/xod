@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TablePage>
+  <Rows dataType="Aces.Data.Xod.PageRow" collType="generic" refType="complex">
+    <Row code="67d34622b">
+      <Contact>
+        <Type>Email</Type>
+        <Value>employee1@gmail.com</Value>
+      </Contact>
+    </Row>
+  </Rows>
+</TablePage>

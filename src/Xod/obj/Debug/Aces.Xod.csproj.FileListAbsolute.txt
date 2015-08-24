@@ -1,0 +1,48 @@
+D:\work_files\my_projects\Xod\Windows\Xod\bin\Debug\Aces.Xod.dll
+D:\work_files\my_projects\Xod\Windows\Xod\bin\Debug\Aces.Xod.pdb
+D:\work_files\my_projects\Xod\Windows\Xod\obj\Debug\Aces.Xod.csprojResolveAssemblyReference.cache
+D:\work_files\my_projects\Xod\Windows\Xod\obj\Debug\Aces.Xod.dll
+D:\work_files\my_projects\Xod\Windows\Xod\obj\Debug\Aces.Xod.pdb
+D:\work\projects\xod\Windows\Xod\bin\Debug\Aces.Xod.dll
+D:\work\projects\xod\Windows\Xod\bin\Debug\Aces.Xod.pdb
+D:\work\projects\xod\Windows\Xod\obj\Debug\Aces.Xod.dll
+D:\work\projects\xod\Windows\Xod\obj\Debug\Aces.Xod.pdb
+D:\work\projects\xod\Windows\Xod\obj\Debug\Aces.Xod.csprojResolveAssemblyReference.cache
+F:\projects\Xod\bin\Debug\Aces.Xod.dll
+F:\projects\Xod\bin\Debug\Aces.Xod.pdb
+F:\projects\Xod\obj\Debug\Aces.Xod.csprojResolveAssemblyReference.cache
+F:\projects\Xod\obj\Debug\Aces.Xod.dll
+F:\projects\Xod\obj\Debug\Aces.Xod.pdb
+I:\projects\Xod\bin\Debug\Aces.Xod.dll
+I:\projects\Xod\bin\Debug\Aces.Xod.pdb
+I:\projects\Xod\obj\Debug\Aces.Xod.csprojResolveAssemblyReference.cache
+I:\projects\Xod\obj\Debug\Aces.Xod.dll
+I:\projects\Xod\obj\Debug\Aces.Xod.pdb
+D:\projects\Xod\bin\Debug\Aces.Xod.dll
+D:\projects\Xod\bin\Debug\Aces.Xod.pdb
+D:\projects\Xod\obj\Debug\Aces.Xod.dll
+D:\projects\Xod\obj\Debug\Aces.Xod.pdb
+G:\projects\Xod 1.001\obj\Debug\Aces.Xod.dll
+G:\projects\Xod 1.001\obj\Debug\Aces.Xod.pdb
+G:\projects\Xod 1.001\bin\Debug\Aces.Xod.dll
+G:\projects\Xod 1.001\bin\Debug\Aces.Xod.pdb
+G:\projects\Xod 1.002\bin\Debug\Aces.Xod.dll
+G:\projects\Xod 1.002\bin\Debug\Aces.Xod.pdb
+G:\projects\Xod 1.002\obj\Debug\Aces.Xod.csprojResolveAssemblyReference.cache
+G:\projects\Xod 1.002\obj\Debug\Aces.Xod.dll
+G:\projects\Xod 1.002\obj\Debug\Aces.Xod.pdb
+G:\projects\Xod\bin\Debug\Aces.Xod.dll
+G:\projects\Xod\bin\Debug\Aces.Xod.pdb
+G:\projects\Xod\obj\Debug\Aces.Xod.csprojResolveAssemblyReference.cache
+G:\projects\Xod\obj\Debug\Aces.Xod.dll
+G:\projects\Xod\obj\Debug\Aces.Xod.pdb
+G:\projects\git\xod\src\Xod\bin\Debug\Aces.Xod.dll
+G:\projects\git\xod\src\Xod\bin\Debug\Aces.Xod.pdb
+G:\projects\git\xod\src\Xod\obj\Debug\Aces.Xod.csprojResolveAssemblyReference.cache
+G:\projects\git\xod\src\Xod\obj\Debug\Aces.Xod.dll
+G:\projects\git\xod\src\Xod\obj\Debug\Aces.Xod.pdb
+D:\work\projects\git\xod\src\Xod\obj\Debug\Aces.Xod.pdb
+D:\work\projects\git\xod\src\Xod\bin\Debug\Aces.Xod.dll
+D:\work\projects\git\xod\src\Xod\bin\Debug\Aces.Xod.pdb
+D:\work\projects\git\xod\src\Xod\obj\Debug\Aces.Xod.csprojResolveAssemblyReference.cache
+D:\work\projects\git\xod\src\Xod\obj\Debug\Aces.Xod.dll

@@ -1,0 +1,14 @@
+D:\Personal\Projects\Xrdb\Xdb\bin\Release\Ajad.Xod.dll
+D:\Personal\Projects\Xrdb\Xdb\bin\Release\Ajad.Xod.pdb
+D:\Personal\Projects\Xrdb\Xdb\obj\Release\ResolveAssemblyReference.cache
+D:\Personal\Projects\Xrdb\Xdb\obj\Release\Ajad.Xod.dll
+D:\Personal\Projects\Xrdb\Xdb\obj\Release\Ajad.Xod.pdb
+D:\Personal\Projects\Xod\Windows\Xod\bin\Release\Ajad.Xod.dll
+D:\Personal\Projects\Xod\Windows\Xod\bin\Release\Ajad.Xod.pdb
+D:\Personal\Projects\Xod\Windows\Xod\obj\Release\ResolveAssemblyReference.cache
+D:\Personal\Projects\Xod\Windows\Xod\obj\Release\Ajad.Xod.dll
+D:\Personal\Projects\Xod\Windows\Xod\obj\Release\Ajad.Xod.pdb
+D:\work_files\my_projects\Xod\Windows\Xod\bin\Release\Ajad.Xod.dll
+D:\work_files\my_projects\Xod\Windows\Xod\bin\Release\Ajad.Xod.pdb
+D:\work_files\my_projects\Xod\Windows\Xod\obj\Release\Ajad.Xod.dll
+D:\work_files\my_projects\Xod\Windows\Xod\obj\Release\Ajad.Xod.pdb

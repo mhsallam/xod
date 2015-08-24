@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TablePage>
+  <Rows dataType="Aces.Data.Xod.PageRow" collType="generic" refType="complex">
+    <Row code="46bb5db34">
+      <Section>
+        <Id>2b688d63-2f7d-47a8-a0b0-f4f2d273e40d</Id>
+        <Name>ar</Name>
+      </Section>
+    </Row>
+    <Row code="32ddbacdc">
+      <Section>
+        <Id>cafb378f-6030-49e7-9f02-63457da752bf</Id>
+        <Name>en</Name>
+      </Section>
+    </Row>
+    <Row code="4ae849260">
+      <Section>
+        <Id>687dc954-636b-4f6d-b726-f6b04ab5c5bb</Id>
+        <Name>root</Name>
+        <Sections dataType="Xod.Playground.Samples.Sample1.Section" collType="generic" refType="reference">
+          <Section Id="2b688d63-2f7d-47a8-a0b0-f4f2d273e40d">15dae68d7.46bb5db34</Section>
+          <Section Id="cafb378f-6030-49e7-9f02-63457da752bf">15dae68d7.32ddbacdc</Section>
+        </Sections>
+      </Section>
+    </Row>
+  </Rows>
+</TablePage>
