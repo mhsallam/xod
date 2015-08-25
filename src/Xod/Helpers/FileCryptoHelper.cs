@@ -6,7 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Xod.Helpers
+namespace AcesDevelopers.Xod.Helpers
 {
     internal class FileCryptoHelper
     {

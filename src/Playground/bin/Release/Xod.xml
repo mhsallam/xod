@@ -1,0 +1,80 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Xod</name>
+    </assembly>
+    <members>
+        <member name="T:AcesDevelopers.Xod.UniqueKeyAttribute">
+            <summary>
+            Not implemented yet
+            </summary>
+        </member>
+        <member name="T:AcesDevelopers.Xod.NotMappedAttribute">
+            <summary>
+            For runtime properties that are not persisted in the database files
+            </summary>
+        </member>
+        <member name="T:AcesDevelopers.Xod.MarkupAttribute">
+            <summary>
+            For the properties that contains markup value like HTML content
+            </summary>
+        </member>
+        <member name="T:AcesDevelopers.Xod.ValuePosition">
+            <summary>
+            Where the value will be stored in the struction of the database file
+            </summary>
+        </member>
+        <member name="T:AcesDevelopers.Xod.CascadeOptions">
+            <summary>
+            Relationship cascade opetions
+            </summary>
+        </member>
+        <member name="M:AcesDevelopers.Xod.Helpers.CryptoHelper.GetSHA1HashData(System.String)">
+            <summary>
+            take any string and encrypt it using SHA1 then
+            return the encrypted data
+            </summary>
+            <param name="data">input text you will enterd to encrypt it</param>
+            <returns>return the encrypted text as hexadecimal string</returns>
+        </member>
+        <member name="M:AcesDevelopers.Xod.Helpers.CryptoHelper.GetSHA256HashData(System.String)">
+            <summary>
+            take any string and encrypt it using SHA1 then
+            return the encrypted data
+            </summary>
+            <param name="data">input text you will enterd to encrypt it</param>
+            <returns>return the encrypted text as hexadecimal string</returns>
+        </member>
+        <member name="M:AcesDevelopers.Xod.Helpers.CryptoHelper.GetSHA512HashData(System.String)">
+            <summary>
+            take any string and encrypt it using SHA1 then
+            return the encrypted data
+            </summary>
+            <param name="data">input text you will enterd to encrypt it</param>
+            <returns>return the encrypted text as hexadecimal string</returns>
+        </member>
+        <member name="M:AcesDevelopers.Xod.Helpers.CryptoHelper.GetMD5HashData(System.String)">
+            <summary>
+            take any string and encrypt it using MD5 then
+            return the encrypted data 
+            </summary>
+            <param name="data">input text you will enterd to encrypt it</param>
+            <returns>return the encrypted text as hexadecimal string</returns>
+        </member>
+        <member name="T:AcesDevelopers.Xod.TriggerEventArgs">
+            <summary>
+            Trigger action associated object
+            </summary>
+        </member>
+        <member name="T:AcesDevelopers.Xod.DatabaseActions">
+            <summary>
+            Trigger action type
+            </summary>
+        </member>
+        <member name="T:AcesDevelopers.Xod.XodContext">
+            <summary>
+            Xml based relational OOP database
+            </summary>
+        </member>
+    </members>
+</doc>

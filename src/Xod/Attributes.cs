@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
-namespace Xod
+namespace AcesDevelopers.Xod
 {
     [AttributeUsage(AttributeTargets.Property, AllowMultiple = true)]
     public class ForeignKeyAttribute : Attribute

@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Xod.Helpers
+namespace AcesDevelopers.Xod.Helpers
 {
     public class XodSecurityService : Xod.Infra.IXodSecurityService
     {

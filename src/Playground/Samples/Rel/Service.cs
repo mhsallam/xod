@@ -1,13 +1,13 @@
-﻿using Xod;
+﻿using AcesDevelopers.Xod;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Xod.Playground.Infra;
+using AcesDevelopers.Xod.Playground.Infra;
 
-namespace Xod.Playground.Samples.MultiRel
+namespace AcesDevelopers.Xod.Playground.Samples.MultiRel
 {
     public class Service : ISample
     {

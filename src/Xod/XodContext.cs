@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Xod.Infra;
+using AcesDevelopers.Xod.Infra;
 
-namespace Xod
+namespace AcesDevelopers.Xod
 {
     ///<summary>
     ///Xml based relational OOP database

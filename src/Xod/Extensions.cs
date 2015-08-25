@@ -5,7 +5,7 @@ using System.Text;
 using System.IO;
 using System.IO.Compression;
 
-namespace Xod
+namespace AcesDevelopers.Xod
 {
     public static class CollectionExtensions
     {

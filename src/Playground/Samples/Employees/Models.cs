@@ -1,11 +1,11 @@
-﻿using Xod;
+﻿using AcesDevelopers.Xod;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Xod.Playground.Samples.Employees
+namespace AcesDevelopers.Xod.Playground.Samples.Employees
 {
     public class Employee
     {

@@ -8,3 +8,7 @@ D:\work\projects\git\xod\src\Xod\bin\Debug\Xod.pdb
 D:\work\projects\git\xod\src\Xod\obj\Debug\Xod.dll
 D:\work\projects\git\xod\src\Xod\obj\Debug\Xod.pdb
 D:\work\projects\git\xod\src\Xod\obj\Debug\Xod.csprojResolveAssemblyReference.cache
+D:\work\projects\github\xod\src\Xod\bin\Debug\Xod.dll
+D:\work\projects\github\xod\src\Xod\bin\Debug\Xod.pdb
+D:\work\projects\github\xod\src\Xod\obj\Debug\Xod.dll
+D:\work\projects\github\xod\src\Xod\obj\Debug\Xod.pdb

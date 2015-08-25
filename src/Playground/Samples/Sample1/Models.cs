@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Xod.Playground.Samples.Sample1
+namespace AcesDevelopers.Xod.Playground.Samples.Sample1
 {
     public class Section
     {
