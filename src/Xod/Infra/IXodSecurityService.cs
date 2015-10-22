@@ -1,5 +1,5 @@
 ﻿using System;
-namespace AcesDevelopers.Xod.Infra
+namespace Xod.Infra
 {
     interface IXodSecurityService
     {

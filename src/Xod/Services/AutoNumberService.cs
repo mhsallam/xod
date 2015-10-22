@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
-namespace AcesDevelopers.Xod.Services
+namespace Xod.Services
 {
     internal class AutoNumberService
     {

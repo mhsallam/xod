@@ -4,7 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.ComponentModel;
 
-namespace AcesDevelopers.Xod.Helpers
+namespace Xod.Helpers
 {
     public class ValueHelper
     {

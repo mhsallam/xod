@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace AcesDevelopers.Xod.Services
+namespace Xod.Services
 {
     public class XodFileService
     {

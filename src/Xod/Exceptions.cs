@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace AcesDevelopers.Xod
+namespace Xod
 {
     public class RequiredPropertyException : Exception
     {

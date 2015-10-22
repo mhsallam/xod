@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Reflection;
 
-namespace AcesDevelopers.Xod.Services
+namespace Xod.Services
 {
     internal class PropertyService
     {

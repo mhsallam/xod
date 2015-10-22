@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
 VisualStudioVersion = 12.0.31101.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Xod", "Xod\Xod.csproj", "{0A630877-727F-47C2-9A66-AFDE59419C6A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Playground", "Playground.csproj", "{A5DEFBF1-46AD-4630-AD66-C0DE3885C31E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,10 +11,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{0A630877-727F-47C2-9A66-AFDE59419C6A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{0A630877-727F-47C2-9A66-AFDE59419C6A}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{0A630877-727F-47C2-9A66-AFDE59419C6A}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{0A630877-727F-47C2-9A66-AFDE59419C6A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A5DEFBF1-46AD-4630-AD66-C0DE3885C31E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A5DEFBF1-46AD-4630-AD66-C0DE3885C31E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A5DEFBF1-46AD-4630-AD66-C0DE3885C31E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A5DEFBF1-46AD-4630-AD66-C0DE3885C31E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

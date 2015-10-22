@@ -8,8 +8,8 @@
     <ProjectGuid>{0A630877-727F-47C2-9A66-AFDE59419C6A}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>AcesDevelopers.Xod</RootNamespace>
-    <AssemblyName>Xod</AssemblyName>
+    <RootNamespace>Xod</RootNamespace>
+    <AssemblyName>Mhsallam.Xod</AssemblyName>
     <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
@@ -33,7 +33,7 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <Prefer32Bit>false</Prefer32Bit>
-    <DocumentationFile>bin\Release\Xod.xml</DocumentationFile>
+    <DocumentationFile>bin\Release\Mhsallam.Xod.xml</DocumentationFile>
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>

@@ -5,9 +5,9 @@ using System.Text;
 using System.Xml.Linq;
 using System.Reflection;
 using System.IO;
-using AcesDevelopers.Xod.Helpers;
+using Xod.Helpers;
 
-namespace AcesDevelopers.Xod
+namespace Xod
 {
     internal class Database
     {
@@ -77,12 +77,12 @@ namespace AcesDevelopers.Xod
     }
 
     [DefaultMember("Document")]
-    internal class XFile
+    internal class XFile : IDisposable
     {
         //private bool compressed;
         private string password;
+        private XDocument doc { get; set; }
 
-        public XDocument Document { get; set; }
         internal FileStream Locker { get; set; }
         public string Path { get; set; }
         public Type Type { get; set; }
@@ -100,12 +100,12 @@ namespace AcesDevelopers.Xod
                 try
                 {
                     if (!string.IsNullOrEmpty(password))
-                        this.Document = XDocument.Parse(FileCryptoHelper.DecryptContent(fileName, password));
+                        this.doc = XDocument.Parse(FileCryptoHelper.DecryptContent(fileName, password));
                     //else if (compressed)
                     //    Document = XDocument.Parse(File.ReadAllText(fileName));
                     else
                         using (StreamReader sr = new StreamReader(fileName, true))
-                            Document = XDocument.Load(sr);
+                            doc = XDocument.Load(sr);
                 }
                 catch
                 {
@@ -118,26 +118,65 @@ namespace AcesDevelopers.Xod
         {
             //this.compressed = compressed;
             this.password = password;
-            Document = document;
+            doc = document;
             Path = fileName;
+        }
+
+        public XElement Root()
+        {
+            if (doc == null)
+                return null;
+
+            lock (doc)
+            {
+                return doc.Root;
+            }
+        }
+        public IEnumerable<XElement> Pages()
+        {
+            return Get("Pages", "Page");
+        }
+        public IEnumerable<XElement> Rows()
+        {
+            return Get("Rows", "Row");
+        }
+        private IEnumerable<XElement> Get(string parentName, string childrenName)
+        {
+            if (doc == null)
+                return null;
+
+            lock (doc)
+            {
+                if (doc.Root != null)
+                {
+                    var parentElement = doc.Root.Element(parentName);
+                    if (parentElement != null)
+                        return parentElement.Elements(childrenName);
+                }
+            }
+
+            return null;
         }
 
         public void Save()
         {
-            if (!string.IsNullOrEmpty(this.password))
+            lock (doc)
             {
-                StringBuilder builder = new StringBuilder();
-                using (TextWriter writer = new StringWriter(builder))
-                    Document.Save(writer);
-                FileCryptoHelper.EncryptContent(builder.ToString(), this.Path, this.password);
-            }
-            //else if (compressed)
-            //    File.WriteAllText(Path, Document.ToString().Compress());
-            else
-                Document.Save(Path);
+                if (!string.IsNullOrEmpty(this.password))
+                {
+                    StringBuilder builder = new StringBuilder();
+                    using (TextWriter writer = new StringWriter(builder))
+                        doc.Save(writer);
+                    FileCryptoHelper.EncryptContent(builder.ToString(), this.Path, this.password);
+                }
+                //else if (compressed)
+                //    File.WriteAllText(Path, Document.ToString().Compress());
+                else
+                    doc.Save(Path);
 
-            if (null != Changed)
-                Changed(this, EventArgs.Empty);
+                if (null != Changed)
+                    Changed(this, EventArgs.Empty);
+            }
         }
 
         public void Save(string fileName)
@@ -170,6 +209,11 @@ namespace AcesDevelopers.Xod
             System.IO.FileInfo fi = new FileInfo(Path);
             if (fi.Exists)
                 fi.Delete();
+        }
+
+        public void Dispose()
+        {
+            this.doc = null;
         }
     }
 

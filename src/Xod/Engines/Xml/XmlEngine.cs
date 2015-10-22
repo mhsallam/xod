@@ -1,6 +1,6 @@
-﻿using AcesDevelopers.Xod.Helpers;
-using AcesDevelopers.Xod.Infra;
-using AcesDevelopers.Xod.Services;
+﻿using Xod.Helpers;
+using Xod.Infra;
+using Xod.Services;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -11,12 +11,12 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
-namespace AcesDevelopers.Xod.Engines.Xml
+namespace Xod.Engines.Xml
 {
     public class XmlEngine : IXodEngine, IDisposable
     {
         const int PAGE_SIZE = 262144;
-        const int CACHE_SIZE = 9;
+        const int CACHE_SIZE = 16;
 
         string Password { get; set; }
         string xodRoot = null;
@@ -94,7 +94,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
             {
                 foreach (var f in this.cachedFiles.ToArray())
                 {
-                    f.Document = null;
+                    f.Dispose();
                     this.cachedFiles.Remove(f);
                 }
 
@@ -185,7 +185,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
             XFile tableFile = OpenFileOrCreate(tableFileName, typeof(Table));
             if (tableFile != null)
             {
-                XElement page = tableFile.Document.Root.Element("Pages").Elements("Page").FirstOrDefault(delegate(XElement s)
+                XElement page = tableFile.Pages().FirstOrDefault(delegate(XElement s)
                 {
                     XAttribute fullAtt = s.Attribute("full");
                     return null == fullAtt || fullAtt.Value != "true";
@@ -197,7 +197,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
                     pageFileName = string.Format("{0}.{1}", ValueHelper.PickCode(), "xpag");
                     XElement tp = new XElement("Page", pageFileName);
                     tp.Add(new XAttribute("full", false));
-                    tableFile.Document.Root.Element("Pages").Add(tp);
+                    tableFile.Root().Element("Pages").Add(tp);
                 }
                 else
                     pageFileName = page.Value;
@@ -222,11 +222,11 @@ namespace AcesDevelopers.Xod.Engines.Xml
                     {
                         XElement re = new XElement("Row", new XAttribute("code", itemCode), xItem);
                         pageFile = OpenFileOrCreate(pageFileName, typeof(TablePage));
-                        pageFile.Document.Root.Element("Rows").Add(re);
+                        pageFile.Root().Element("Rows").Add(re);
                         if (pageFile.Size() >= PAGE_SIZE)
                         {
 
-                            var fullPage = tableFile.Document.Root.Element("Pages").Elements("Page")
+                            var fullPage = tableFile.Pages()
                                 .FirstOrDefault(s => pageFile.Path.EndsWith(s.Value));
 
                             if (null != fullPage)
@@ -439,6 +439,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
                     continue;
 
                 XElement e = element.Element(prop.PropertyName);
+
                 if (null != e)
                 {
                     //parsing collection types
@@ -497,7 +498,6 @@ namespace AcesDevelopers.Xod.Engines.Xml
                                     return null;
 
                                 string childCode = string.Format("{0}.{1}", GetRefPage(itemType, rowCode.Value), rowCode.Value);
-
                                 object obj = null;
 
                                 obj = this.opsCacheService.GetItem(childCode, lazyLoad);
@@ -612,7 +612,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
                         }
                     }
                 }
-                else if (null != prop.DefaultValue && !prop.DefaultValue.Equals(ValueHelper.DefaultOf(prop.PropertyType)))
+                else if (prop.DefaultValue != null && !prop.DefaultValue.Equals(ValueHelper.DefaultOf(prop.PropertyType)))
                     prop.Property.SetValue(item, prop.DefaultValue, null);
             }
 
@@ -734,7 +734,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
                     }
 
                     //update only if there is a difference
-                    if (!row.Element(type.Name).Equals(xNewRow))
+                    if (!row.Element(type.Name).ElementEquals(xNewRow))
                     {
                         //inforce cascade delete for complex reference and child items
                         Dictionary<Type, string> delItemsCode = new Dictionary<Type, string>();
@@ -950,7 +950,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
                             parentItemRef.Remove();
                             if (oldParentXRow.Page.Size() < PAGE_SIZE)
                             {
-                                XAttribute fullAtt = oldParentXRow.Page.Document.Root.Attribute("full");
+                                XAttribute fullAtt = oldParentXRow.Page.Root().Attribute("full");
                                 if (null != fullAtt)
                                     fullAtt.Value = "false";
                             }
@@ -1006,7 +1006,6 @@ namespace AcesDevelopers.Xod.Engines.Xml
             else
                 return RecursionError(track, parent.Parent);
         }
-
 
         private Dictionary<string, object> GetPrimaryValues(Type type, object item)
         {
@@ -1322,14 +1321,14 @@ namespace AcesDevelopers.Xod.Engines.Xml
             //    }
             //    xItem.Add(xpe);
             //}
-            else if (prop.ReferenceType == PropertyReferenceType.Parent && prop.ParentKeys != null)
+            else if (prop.ReferenceType == PropertyReferenceType.Parent && prop.ParentKeys != null && writeTrack != null)
             {
                 string relationshipName = null;
                 if (writeTrack.Parent != null && writeTrack.Parent.RootProperty != null)
                     relationshipName = writeTrack.Parent.RootProperty.PropertyName;
 
                 //child has been assigned to parent
-                if (null != writeTrack && null != writeTrack.Parent && prop.PropertyType == writeTrack.Parent.Type)
+                if (writeTrack.Parent != null && prop.PropertyType == writeTrack.Parent.Type)
                 {
                     XElement xpe = new XElement(prop.PropertyName,
                             new XAttribute("refType", "parent"),
@@ -1370,7 +1369,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
                     //    LinkRef(type, prop.PropertyType, value, prop, xItem, parentRefKeySets);
                     //}
 
-                    if (null == writeTrack.Parent || prop.PropertyType != writeTrack.Parent.Type) //WHY?!! for the second part of the condition
+                    if (writeTrack.Parent == null || prop.PropertyType != writeTrack.Parent.Type) //WHY?!!
                     {
                         object childParentItem = prop.Property.GetValue(item);
                         var localToRemoteParentProps = prop.ParentKeys.ToDictionary(s => s.LocalProperty, s => s.RemoteProperty);
@@ -1508,7 +1507,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
                         }
                     }
 
-                    if (writeTrack.Parent != null && prop.PropertyType == writeTrack.Parent.Type)
+                    if (prop.PropertyType == writeTrack.Parent.Type)
                     {
                         XElement xpe = new XElement(prop.PropertyName,
                                 new XAttribute("refType", "parent"),
@@ -1718,7 +1717,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
                 XFile file = OpenFileOrCreate(string.Format("{0}.xpag", nameParts[0]), onlyFile: true);
                 if (file != null)
                 {
-                    element = file.Document.Root.Element("Rows").Elements("Row")
+                    element = file.Rows()
                         .FirstOrDefault(s => s.Attribute("code").Value == nameParts[1]);
                 }
             }
@@ -1735,7 +1734,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
             foreach (var file in files)
             {
                 XFile tableFile = OpenFileOrCreate(file);
-                if (tableFile.Document.Root.Element("Pages").Elements("Page")
+                if (tableFile.Pages()
                     .Where(s => s.Value == codeParts[0] + ".xpag").Any())
                 {
                     string typeString = System.IO.Path.GetFileNameWithoutExtension(file);
@@ -1747,10 +1746,10 @@ namespace AcesDevelopers.Xod.Engines.Xml
         private string GetRefPage(Type type, string code)
         {
             XFile tableFile = OpenFileOrCreate(type.FullName + ".xtab");
-            foreach (var file in tableFile.Document.Root.Element("Pages").Elements("Page").Select(s => s.Value))
+            foreach (var file in tableFile.Pages().Select(s => s.Value))
             {
                 XFile pageFile = OpenFileOrCreate(file);
-                if (pageFile.Document.Root.Element("Rows").Elements("Row").Where(delegate(XElement s)
+                if (pageFile.Rows().Where(delegate(XElement s)
                 {
                     XAttribute sa = s.Attribute("code");
                     return null != sa && sa.Value == code;
@@ -1767,7 +1766,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
             foreach (var file in files)
             {
                 XFile tableFile = OpenFileOrCreate(file);
-                if (tableFile.Document.Root.Element("Pages").Elements("Page").Where(s => s.Value == xpagCode + ".xpag").Any())
+                if (tableFile.Pages().Where(s => s.Value == xpagCode + ".xpag").Any())
                     return this.propertyService.LoadedTypes.FirstOrDefault(s => s.FullName == System.IO.Path.GetFileNameWithoutExtension(tableFile.Path));
             }
             return null;
@@ -1792,17 +1791,17 @@ namespace AcesDevelopers.Xod.Engines.Xml
                 else
                     itemContents = BaseMarkup(OrderElement(Write(type, item, true)));
 
-                var pages = tableFile.Document.Root.Element("Pages").Elements("Page").Select(s => OpenFileOrCreate(s.Value, typeof(TablePage)));
+                var pages = tableFile.Pages().Select(s => OpenFileOrCreate(s.Value, typeof(TablePage)));
                 foreach (var page in pages)
                 {
                     XElement treeRow = null;
                     if (null != itemKeys)
-                        treeRow = page.Document.Root.Element("Rows").Elements("Row").FirstOrDefault(delegate(XElement s)
+                        treeRow = page.Rows().FirstOrDefault(delegate(XElement s)
                         {
                             return itemKeys.DictionaryEqual<string, object>(GetPrimaryNodes(type, s));
                         });
                     else
-                        treeRow = page.Document.Root.Element("Rows").Elements("Row").FirstOrDefault(delegate(XElement s)
+                        treeRow = page.Rows().FirstOrDefault(delegate(XElement s)
                         {
                             string e = BaseMarkup(OrderElement(s.Element(type.Name)));
                             return e == itemContents;
@@ -1835,15 +1834,15 @@ namespace AcesDevelopers.Xod.Engines.Xml
             if (tableFile != null)
             {
                 string itemContents = BaseMarkup(Write(type, item, true));
-                var pages = from row in tableFile.Document.Root.Element("Pages").Elements("Page") select OpenFileOrCreate(row.Value, typeof(TablePage));
+                var pages = from row in tableFile.Pages() select OpenFileOrCreate(row.Value, typeof(TablePage));
                 foreach (var page in pages)
                 {
                     XElement xItem = null;
                     var primaryProps = this.propertyService.PropertyItems.Where(s => s.Type == type && s.IsPrimaryKey);
                     if (primaryProps.Any())
-                        xItem = page.Document.Root.Element("Rows").Elements("Row").FirstOrDefault(s => TestAgainstXElement(type, item, s, primaryProps));
+                        xItem = page.Rows().FirstOrDefault(s => TestAgainstXElement(type, item, s, primaryProps));
                     else
-                        xItem = page.Document.Root.Element("Rows").Elements("Row").FirstOrDefault(s => BaseMarkup(s.Element(type.Name)) == itemContents);
+                        xItem = page.Rows().FirstOrDefault(s => BaseMarkup(s.Element(type.Name)) == itemContents);
 
                     if (xItem != null)
                     {
@@ -1872,15 +1871,15 @@ namespace AcesDevelopers.Xod.Engines.Xml
             if (tableFile != null)
             {
                 string itemContents = BaseMarkup(Write(type, item, true));
-                var pages = from row in tableFile.Document.Root.Element("Pages").Elements("Page") select OpenFileOrCreate(row.Value, typeof(TablePage));
+                var pages = from row in tableFile.Pages() select OpenFileOrCreate(row.Value, typeof(TablePage));
                 foreach (var page in pages)
                 {
                     List<XElement> xItems = null;
                     var primaryProps = this.propertyService.PropertyItems.Where(s => s.Type == type && s.IsPrimaryKey);
                     if (primaryProps.Any())
-                        xItems = page.Document.Root.Element("Rows").Elements("Row").Where(s => TestAgainstXElement(type, item, s, primaryProps)).ToList();
+                        xItems = page.Rows().Where(s => TestAgainstXElement(type, item, s, primaryProps)).ToList();
                     else
-                        xItems = page.Document.Root.Element("Rows").Elements("Row").Where(s => BaseMarkup(s.Element(type.Name)) == itemContents).ToList();
+                        xItems = page.Rows().Where(s => BaseMarkup(s.Element(type.Name)) == itemContents).ToList();
 
                     if (xItems != null)
                     {
@@ -1969,13 +1968,14 @@ namespace AcesDevelopers.Xod.Engines.Xml
         }
         private XFile OpenFileOrCreate(string fileName, Type type = null, bool onlyFile = false, bool autoSave = false)
         {
-            var files = cachedFiles.ToArray();
-            XFile file = files.FirstOrDefault(s => s.Path.EndsWith(fileName));
-            if (xodRoot != null && !fileName.StartsWith(xodRoot))
-                fileName = string.Format("{0}\\{1}", xodRoot, fileName);
+            XFile file = null;
 
+            file = cachedFiles.FirstOrDefault(s => s.Path.EndsWith(fileName));
             if (file != null)
                 return file;
+
+            if (xodRoot != null && !fileName.StartsWith(xodRoot))
+                fileName = string.Format("{0}\\{1}", xodRoot, fileName);
 
             if (File.Exists(fileName))
             {
@@ -2027,15 +2027,15 @@ namespace AcesDevelopers.Xod.Engines.Xml
         {
             this.opsCacheService.Clear();
             this.propertyService.LoadType(type);
-            lazyLoad = (lazyLoad) ? true : LazyLoad;
+            lazyLoad = (lazyLoad) ? true : this.LazyLoad;
             IEnumerable<object> result = null;
             string docFileName = string.Format("{0}.xtab", type.ToString());
             XFile tableFile = OpenFileOrCreate(docFileName, type, true);
             if (tableFile != null)
             {
-                var allRows = tableFile.Document.Root.Element("Pages").Elements("Page")
+                var allRows = tableFile.Pages()
                     .Where(s => this.fileService.FileExists(s.Value))
-                    .SelectMany(s => OpenFileOrCreate<TablePage>(s.Value, true).Document.Root.Element("Rows").Elements("Row"));
+                    .SelectMany(s => OpenFileOrCreate<TablePage>(s.Value, true).Rows());
                 result = allRows.Select(s => Read(type, s.Element(type.Name), lazyLoad));
             }
 
@@ -2119,10 +2119,10 @@ namespace AcesDevelopers.Xod.Engines.Xml
                 foreach (var row in rowTree.Rows)
                 {
                     row.Remove();
-                    if (rowTree.Page.Document.Root.Elements("Rows") == null)
+                    if (!rowTree.Page.Root().HasElements)
                     {
                         File.Delete(rowTree.Page.Path);
-                        XElement tablePage = rowTree.Table.Document.Root.Element("Pages").Elements("Page")
+                        XElement tablePage = rowTree.Table.Pages()
                                                 .FirstOrDefault(s => rowTree.Page.Path.EndsWith(s.Value));
 
                         if (tablePage != null)
@@ -2130,7 +2130,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
                             tablePage.Remove();
                             File.Delete(rowTree.Page.Path);
 
-                            if (rowTree.Table.Document.Root.Element("Pages").Elements("Page") == null)
+                            if (!rowTree.Table.Root().HasElements)
                                 File.Delete(rowTree.Table.Path);
                         }
                         value = true;
@@ -2139,8 +2139,8 @@ namespace AcesDevelopers.Xod.Engines.Xml
                     {
                         if (rowTree.Page.Size() < PAGE_SIZE)
                         {
-                            XAttribute fullAtt = rowTree.Page.Document.Root.Attribute("full");
-                            if (null != fullAtt)
+                            XAttribute fullAtt = rowTree.Page.Root().Attribute("full");
+                            if (fullAtt != null)
                                 fullAtt.Value = "false";
                         }
                         rowTree.Page.Save();
@@ -2180,18 +2180,20 @@ namespace AcesDevelopers.Xod.Engines.Xml
                                 Delete(childType, child);
                     }
 
+                    var itemPrmVals = GetPrimaryValues(type, item);
+                    if (null == itemPrmVals)
+                        continue;
+
                     //Delete item reference from parents
                     var parRefProps = this.propertyService.PropertyItems.Where(s =>
                         s.Type == type &&
                         s.ReferenceType == PropertyReferenceType.Parent);
 
-                    var itemPrmVals = GetPrimaryValues(type, item);
-                    if (null == itemPrmVals)
-                        continue;
-
                     foreach (var parRefProp in parRefProps)
                     {
-                        object parent = parRefProp.Property.GetValue(item);
+                        object parentValue = parRefProp.Property.GetValue(item);
+                        var parentPrmVals = GetPrimaryValues(type, parentValue);
+                        object parent = GetRefItem(parRefProp.Type, parentPrmVals);
                         if (parent == null)
                             continue;
 
@@ -2205,7 +2207,6 @@ namespace AcesDevelopers.Xod.Engines.Xml
                         foreach (var chdRefProp in chdRefProps)
                         {
                             var chdRefItem = chdRefProp.Property.GetValue(parent);
-
                             if (null == chdRefItem)
                                 continue;
 
@@ -2265,7 +2266,7 @@ namespace AcesDevelopers.Xod.Engines.Xml
                 //it's attributed as required/parent for other types then raise
                 //an exception
 
-                var pages = from row in tableFile.Document.Root.Element("Pages").Elements("Page") select OpenFileOrCreate(row.Value, typeof(TablePage));
+                var pages = from row in tableFile.Pages() select OpenFileOrCreate(row.Value, typeof(TablePage));
                 foreach (var page in pages)
                 {
                     if (cachedFiles.Contains(page))

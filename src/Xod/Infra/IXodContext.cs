@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-namespace AcesDevelopers.Xod.Infra
+namespace Xod.Infra
 {
     interface IXodContext
     {

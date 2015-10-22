@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-namespace AcesDevelopers.Xod
+namespace Xod
 {
     public interface IXodEngine
     {
