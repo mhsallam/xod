@@ -1507,7 +1507,7 @@ namespace Xod.Engines.Xml
                         }
                     }
 
-                    if (prop.PropertyType == writeTrack.Parent.Type)
+                    if (writeTrack.Parent != null && prop.PropertyType == writeTrack.Parent.Type)
                     {
                         XElement xpe = new XElement(prop.PropertyName,
                                 new XAttribute("refType", "parent"),
