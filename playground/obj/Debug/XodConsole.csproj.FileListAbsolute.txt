@@ -1,8 +1,0 @@
-D:\work\projects\git\xod\src\Console\bin\Debug\XodConsole.exe.config
-D:\work\projects\git\xod\src\Console\bin\Debug\XodConsole.exe
-D:\work\projects\git\xod\src\Console\bin\Debug\XodConsole.pdb
-D:\work\projects\git\xod\src\Console\bin\Debug\Aces.Xod.dll
-D:\work\projects\git\xod\src\Console\bin\Debug\Aces.Xod.pdb
-D:\work\projects\git\xod\src\Console\obj\Debug\XodConsole.exe
-D:\work\projects\git\xod\src\Console\obj\Debug\XodConsole.pdb
-D:\work\projects\git\xod\src\Console\obj\Debug\XodConsole.csprojResolveAssemblyReference.cache

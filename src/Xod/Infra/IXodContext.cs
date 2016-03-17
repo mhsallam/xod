@@ -2,13 +2,22 @@
 using System.Collections.Generic;
 namespace Xod.Infra
 {
-    interface IXodContext
+    interface IXodContext: IDisposable
     {
         event EventHandler<TriggerEventArgs> BeforeAction;
         event EventHandler<TriggerEventArgs> AfterAction;
 
         IEnumerable<T> Select<T>(bool lazyLoad = false);
-        IEnumerable<object> Select(Type type, bool lazyLoad = false);
+        IEnumerable<T> SelectBackward<T>(bool lazyLoad = false);
+        IEnumerable<T> Query<T>(Func<dynamic, bool> query, bool lazyLoad = false);
+        IEnumerable<T> Query<T>(T example, bool lazyLoad = false);
+        IEnumerable<T> Query<T>(T[] examples, bool lazyLoad = false);
+
+        T FirstMatch<T>(Func<dynamic, bool> query = null, bool lazyLoad = false);
+        T LastMatch<T>(Func<dynamic, bool> query = null, bool lazyLoad = false);
+        T First<T>(bool lazyLoad = false);
+        T Last<T>(bool lazyLoad = false);
+        
         object Insert(object item, bool lazyLoad = false);
         object Insert<T>(T item, bool lazyLoad = false);
         object Insert(Type type, object item, bool lazyLoad = false);
@@ -35,6 +44,8 @@ namespace Xod.Infra
         void Secure(string password);
         void Loose(string password);
         void ChangePassword(string currentPassword, string newPassword);
+        void ClearCache();
+        void ClearCaches();
         
         void Dispose();
     }

@@ -29,9 +29,13 @@ namespace Xod
     {
         public PrimaryKeyDataTypeException() : base("Wrong primary key datatype. Primary key can only be a primitive datatype, string or enum.") { }
     }
-    public class AutoNumberDataTypeException : Exception
+    public class IndexDataTypeException : Exception
     {
-        public AutoNumberDataTypeException() : base("Wrong auto number datatype. This feature can only be applyed on numeric datatype.") { }
+        public IndexDataTypeException() : base("Wrong index datatype. Indices can only be a int, long, string or guid datatype.") { }
+    }
+    public class AutonumberDataTypeException : Exception
+    {
+        public AutonumberDataTypeException() : base("Wrong auto number datatype. This feature can only be applyed on numeric datatype.") { }
     }
     public class ReservedPrimaryKeyException : Exception
     {

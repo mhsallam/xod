@@ -1,9 +1,0 @@
-D:\work\projects\github\xod\src\Playground\bin\Release\Playground.exe.config
-D:\work\projects\github\xod\src\Playground\bin\Release\Playground.exe
-D:\work\projects\github\xod\src\Playground\bin\Release\Playground.pdb
-D:\work\projects\github\xod\src\Playground\bin\Release\Xod.dll
-D:\work\projects\github\xod\src\Playground\bin\Release\Xod.pdb
-D:\work\projects\github\xod\src\Playground\bin\Release\Xod.xml
-D:\work\projects\github\xod\src\Playground\obj\Release\Playground.csprojResolveAssemblyReference.cache
-D:\work\projects\github\xod\src\Playground\obj\Release\Playground.exe
-D:\work\projects\github\xod\src\Playground\obj\Release\Playground.pdb

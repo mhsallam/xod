@@ -4,209 +4,281 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Reflection;
+using System.ComponentModel;
 
 namespace Xod.Services
 {
     internal class PropertyService
     {
-        internal List<Type> LoadedTypes { get; set; }
+        private static readonly object locker = new object();
+        private static Dictionary<string, List<PropertyInfoItem>> properties = null;
+
         string[] keywords = { "dataType", "collType", "refType", "hostProp" };
-        internal List<PropertyInfoItem> PropertyItems { get; set; }
 
         internal PropertyService()
         {
-            this.PropertyItems = new List<PropertyInfoItem>();
-            this.LoadedTypes = new List<Type>();
+            if (properties == null)
+            {
+                lock (locker)
+                {
+                    if(properties == null)
+                        properties = new Dictionary<string, List<PropertyInfoItem>>();
+                }
+            }
         }
+
         internal void LoadType(Type type)
         {
             if (type == null || type == typeof(object))
                 return;
 
-            List<PropertyInfoItem> typeProps = new List<PropertyInfoItem>();
+            List<PropertyInfoItem> typeProps = null;
+            PropertyDescriptorCollection props = null;
+            List<Type> innerTypes = null;
 
-            if (!this.LoadedTypes.Contains(type) && GetRefType(type) != PropertyTypeCategory.None)
+            //double-check lock pattern; optemized thread-safe
+            if (!properties.ContainsKey(type.FullName) && GetPropertyTypeCategory(type) == PropertyTypeCategory.Class)
             {
-                this.LoadedTypes.Add(type);
-                List<Type> innerTypes = new List<Type>();
-                var props = type.GetProperties().Where(s => s.GetAccessors(false).Any());
-                foreach (var prop in props)
+                lock (locker)
                 {
-                    var atts = prop.GetCustomAttributes(false);
-                    NotMappedAttribute notMappedAtt = (NotMappedAttribute)atts
-                        .FirstOrDefault(s => s.GetType() == typeof(NotMappedAttribute));
-                    if (null != notMappedAtt)
-                        continue;
+                    innerTypes = new List<Type>();
 
-                    PropertyTypeCategory propTypeCategory = GetRefType(prop.PropertyType);
-                    PropertyInfoItem propInfoItem = new PropertyInfoItem()
+                    if (!properties.ContainsKey(type.FullName) && GetPropertyTypeCategory(type) == PropertyTypeCategory.Class)
                     {
-                        Type = type,
-                        TypeCategory = propTypeCategory,
-                        Property = prop,
-                        PropertyName = prop.Name,
-                        PropertyType = prop.PropertyType,
-                        IsGenericType = prop.PropertyType == typeof(object)
-                    };
+                        typeProps = new List<PropertyInfoItem>();
 
-                    var primaryKeyAtt = atts.FirstOrDefault(s => s.GetType() == typeof(PrimaryKeyAttribute));
-                    propInfoItem.IsPrimaryKey = null != primaryKeyAtt;
-
-                    var foreignKeyAtts = atts.Where(s => s.GetType() == typeof(ForeignKeyAttribute));
-                    if (foreignKeyAtts.Any())
-                        propInfoItem.ForeignKeys = foreignKeyAtts.Cast<ForeignKeyAttribute>().ToList();
-
-                    var parentKeyAtts = atts.Where(s => s.GetType() == typeof(ParentKeyAttribute));
-                    if (parentKeyAtts.Any())
-                        propInfoItem.ParentKeys = parentKeyAtts.Cast<ParentKeyAttribute>().ToList();
-
-                    PropertyAttribute propertyAtt = (PropertyAttribute)atts
-                        .FirstOrDefault(s => s.GetType() == typeof(PropertyAttribute));
-                    if (null != propertyAtt)
-                    {
-                        propInfoItem.Cascade = propertyAtt.Cascade;
-                        propInfoItem.IsAutoNumber = propertyAtt.AutoNumber;
-                        propInfoItem.ForceAutoNumber = propertyAtt.OverrideAutoNumber;
-                        propInfoItem.IsIndexed = propertyAtt.Indexed;
-                        propInfoItem.ValuePosition = propertyAtt.Position;
-                        propInfoItem.IdentityIncrement = propertyAtt.IdentityIncrement;
-                        propInfoItem.IdentitySeed = propertyAtt.IdentitySeed;
-                    }
-
-                    RequiredAttribute requiredAtt = (RequiredAttribute)atts
-                        .FirstOrDefault(s => s.GetType() == typeof(RequiredAttribute));
-                    propInfoItem.IsRequired = null != requiredAtt;
-
-                    UniqueKeyAttribute uniqueKeyAtt = (UniqueKeyAttribute)atts
-                        .FirstOrDefault(s => s.GetType() == typeof(UniqueKeyAttribute));
-                    propInfoItem.IsUnique = null != uniqueKeyAtt;
-
-                    MarkupAttribute markupAtt = (MarkupAttribute)atts
-                        .FirstOrDefault(s => s.GetType() == typeof(MarkupAttribute));
-                    propInfoItem.IsMarkup = null != markupAtt;
-
-                    CryptoAttribute cryptoAtt = (CryptoAttribute)atts
-                        .FirstOrDefault(s => s.GetType() == typeof(CryptoAttribute));
-                    propInfoItem.Encryption = (null != cryptoAtt) ? cryptoAtt.Method : CryptoMethod.None;
-
-                    ChildrenAttribute childrenAtt = (ChildrenAttribute)atts
-                        .FirstOrDefault(s => s.GetType() == typeof(ChildrenAttribute));
-                    //InheritedAttribute inheritedAtt = (InheritedAttribute)atts
-                    //    .FirstOrDefault(s => s.GetType() == typeof(InheritedAttribute));
-                    if (null != childrenAtt)
-                    {
-                        propInfoItem.ReferenceType = PropertyReferenceType.Children;
-                        propInfoItem.Cascade = CascadeOptions.Delete;
-                        propInfoItem.ChildParentProperty = childrenAtt.RemoteParentProperty;
-                    }
-
-                    GenericTypePropertyAttribute genericTypeAtt = (GenericTypePropertyAttribute)atts
-                        .FirstOrDefault(s => s.GetType() == typeof(GenericTypePropertyAttribute));
-                    if (prop.PropertyType == typeof(object) && null != genericTypeAtt)
-                        propInfoItem.GenericTypeProperty = genericTypeAtt.Name;
-
-                    //setting reference type
-                    if (propInfoItem.ReferenceType != PropertyReferenceType.Children)
-                    {
-                        if (propTypeCategory == PropertyTypeCategory.None)
-                            propInfoItem.ReferenceType = PropertyReferenceType.None;
-                        else if (foreignKeyAtts.Any())
+                        //var props = type.GetProperties().Where(s => s.GetAccessors(false).Any());
+                        props = System.ComponentModel.TypeDescriptor.GetProperties(type);
+                        foreach (PropertyDescriptor prop in props)
                         {
-                            if (prop.PropertyType.GetProperties()
-                                .Where(s =>
-                                    s.PropertyType == type &&
-                                    null != s.GetCustomAttribute<ForeignKeyAttribute>(false)).Any())
-                                propInfoItem.ReferenceType = PropertyReferenceType.SelfForeign;
-                            else
-                                propInfoItem.ReferenceType = PropertyReferenceType.Foreign;
-                        }
-                        else if (parentKeyAtts.Any())
-                            propInfoItem.ReferenceType = PropertyReferenceType.Parent;
-                        else
-                        {
-                            if (!atts.Any() && !prop.PropertyType.GetProperties()
-                                .Where(s => null != s.GetCustomAttribute<PrimaryKeyAttribute>(false)).Any())
+                            if (prop.Attributes.OfType<NotMappedAttribute>().Any())
+                                continue;
+
+                            PropertyTypeCategory propTypeCategory = GetPropertyTypeCategory(prop.PropertyType);
+                            PropertyInfoItem propInfoItem = new PropertyInfoItem()
                             {
-                                propInfoItem.ReferenceType = PropertyReferenceType.Complex;
-                                propInfoItem.Cascade = CascadeOptions.Delete;
+                                Type = type,
+                                TypeCategory = propTypeCategory,
+                                Property = prop,
+                                PropertyName = prop.Name,
+                                PropertyType = prop.PropertyType,
+                                IsGenericType = prop.PropertyType == typeof(object),
+                                IsReadOnly = prop.IsReadOnly
+                            };
+
+                            var primaryKeyAtt = prop.Attributes.OfType<PrimaryKeyAttribute>().FirstOrDefault();
+                            propInfoItem.IsPrimaryKey = null != primaryKeyAtt;
+
+                            var foreignKeyAtts = prop.Attributes.OfType<ForeignKeyAttribute>();
+                            if (foreignKeyAtts.Any())
+                                propInfoItem.ForeignKeys = foreignKeyAtts.Cast<ForeignKeyAttribute>().ToList();
+
+                            var parentKeyAtts = prop.Attributes.OfType<ParentKeyAttribute>();
+                            if (parentKeyAtts.Any())
+                                propInfoItem.ParentKeys = parentKeyAtts.Cast<ParentKeyAttribute>().ToList();
+
+                            PropertyAttribute propertyAtt = prop.Attributes.OfType<PropertyAttribute>().FirstOrDefault();
+                            if (null != propertyAtt)
+                            {
+                                propInfoItem.Cascade = propertyAtt.Cascade;
+                                propInfoItem.IsAutonumber = propertyAtt.AutoNumber;
+                                //propInfoItem.ForceAutoNumber = propertyAtt.OverrideAutoNumber;
+                                propInfoItem.IsIndexed = propertyAtt.Indexed;
+                                propInfoItem.ValuePosition = propertyAtt.Position;
+                                propInfoItem.IdentityIncrement = propertyAtt.IdentityIncrement;
+                                propInfoItem.IdentitySeed = propertyAtt.IdentitySeed;
                             }
-                            else
-                                propInfoItem.ReferenceType = PropertyReferenceType.Reference;
 
+                            RequiredAttribute requiredAtt = prop.Attributes.OfType<RequiredAttribute>().FirstOrDefault();
+                            propInfoItem.IsRequired = null != requiredAtt;
+
+                            UniqueKeyAttribute uniqueKeyAtt = prop.Attributes.OfType<UniqueKeyAttribute>().FirstOrDefault();
+                            propInfoItem.IsUnique = null != uniqueKeyAtt;
+
+                            MarkupAttribute markupAtt = prop.Attributes.OfType<MarkupAttribute>().FirstOrDefault();
+                            propInfoItem.IsMarkup = null != markupAtt;
+
+                            CryptoAttribute cryptoAtt = prop.Attributes.OfType<CryptoAttribute>().FirstOrDefault();
+                            propInfoItem.Encryption = (null != cryptoAtt) ? cryptoAtt.Method : CryptoMethod.None;
+
+                            ChildrenAttribute childrenAtt = prop.Attributes.OfType<ChildrenAttribute>().FirstOrDefault();
+                            //InheritedAttribute inheritedAtt = (InheritedAttribute)atts
+                            //    .FirstOrDefault(s => s.GetType() == typeof(InheritedAttribute));
+                            if (null != childrenAtt)
+                            {
+                                propInfoItem.ReferenceType = PropertyReferenceType.Children;
+                                propInfoItem.Cascade = CascadeOptions.Delete;
+                                propInfoItem.ChildParentProperty = childrenAtt.RemoteParentProperty;
+                            }
+
+                            GenericTypePropertyAttribute genericTypeAtt = prop.Attributes.OfType<GenericTypePropertyAttribute>().FirstOrDefault();
+                            if (prop.PropertyType == typeof(object) && null != genericTypeAtt)
+                                propInfoItem.GenericTypeProperty = genericTypeAtt.Name;
+
+                            //setting reference type
+                            if (propInfoItem.ReferenceType != PropertyReferenceType.Children)
+                            {
+                                if (propTypeCategory == PropertyTypeCategory.None)
+                                    propInfoItem.ReferenceType = PropertyReferenceType.None;
+                                else if (foreignKeyAtts.Any())
+                                {
+                                    if (prop.PropertyType.GetProperties()
+                                        .Where(s =>
+                                            s.PropertyType == type &&
+                                            null != s.GetCustomAttribute<ForeignKeyAttribute>(false)).Any())
+                                        propInfoItem.ReferenceType = PropertyReferenceType.SelfForeign;
+                                    else
+                                        propInfoItem.ReferenceType = PropertyReferenceType.Foreign;
+                                }
+                                else if (parentKeyAtts.Any())
+                                    propInfoItem.ReferenceType = PropertyReferenceType.Parent;
+                                else
+                                {
+                                    propInfoItem.ReferenceType = PropertyReferenceType.Reference;
+
+                                    PropertyDescriptorCollection propTypeProps = TypeDescriptor.GetProperties(prop.PropertyType);
+                                    System.Collections.IEnumerator propTypePropsItems = propTypeProps.GetEnumerator();
+                                    while (propTypePropsItems.MoveNext())
+                                    {
+                                        var propTypePropsItem = (PropertyDescriptor)propTypePropsItems.Current;
+                                        if (propTypePropsItem.Attributes.OfType<PrimaryKeyAttribute>().Any())
+                                        {
+                                            propInfoItem.ReferenceType = PropertyReferenceType.Complex;
+                                            propInfoItem.Cascade = CascadeOptions.Delete;
+                                            break;
+                                        }
+                                    };
+
+                                }
+                            }
+
+                            if (propTypeCategory == PropertyTypeCategory.Array)
+                                propInfoItem.CollectionItemType = prop.PropertyType.GetElementType();
+                            else if (propTypeCategory == PropertyTypeCategory.GenericCollection)
+                                propInfoItem.CollectionItemType = prop.PropertyType.GetGenericArguments().FirstOrDefault();
+
+                            typeProps.Add(propInfoItem);
+
+                            if (prop.PropertyType != type && (
+                                propTypeCategory == PropertyTypeCategory.Class ||
+                                propTypeCategory == PropertyTypeCategory.Array ||
+                                propTypeCategory == PropertyTypeCategory.GenericCollection))
+                            {
+                                if (prop.PropertyType.IsArray && prop.PropertyType.GetArrayRank() == 1)
+                                    innerTypes.Add(prop.PropertyType.GetElementType());
+                                else if (null != prop.PropertyType.GetInterface("ICollection"))
+                                    innerTypes.Add(prop.PropertyType.GetGenericArguments().FirstOrDefault());
+                                else if (prop.PropertyType.IsClass)
+                                    innerTypes.Add(prop.PropertyType);
+                            }
                         }
-                    }
 
-                    if (propTypeCategory == PropertyTypeCategory.Array)
-                        propInfoItem.CollectionItemType = prop.PropertyType.GetElementType();
-                    else if (propTypeCategory == PropertyTypeCategory.GenericCollection)
-                        propInfoItem.CollectionItemType = prop.PropertyType.GetGenericArguments().FirstOrDefault();
+                        properties.Add(type.FullName, typeProps);
 
-                    typeProps.Add(propInfoItem);
-
-                    if (propTypeCategory == PropertyTypeCategory.Class ||
-                        propTypeCategory == PropertyTypeCategory.Array ||
-                        propTypeCategory == PropertyTypeCategory.GenericCollection)
-                    {
-                        if (prop.PropertyType.IsArray && prop.PropertyType.GetArrayRank() == 1)
-                            innerTypes.Add(prop.PropertyType.GetElementType());
-                        else if (null != prop.PropertyType.GetInterface("ICollection"))
-                            innerTypes.Add(prop.PropertyType.GetGenericArguments().FirstOrDefault());
-                        else if (prop.PropertyType.IsClass)
-                            innerTypes.Add(prop.PropertyType);
+                        //if there is no PrimaryKey find a property with name Id and make it PrimaryKey
+                        if (!typeProps.Any(s => s.IsPrimaryKey))
+                        {
+                            var primaryKeyProperty = typeProps.FirstOrDefault(s => s.PropertyName == "Id");
+                            if (primaryKeyProperty != null)
+                            {
+                                primaryKeyProperty.IsPrimaryKey = true;
+                                primaryKeyProperty.IsAutonumber = true;
+                            }
+                        }
                     }
                 }
 
-                this.PropertyItems.AddRange(typeProps);
+                //after loading all PropertyInfoItems validate them
+                CheckReservedKeywords(type);
 
+                //load types of inner reference type properties
                 foreach (var innerType in innerTypes)
                     LoadType(innerType);
 
-                CheckReservedKeywords(type);
-            }
-            else if (this.LoadedTypes.Contains(type))
-            {
-                typeProps = PropertyItems.Where(s => s.Type == type).ToList();
-
-                var props = type.GetProperties().Where(s => s.GetAccessors(false).Any());
-                foreach (var prop in props)
-                {
-                    var propItems = typeProps.Select(s => s.Property).ToArray();
-                    if (propItems.Contains(prop))
-                        continue;
-
-                    var refType = GetRefType(prop.PropertyType);
-                    if (refType == PropertyTypeCategory.Class ||
-                        refType == PropertyTypeCategory.Array ||
-                        refType == PropertyTypeCategory.GenericCollection)
-                    {
-                        if (prop.PropertyType.IsArray && prop.PropertyType.GetArrayRank() == 1)
-                            LoadType(prop.PropertyType.GetElementType());
-                        else if (null != prop.PropertyType.GetInterface("ICollection"))
-                            LoadType(prop.PropertyType.GetGenericArguments().FirstOrDefault());
-                        else if (prop.PropertyType.IsClass)
-                            LoadType(prop.PropertyType);
-                    }
-                }
-
             }
 
-            if (!typeProps.Any(s => s.IsPrimaryKey))
-            {
-                var primaryKeyProperty = typeProps.FirstOrDefault(s => s.PropertyName == "Id");
-                if (primaryKeyProperty != null)
-                {
-                    primaryKeyProperty.IsPrimaryKey = true;
-                    primaryKeyProperty.IsAutoNumber = true;
-                }
-            }
+            //else if (properties.ContainsKey(type.FullName))
+            //{
+            //    typeProps = Properties(type.FullName).ToList();
+            //    props = System.ComponentModel.TypeDescriptor.GetProperties(type);
+            //    foreach (PropertyDescriptor prop in props)
+            //    {
+            //        var propItems = typeProps.Select(s => s.Property).ToArray();
+            //        if (propItems.Contains(prop))
+            //            continue;
+
+            //        var refType = GetPropertyTypeCategory(prop.PropertyType);
+            //        if (refType == PropertyTypeCategory.Class ||
+            //            refType == PropertyTypeCategory.Array ||
+            //            refType == PropertyTypeCategory.GenericCollection)
+            //        {
+            //            if (prop.PropertyType.IsArray && prop.PropertyType.GetArrayRank() == 1)
+            //                LoadType(prop.PropertyType.GetElementType());
+            //            else if (null != prop.PropertyType.GetInterface("ICollection"))
+            //                LoadType(prop.PropertyType.GetGenericArguments().FirstOrDefault());
+            //            else if (prop.PropertyType.IsClass)
+            //                LoadType(prop.PropertyType);
+            //        }
+            //    }
+            //}
         }
-        internal void UnloadType(Type type)
+
+        //internal void UnloadType(Type type)
+        //{
+        //    if (properties == null)
+        //        return;
+
+        //    var typeItems = properties.FirstOrDefault(s => s.Key.Equals(type.FullName));
+        //    if (!typeItems.Equals(null) && typeItems.Value != null)
+        //        properties.Remove(typeItems.Key);
+        //}
+
+        internal IEnumerable<PropertyInfoItem> Properties(string key)
         {
-            this.PropertyItems.RemoveAll(s => s.Type == type);
-            this.LoadedTypes.Remove(type);
-        }
+            if (properties == null)
+                return new PropertyInfoItem[] { };
 
-        internal PropertyTypeCategory GetRefType(Type type)
+            var t = properties.FirstOrDefault(s => s.Key.Equals(key));
+            if (!t.Equals(null) && t.Value != null)
+                return t.Value.ToList();
+            else
+                return Enumerable.Empty<PropertyInfoItem>();
+        }
+        internal Type RegisteredType(string key)
+        {
+            if (properties == null)
+                return null;
+
+            var t = properties.FirstOrDefault(s => s.Key.Equals(key));
+            if (!t.Equals(null) && t.Value != null)
+            {
+                var fp = t.Value.FirstOrDefault();
+                if (fp != null)
+                    return fp.Type;
+            }
+
+            return null;
+        }
+        internal Type RegisteredTypeByName(string name)
+        {
+            if (properties == null)
+                return null;
+
+            var t = properties.FirstOrDefault(delegate(KeyValuePair<string, List<PropertyInfoItem>> s) {
+                string[] nameParts = s.Key.Split('.');
+                return nameParts != null && nameParts.Length > 0 && nameParts.Last().Equals(name);
+            });
+
+            if (!t.Equals(null) && t.Value != null)
+            {
+                var fp = t.Value.FirstOrDefault();
+                if (fp != null)
+                    return fp.Type;
+            }
+
+            return null;
+        }
+        internal PropertyTypeCategory GetPropertyTypeCategory(Type type)
         {
             Type childType = null;
             if (null == type)
@@ -232,41 +304,27 @@ namespace Xod.Services
 
             return PropertyTypeCategory.None;
         }
-        internal PropertyTypeCategory GetRefType(string typeName)
-        {
-            var item = this.PropertyItems.FirstOrDefault(s => s.Type.FullName == typeName);
-            if (null != item)
-                return GetRefType(item.Type);
-            else
-                return PropertyTypeCategory.None;
-        }
 
         internal void CheckReservedKeywords(Type type)
         {
-            var primaryProps = this.PropertyItems.Where(s => s.Type == type && s.IsPrimaryKey).Select(s => s.Property);
-            foreach (var primaryProp in primaryProps)
-                if (IsReservedKeyword(primaryProp.Name))
-                    throw new ReservedKeyWordException();
+            var primaryProps = Properties(type.FullName)
+                .Where(s => s.IsPrimaryKey && IsReservedKeyword(s.PropertyName));
+            if (primaryProps.Any())
+                throw new ReservedKeyWordException();
 
-            var foreignProps = this.PropertyItems.Where(s => s.Type == type && s.ReferenceType == PropertyReferenceType.Foreign);
-            foreach (var foreignProp in foreignProps)
-                if (null != foreignProp.ForeignKeys)
-                    foreach (var foreignAtt in foreignProp.ForeignKeys)
-                        if (IsReservedKeyword(foreignAtt.RemoteProperty))
-                            throw new ReservedKeyWordException();
+            //var foreignProps = Properties(type.FullName).Where(s => s.ReferenceType == PropertyReferenceType.Foreign);
+            //foreach (var foreignProp in foreignProps)
+            //    if (null != foreignProp.ForeignKeys)
+            //        foreach (var foreignAtt in foreignProp.ForeignKeys)
+            //            if (IsReservedKeyword(foreignAtt.RemoteProperty))
+            //                throw new ReservedKeyWordException();
 
-            var parentProps = this.PropertyItems.Where(s => s.Type == type && s.ReferenceType == PropertyReferenceType.Parent);
-            foreach (var parentProp in parentProps)
-                if (null != parentProp.ParentKeys)
-                    foreach (var parentAtt in parentProp.ParentKeys)
-                        if (IsReservedKeyword(parentAtt.RemoteProperty))
-                            throw new ReservedKeyWordException();
-
-            //var propProps = type.GetProperties().Where(s => s.GetCustomAttributes<PropertyAttribute>(false).Any());
-            //foreach (var prop in propProps)
-            //    foreach (var propAtt in prop.GetCustomAttributes<PropertyAttribute>(false))
-            //        if (propAtt.Position == ValuePosition.Attribute && IsReservedKeyword(prop.Name))
-            //            throw new ReservedKeyWordException();
+            //var parentProps = Properties(type.FullName).Where(s => s.ReferenceType == PropertyReferenceType.Parent);
+            //foreach (var parentProp in parentProps)
+            //    if (null != parentProp.ParentKeys)
+            //        foreach (var parentAtt in parentProp.ParentKeys)
+            //            if (IsReservedKeyword(parentAtt.RemoteProperty))
+            //                throw new ReservedKeyWordException();
         }
         internal bool IsReservedKeyword(string keyword)
         {

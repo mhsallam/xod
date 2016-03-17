@@ -8,7 +8,7 @@ namespace Xod
     ///<summary>
     ///Xml based relational OOP database
     ///</summary>
-    public class XodContext : IDisposable, Xod.Infra.IXodContext
+    public class XodContext : Xod.Infra.IXodContext
     {
         private IXodEngine engine;
 
@@ -35,16 +35,54 @@ namespace Xod
             add { this.engine.AfterAction += value; }
             remove { this.engine.AfterAction -= value; }
         }
-        
+
         public IEnumerable<T> Select<T>(bool lazyLoad = false)
         {
             Type type = typeof(T);
-            return this.engine.Select(type, lazyLoad).Cast<T>();
+            return this.engine.Select(type, false, lazyLoad).Cast<T>();
         }
-        public IEnumerable<object> Select(Type type, bool lazyLoad = false)
+        public IEnumerable<T> SelectBackward<T>(bool lazyLoad = false)
         {
-            return this.engine.Select(type, lazyLoad);
+            Type type = typeof(T);
+            return this.engine.Select(type, true, lazyLoad).Cast<T>();
         }
+        public IEnumerable<T> Query<T>(Func<dynamic, bool> query, bool lazyLoad = false)
+        {
+            Type type = typeof(T);
+            return this.engine.Query(type, query, lazyLoad).Cast<T>();
+        }
+        public IEnumerable<T> Query<T>(T example, bool lazyLoad = false)
+        {
+            Type type = typeof(T);
+            return this.engine.QueryByExample(type, example, lazyLoad).Cast<T>();
+        }
+        public IEnumerable<T> Query<T>(T[] examples, bool lazyLoad = false)
+        {
+            Type type = typeof(T);
+            return this.engine.QueryByExample(type, examples, lazyLoad).Cast<T>();
+        }
+
+        public T FirstMatch<T>(Func<dynamic, bool> query = null, bool lazyLoad = false)
+        {
+            Type type = typeof(T);
+            return (T)this.engine.FirstMatch(type, query, lazyLoad);
+        }
+        public T LastMatch<T>(Func<dynamic, bool> query = null, bool lazyLoad = false)
+        {
+            Type type = typeof(T);
+            return (T)this.engine.LastMatch(type, query, lazyLoad);
+        }
+        public T First<T>(bool lazyLoad = false)
+        {
+            Type type = typeof(T);
+            return (T)this.engine.First(type, lazyLoad);
+        }
+        public T Last<T>(bool lazyLoad = false)
+        {
+            Type type = typeof(T);
+            return (T)this.engine.Last(type, lazyLoad);
+        }
+
         public object Insert(object item, bool lazyLoad = false)
         {
             return this.engine.Insert(item.GetActualType(), item, lazyLoad);
@@ -155,6 +193,16 @@ namespace Xod
         public IEnumerable<Type> RegisteredTypes()
         {
             return this.engine.RegisteredTypes();
+        }
+
+        public void ClearCache()
+        {
+            this.engine.ClearCache();
+        }
+
+        public void ClearCaches()
+        {
+            this.engine.ClearCaches();
         }
 
         public void Dispose()

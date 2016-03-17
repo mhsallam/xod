@@ -1,9 +1,10 @@
-# XOD 
+﻿# XOD 
+The thread-safe/object oriented/relational/fast/xml-based database engine
 ![XOD](https://raw.githubusercontent.com/mhsallam/xod/master/logo.jpg)
 
 
 ## Introduction
-XOD database -pronounced as “ZOD”- is an object oriented relational database for .NET and JAVA developers. XOD uses embedded XML files for storage, that means the data will be readable even without the application the database created for, and it is also better for integration and simple for data migration. Even If you didn’t like your database being readable like text files, you can always secure XOD files with encryption.
+XOD database -pronounced as “ZOD”- is a thread-safe object oriented relational database for .NET and JAVA developers (JAVA version is still half cooked). XOD uses embedded XML files for storage, that means the data will be readable even without the application the database created for, and it is also better for integration and simple for data migration. Even If you didn’t like your database being readable like text files, you can always secure XOD files with encryption.
 
 Based on the development approach, developers might start designing the application model classes, design the actual database storage and then build a data mapping layer between the two. They might go back and forth between these two design layers whenever new update comes up. But what if you can skip the second, and third layers, and just work on the model classes layer only, not warring about the database design and mapping objects to database records, because XOD will take it from there; that would be great, right! Even if your application is big that one XOD database might not be sufficient for, you can use unlimited number XOD databases, even for supportive tasks like configuration data storage. You can also use XOD at the development stages only, until you feel satisfied about your application model classes and business logic, then push your verified models design and build the actual database.
 
@@ -34,12 +35,15 @@ This little documentation gives you brief guide lines for how to utilize XOD for
 12. Special-character string properties (useful for HTML contents)
 13. Excludable properties
 14. Eager/Lazy data loading options
+15. Thread-safe
 
 
 ## Download The User Guide
-![Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/book-cover.png)
+![Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/book-cover.jpg)
 
 [Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/XOD-DB-Guide.pdf)
+
+There are some changes and more features in the latest version of XOD that the book doesn't cover.. these new features will be included in the upcoming update of the book.
 
 
 ## Notes

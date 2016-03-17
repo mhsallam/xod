@@ -1,20 +1,20 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>8.0.30703</ProductVersion>
-    <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{0A630877-727F-47C2-9A66-AFDE59419C6A}</ProjectGuid>
-    <OutputType>Library</OutputType>
+    <ProjectGuid>{A5DEFBF1-46AD-4630-AD66-C0DE3885C31E}</ProjectGuid>
+    <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Xod</RootNamespace>
-    <AssemblyName>Mhsallam.Xod</AssemblyName>
+    <RootNamespace>Xod.Playground</RootNamespace>
+    <AssemblyName>Playground</AssemblyName>
     <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
@@ -22,19 +22,15 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
-    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
-    <DocumentationFile>bin\Release\Mhsallam.Xod.xml</DocumentationFile>
-    <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
@@ -46,28 +42,28 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Attributes.cs" />
-    <Compile Include="Engines\Xml\XmlEngine.cs" />
-    <Compile Include="Exceptions.cs" />
-    <Compile Include="Extensions.cs" />
-    <Compile Include="Helpers\CryptoHelper.cs" />
-    <Compile Include="Services\ExceptionService.cs" />
-    <Compile Include="Helpers\FileCryptoHelper.cs" />
-    <Compile Include="Helpers\FileHelper.cs" />
-    <Compile Include="Services\IndexService.cs" />
-    <Compile Include="Services\IOService.cs" />
-    <Compile Include="Services\LogService.cs" />
-    <Compile Include="Infra\IXodContext.cs" />
-    <Compile Include="Services\AutonumberService.cs" />
-    <Compile Include="Services\ItemsCacheService.cs" />
-    <Compile Include="Services\PropertyService.cs" />
-    <Compile Include="Services\XodSecurityService.cs" />
-    <Compile Include="Helpers\ValueHelper.cs" />
-    <Compile Include="Infra\IXodEngine.cs" />
+    <Compile Include="Infra\ISampleInitializer.cs" />
+    <Compile Include="Samples\Doc\Models.cs" />
+    <Compile Include="Samples\Doc\Service.cs" />
+    <Compile Include="Samples\Employees\Models.cs" />
+    <Compile Include="Samples\Employees\Service.cs" />
+    <Compile Include="Samples\Rel\Models.cs" />
+    <Compile Include="Samples\Rel\Service.cs" />
+    <Compile Include="Samples\Orders\Models.cs" />
+    <Compile Include="Samples\Orders\Service.cs" />
+    <Compile Include="Samples\Sample1\Models.cs" />
+    <Compile Include="Samples\Sample1\Service.cs" />
+    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Models.cs" />
-    <Compile Include="Infra\IXodSecurityService.cs" />
-    <Compile Include="XodContext.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Xod\Xod.csproj">
+      <Project>{0a630877-727f-47c2-9a66-afde59419c6a}</Project>
+      <Name>Xod</Name>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

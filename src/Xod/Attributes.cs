@@ -70,7 +70,7 @@ namespace Xod
         public ValuePosition Position { get; set; }
         public CascadeOptions Cascade { get; set; }
         public bool AutoNumber { get; set; }
-        public bool OverrideAutoNumber { get; set; }
+        //public bool OverrideAutoNumber { get; set; }
         public bool Indexed { get; set; }
 
         public PropertyAttribute()
@@ -79,7 +79,7 @@ namespace Xod
             Cascade = CascadeOptions.None;
             IdentitySeed = 1;
             IdentityIncrement = 1;
-            OverrideAutoNumber = true;
+            //OverrideAutoNumber = true;
         }
 
         public dynamic IdentitySeed { get; set; }

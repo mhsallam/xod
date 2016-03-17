@@ -1,2 +1,0 @@
-D:\work\projects\git\xod\src\Xod\obj\Debug\AcesDevelopers.Xod.csprojResolveAssemblyReference.cache
-D:\work\projects\git\xod\src\Xod\obj\Debug\Aces.Xod.dll

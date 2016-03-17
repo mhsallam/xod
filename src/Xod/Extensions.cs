@@ -53,9 +53,7 @@ namespace Xod
         {
             dynamic value = default(T);
             foreach (var arg in args)
-            {
                 value += (T)arg;
-            }
             return value;
         }
     }
@@ -123,6 +121,7 @@ namespace Xod
             return true;
         }
 
+        //identical match, order is ignored
         public static bool ElementEquals(this System.Xml.Linq.XElement a, System.Xml.Linq.XElement b)
         {
             if (!a.Name.LocalName.Equals(b.Name.LocalName))
@@ -146,6 +145,34 @@ namespace Xod
 
             return true;
         }
+
+        //true if all elements of a exists in b, even if b has more
+        public static bool ElementMatch(this System.Xml.Linq.XElement a, System.Xml.Linq.XElement b)
+        {
+            if (!a.Name.LocalName.Equals(b.Name.LocalName))
+                return false;
+
+            if ((!a.HasElements && !b.HasElements) && !a.Value.Equals(b.Value, StringComparison.InvariantCultureIgnoreCase))
+                return false;
+
+            foreach (System.Xml.Linq.XAttribute at in a.Attributes())
+            {
+                if (b.Attribute(at.Name) == null || !at.Value.Equals(b.Attribute(at.Name).Value, StringComparison.InvariantCultureIgnoreCase))
+                    return false;
+            }
+
+            if (a.HasElements == b.HasElements == true && a.Elements().Count() > b.Elements().Count())
+                return false;
+
+            foreach (var ae in a.Elements())
+            {
+                var be = b.Elements().Where(s => ae.ElementMatch(s));
+                if (!be.Any())
+                    return false;
+            }
+
+            return true;
+        }
     }
 
     public static class TypeExtentions
@@ -160,6 +187,27 @@ namespace Xod
                 return (Type)typeof(TypeExtentions).GetMethod("ActualType").MakeGenericMethod(new[] { param.GetType() }).Invoke(null, new[] { param });
             else
                 return null;
+        }
+        public static object ToType(this object obj, Type type)
+        {
+            //create instance of T type object:
+            object tmp = Activator.CreateInstance(type);
+
+            try
+            {
+                //loop through the properties of the object you want to covert:          
+                foreach (var pi in obj.GetType().GetProperties())
+                {
+                    //get the value of property and try to assign it to the property of T type object:
+                    tmp.GetType().GetProperty(pi.Name).SetValue(tmp, pi.GetValue(obj, null), null);
+                }
+            }
+            catch (Exception ex)
+            {
+            }
+
+            //return the T type object:         
+            return tmp;
         }
         public static bool ArraysEqual<T>(T[] a1, T[] a2)
         {
@@ -179,7 +227,6 @@ namespace Xod
             }
             return true;
         }
-
         public static bool ListsEqual<T>(List<T> l1, List<T> l2)
         {
             if (ReferenceEquals(l1, l2))
