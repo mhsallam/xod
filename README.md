@@ -51,9 +51,9 @@ install-package Xod -pre
 ```
 
 Now, let's try some code:
-1. In Program.cs add ```using Xod;``` namespace
+* In Program.cs add ```using Xod;``` namespace
 
-2. Create a new class ```ToDo``` with the following properties 
+* Create a new class ```ToDo``` with the following properties 
 
 ```csharp
 public class ToDo
@@ -64,7 +64,7 @@ public class ToDo
 }
 ``` 
 
-3. Add this code to ```Main()``` method:
+* Add this code to ```Main()``` method:
 
 ```csharp
 XodContext db = new XodContext(@"c:\xod\data.xod");
@@ -73,8 +73,47 @@ db.Insert(new ToDo() { Title = "Read a book" });
 
 When running the application, a new Xod database will be created unless it was already exist, then a new object of ToDo class will be inserted into the database.
 
-4. Go to the database path (in our exampe c:\\xod) and check out the database contents in xml-format files.
+* Go to the database path (in our exampe c:\\xod) and check out the database contents in xml-format files.
 
+#### Complete Example
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Xod;
+
+namespace XodConsoleApplication
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            XodContext db = new XodContext(@"c:\xod\data.xod");
+
+            //insert new object
+            db.Insert(new ToDo() { Title = "Read a book" });
+
+            //read the new inserted object
+            var tdi = db.FirstMatch<ToDo>(s => s.Id == 1);
+
+            //update the object
+            tdi.Done = true;
+            db.Update(tdi);
+            
+            Console.WriteLine("Xod operations completed!");
+            Console.ReadKey();
+        }
+    }
+
+    public class ToDo
+    {
+        public int Id { get; set; }
+        public string Title { get; set; }
+        public bool Done { get; set; }
+    }
+}
+```
 
 ## Download The User Guide
 ![Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/book-cover.jpg)
