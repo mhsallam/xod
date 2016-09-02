@@ -1,6 +1,4 @@
 *~
-src/Xod/obj/
-src/Xod/bin/
-src/Playground/obj/
-src/Playground/bin/
+src/obj/
+src/bin/
 tmp/

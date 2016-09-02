@@ -46,7 +46,36 @@ This little documentation gives you brief guide lines for how to utilize XOD for
 There are some changes and more features in the latest version of XOD that the book doesn't cover.. these new features will be included in the upcoming update of the book.
 
 
-## Notes
-More description and examples will be added soon.
+## Get Started
 
-Playground sample application is not finished yet, but it will be soon as well.
+You can download Xod library from dist folder in this repository or add it directly to your application as NuGet package, to do this:
+1. Open Visual Studio IDE
+2. Create a new console application
+3. In Package Manager Console type the following:
+
+```
+install-package Xod -pre
+```
+
+Now, let's try some code:
+1. In Program.cs add ```using Xod;``` namespace
+2. Create a class ToDo 
+
+```csharp
+public class ToDo
+{
+   public int Id { get; set; }
+   public string Title { get; set; }
+   public bool Done { get; set; }
+}
+``` 
+
+3. Add this code to ```main()``` method:
+
+```csharp
+XodContext db = new XodContext(@"c:\xod\data.xod");
+db.Insert(new ToDo() { Title = "Read a book" });
+```
+
+When running the application, a new Xod database will be created unless it was already exist, then a new object of ToDo class will be inserted into the database.
+4. Go to the database path (in our exampe c:\\xod) and check out the database contents in xml-format files.

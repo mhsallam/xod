@@ -1,8 +1,0 @@
-D:\work\projects\git\mawqie\src\Xod\bin\Debug\Mhsallam.Xod.dll
-D:\work\projects\git\mawqie\src\Xod\bin\Debug\Mhsallam.Xod.pdb
-D:\work\projects\git\mawqie\src\Xod\obj\Debug\Mhsallam.Xod.dll
-D:\work\projects\git\mawqie\src\Xod\obj\Debug\Mhsallam.Xod.pdb
-D:\work\projects\github\xod\src\Xod\bin\Debug\Mhsallam.Xod.dll
-D:\work\projects\github\xod\src\Xod\bin\Debug\Mhsallam.Xod.pdb
-D:\work\projects\github\xod\src\Xod\obj\Debug\Mhsallam.Xod.dll
-D:\work\projects\github\xod\src\Xod\obj\Debug\Mhsallam.Xod.pdb

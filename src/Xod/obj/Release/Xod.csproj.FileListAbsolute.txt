@@ -1,6 +1,0 @@
-D:\work\projects\git\mawqie\src\Xod\bin\Release\Mhsallam.Xod.xml
-D:\work\projects\git\mawqie\src\Xod\bin\Release\Mhsallam.Xod.dll
-D:\work\projects\git\mawqie\src\Xod\bin\Release\Mhsallam.Xod.pdb
-D:\work\projects\git\mawqie\src\Xod\obj\Release\Xod.csprojResolveAssemblyReference.cache
-D:\work\projects\git\mawqie\src\Xod\obj\Release\Mhsallam.Xod.dll
-D:\work\projects\git\mawqie\src\Xod\obj\Release\Mhsallam.Xod.pdb
