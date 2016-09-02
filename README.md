@@ -37,20 +37,13 @@ This little documentation gives you brief guide lines for how to utilize XOD for
 14. Eager/Lazy data loading options
 15. Thread-safe
 
-
-## Download The User Guide
-![Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/book-cover.jpg)
-
-[Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/XOD-DB-Guide.pdf)
-
-There are some changes and more features in the latest version of XOD that the book doesn't cover.. these new features will be included in the upcoming update of the book.
-
-
-## Get Started
-
+## Getting Started
 You can download Xod library from dist folder in this repository or add it directly to your application as NuGet package, to do this:
+
 1. Open Visual Studio IDE
+
 2. Create a new console application
+
 3. In Package Manager Console type the following:
 
 ```
@@ -59,7 +52,8 @@ install-package Xod -pre
 
 Now, let's try some code:
 1. In Program.cs add ```using Xod;``` namespace
-2. Create a class ToDo 
+
+2. Create a new class ```ToDo``` with the following properties 
 
 ```csharp
 public class ToDo
@@ -70,7 +64,7 @@ public class ToDo
 }
 ``` 
 
-3. Add this code to ```main()``` method:
+3. Add this code to ```Main()``` method:
 
 ```csharp
 XodContext db = new XodContext(@"c:\xod\data.xod");
@@ -78,4 +72,13 @@ db.Insert(new ToDo() { Title = "Read a book" });
 ```
 
 When running the application, a new Xod database will be created unless it was already exist, then a new object of ToDo class will be inserted into the database.
+
 4. Go to the database path (in our exampe c:\\xod) and check out the database contents in xml-format files.
+
+
+## Download The User Guide
+![Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/book-cover.jpg)
+
+[Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/XOD-DB-Guide.pdf)
+
+There are some changes and more features in the latest version of XOD that the book doesn't cover.. these new features will be included in the upcoming update of the book.
