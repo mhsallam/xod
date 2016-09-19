@@ -21,13 +21,13 @@ namespace Xod
                 source.Add(Convert.ChangeType(item, typeof(TSource)));
             }
         }
-        public static void AddRangeFomString<TSource>(this IList<TSource> source, object[] items)
+        public static void AddRangeFromString<TSource>(this IList<TSource> source, object[] items)
         {
             Type type = typeof(TSource);
             foreach (var item in items)
             {
-                //source.Add((TSource)System.ComponentModel.TypeDescriptor.GetConverter(typeof(TSource)).ConvertFromString(item.ToString()));
-                source.Add((TSource)Convert.ChangeType(item.ToString(), type));
+                source.Add((TSource)System.ComponentModel.TypeDescriptor.GetConverter(typeof(TSource)).ConvertFromString(item.ToString()));
+                //source.Add((TSource)Convert.ChangeType(item.ToString(), type));
             }
         }
 

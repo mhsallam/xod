@@ -1,7 +1,7 @@
 The MIT License (MIT)
 
 Copyright (c) 2015 Mohammed Hassan I. Sallam
-mhisallam@outlook.com - mail@mhsallam.com.
+mhisallam@outlook.com - inbox@mhsallam.com.
 All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

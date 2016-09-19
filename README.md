@@ -40,11 +40,11 @@ This little documentation gives you brief guide lines for how to utilize XOD for
 ## Getting Started
 You can download Xod library from dist folder in this repository or add it directly to your application as NuGet package, to do this:
 
-1. Open Visual Studio IDE
+* Open Visual Studio IDE
 
-2. Create a new console application
+* Create a new console application
 
-3. In Package Manager Console type the following:
+* In Package Manager Console type the following:
 
 ```
 install-package Xod -pre
