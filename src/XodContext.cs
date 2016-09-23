@@ -61,15 +61,15 @@ namespace Xod
             return this.engine.QueryByExample(type, examples, include).Cast<T>();
         }
 
-        public T FirstMatch<T>(Func<dynamic, bool> query = null, string include = "*")
+        public T Find<T>(Func<dynamic, bool> query = null, string include = "*")
         {
             Type type = typeof(T);
-            return (T)this.engine.FirstMatch(type, query, include);
+            return (T)this.engine.Find(type, query, include);
         }
-        public T LastMatch<T>(Func<dynamic, bool> query = null, string include = "*")
+        public T FindLast<T>(Func<dynamic, bool> query = null, string include = "*")
         {
             Type type = typeof(T);
-            return (T)this.engine.LastMatch(type, query, include);
+            return (T)this.engine.FindLast(type, query, include);
         }
         public T First<T>(string include = "*")
         {

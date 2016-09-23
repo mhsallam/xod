@@ -1,4 +1,7 @@
 *~
 src/obj/
 src/bin/
+src/lib/
+src/Xod.nuspec
+src/Xod.0.1.01-beta.nupkg
 tmp/

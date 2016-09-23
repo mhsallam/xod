@@ -2786,11 +2786,11 @@ namespace Xod.Engines.Xml
         {
             return SelectItemsByExamples(type, examples, include);
         }
-        public object FirstMatch(Type type, Func<dynamic, bool> query, string include = null)
+        public object Find(Type type, Func<dynamic, bool> query, string include = null)
         {
             return SelectItems(type, query, false, include).FirstOrDefault();
         }
-        public object LastMatch(Type type, Func<dynamic, bool> query, string include = null)
+        public object FindLast(Type type, Func<dynamic, bool> query, string include = null)
         {
             return SelectItems(type, query, true, include).LastOrDefault();
         }

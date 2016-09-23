@@ -16,8 +16,8 @@ namespace Xod
         IEnumerable<object> Query(Type type, Func<dynamic, bool> query, string include = "*");
         IEnumerable<object> QueryByExample(Type type, object example, string include = "*");
         IEnumerable<object> QueryByExample(Type type, object[] examples, string include = "*");
-        object FirstMatch(Type type, Func<dynamic, bool> query, string include = "*");
-        object LastMatch(Type type, Func<dynamic, bool> query, string include = "*");
+        object Find(Type type, Func<dynamic, bool> query, string include = "*");
+        object FindLast(Type type, Func<dynamic, bool> query, string include = "*");
         object First(Type type, string include = "*");
         object Last(Type type, string include = "*");
         

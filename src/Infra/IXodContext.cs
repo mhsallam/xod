@@ -13,8 +13,8 @@ namespace Xod.Infra
         IEnumerable<T> Query<T>(T example, string include = "*");
         IEnumerable<T> Query<T>(T[] examples, string include = "*");
 
-        T FirstMatch<T>(Func<dynamic, bool> query = null, string include = "*");
-        T LastMatch<T>(Func<dynamic, bool> query = null, string include = "*");
+        T Find<T>(Func<dynamic, bool> query = null, string include = "*");
+        T FindLast<T>(Func<dynamic, bool> query = null, string include = "*");
         T First<T>(string include = "*");
         T Last<T>(string include = "*");
         
