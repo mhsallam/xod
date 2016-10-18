@@ -122,23 +122,31 @@ namespace Xod.Services
             }
         }
 
-        internal void Clear(string code)
+        internal void Clear(Type type, string code)
         {
             lock (GetLock())
             {
-                var item = this.GetItems().FirstOrDefault(s => s.Code.Equals(code));
+                var item = this.GetItems().FirstOrDefault(s => s.Type == type && s.Code.Equals(code));
                 if(item != null)
                 {
                     var relations = this.GetItems().Where(s => s.ParentReadId.Equals(item.ReadId)).ToArray();
                     foreach (var relation in relations)
-                        Clear(relation.Code);
+                        Clear(relation.Type, relation.Code);
 
                     this.GetItems().Remove(item);
                 }
             }
         }
 
-        internal void Clear()
+        internal void ClearCurrentCache()
+        {
+            lock (GetLock())
+            {
+                items[this.path] = new List<ItemCache>();
+            }
+        }
+
+        internal void ClearAllCache()
         {
             lock (GetLock())
             {

@@ -1047,7 +1047,7 @@ namespace Xod.Engines.Xml
                         string.Format("{0}.{1}", pageCode, rowCodeAtt.Value) : "";
 
                     //clear cached resources of this item and its related items
-                    this.itemsCacheService.Clear(itemCode);
+                    this.itemsCacheService.Clear(type, rowCodeAtt.Value);
 
                     ReadWriteTrack itemTrack = new ReadWriteTrack()
                     {
@@ -2892,7 +2892,7 @@ namespace Xod.Engines.Xml
                         string.Format("{0}.{1}", pageCode, rowCodeAtt.Value) : "";
 
                     //clear cached resources of this item and its related items
-                    this.itemsCacheService.Clear(itemCode);
+                    this.itemsCacheService.Clear(type, rowCodeAtt.Value);
 
                     //Delete all applicable reference items
                     var propRefProps = this.propertyService.Properties(type.FullName).Where(s =>
@@ -3091,11 +3091,13 @@ namespace Xod.Engines.Xml
         }
         public void ClearCache()
         {
-            this.ioService.ClearInstanceCache();
+            this.ioService.ClearCurrentCache();
+            this.itemsCacheService.ClearCurrentCache();
         }
         public void ClearCaches()
         {
             this.ioService.ClearAllCache();
+            this.itemsCacheService.ClearAllCache();
         }
         public void Dispose()
         {

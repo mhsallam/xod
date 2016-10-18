@@ -402,7 +402,7 @@ namespace Xod.Services
             }
         }
 
-        internal void ClearInstanceCache()
+        internal void ClearCurrentCache()
         {
             lock (GetLock())
             {
