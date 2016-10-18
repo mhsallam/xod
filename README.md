@@ -36,6 +36,7 @@ This little documentation gives you brief guide lines for how to utilize XOD for
 13. Excludable properties
 14. Eager/Lazy data loading options
 15. Thread-safe
+16. Caching
 
 ## Getting Started
 You can download Xod library from dist folder in this repository or add it directly to your application as NuGet package, to do this:
@@ -92,10 +93,10 @@ namespace XodConsoleApplication
             XodContext db = new XodContext(@"c:\xod\data.xod");
 
             //insert new object
-            db.Insert(new ToDo() { Title = "Read a book" });
+            db.Insert(new ToDo() { Title = "Read a book..." });
 
             //read the new inserted object
-            var tdi = db.FirstMatch<ToDo>(s => s.Id == 1);
+            var tdi = db.Find<ToDo>(s => s.Id == 1);
 
             //update the object
             tdi.Done = true;
@@ -119,5 +120,3 @@ namespace XodConsoleApplication
 ![Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/book-cover.jpg)
 
 [Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/XOD-DB-Guide.pdf)
-
-There are some changes and more features in the latest version of XOD that the book doesn't cover.. these new features will be included in the upcoming update of the book.
