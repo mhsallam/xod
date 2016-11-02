@@ -9,12 +9,12 @@ namespace Xod.Infra
 
         IEnumerable<T> Select<T>(string include = "*");
         IEnumerable<T> SelectBackward<T>(string include = "*");
-        IEnumerable<T> Query<T>(Func<dynamic, bool> query, string include = "*");
+        IEnumerable<T> Query<T>(Func<T, bool> query, string include = "*");
         IEnumerable<T> Query<T>(T example, string include = "*");
         IEnumerable<T> Query<T>(T[] examples, string include = "*");
 
-        T Find<T>(Func<dynamic, bool> query = null, string include = "*");
-        T FindLast<T>(Func<dynamic, bool> query = null, string include = "*");
+        T Find<T>(Func<T, bool> query = null, string include = "*");
+        T FindLast<T>(Func<T, bool> query = null, string include = "*");
         T First<T>(string include = "*");
         T Last<T>(string include = "*");
         
