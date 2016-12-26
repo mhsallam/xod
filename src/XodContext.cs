@@ -45,7 +45,7 @@ namespace Xod
             Type type = typeof(T);
             return this.engine.Select(type, true, include).Cast<T>();
         }
-        public IEnumerable<T> Query<T>(Func<T, bool> query, string include = "*")
+        public IEnumerable<T> Query<T>(Func<dynamic, bool> query, string include = "*")
         {
             Type type = typeof(T);
             return this.engine.Query(type, query as Func<object, bool>, include).Cast<T>();
@@ -61,12 +61,12 @@ namespace Xod
             return this.engine.QueryByExample(type, examples, include).Cast<T>();
         }
 
-        public T Find<T>(Func<T, bool> query = null, string include = "*")
+        public T Find<T>(Func<dynamic, bool> query = null, string include = "*")
         {
             Type type = typeof(T);
-            return (T)this.engine.Find(type, query as Func<object, bool>, include);
+            return (T)this.engine.Find(type, query, include);
         }
-        public T FindLast<T>(Func<T, bool> query = null, string include = "*")
+        public T FindLast<T>(Func<dynamic, bool> query = null, string include = "*")
         {
             Type type = typeof(T);
             return (T)this.engine.FindLast(type, query as Func<object, bool>, include);
