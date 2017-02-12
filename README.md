@@ -120,3 +120,8 @@ namespace XodConsoleApplication
 ![Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/book-cover.jpg)
 
 [Little Guide for XOD Database Users](https://raw.githubusercontent.com/mhsallam/xod/master/XOD-DB-Guide.pdf)
+
+## Getting Started Video Tutorials
+* [Video 1](https://www.youtube.com/watch?v=wdvbsG2bjJc)
+* [Video 2](https://www.youtube.com/watch?v=JESli9kbsv0)
+
