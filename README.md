@@ -125,3 +125,5 @@ namespace XodConsoleApplication
 * [Video 1](https://www.youtube.com/watch?v=wdvbsG2bjJc)
 * [Video 2](https://www.youtube.com/watch?v=JESli9kbsv0)
 
+## .NET Core Version
+* [mhsallam/XOD.Core](https://github.com/mhsallam/xod.core)
