@@ -1742,7 +1742,7 @@ namespace Xod.Engines.Xml
                             PropertyInfoItem childrenProp = null;
                             var itemPrimaryKeyValues = GetPrimaryValues(type, item);
                             var childrenPropsLen = parentChildrenProps.Count();
-                            if (childrenPropsLen > 2)
+                            if (childrenPropsLen > 1)
                             {
                                 foreach (var parentChildrenProp in parentChildrenProps)
                                 {
