@@ -1742,7 +1742,7 @@ namespace Xod.Engines.Xml
                             PropertyInfoItem childrenProp = null;
                             var itemPrimaryKeyValues = GetPrimaryValues(type, item);
                             var childrenPropsLen = parentChildrenProps.Count();
-                            if (childrenPropsLen > 1)
+                            if (childrenPropsLen > 2)
                             {
                                 foreach (var parentChildrenProp in parentChildrenProps)
                                 {
@@ -2816,7 +2816,7 @@ namespace Xod.Engines.Xml
 
             object reference = null;
             if (primValues.Any())
-                reference = SelectItemsByExample(type, PopulateItemProperties(type, primValues)).FirstOrDefault();
+                reference = SelectItemsByExample(type, PopulateItemProperties(type, primValues), "*").FirstOrDefault();
 
             if(reference != null)
                 Update(type, reference, item, filter);
@@ -2839,7 +2839,7 @@ namespace Xod.Engines.Xml
             if (!primProps.Any())
                 exceptionService.Throw(new MissingPrimaryKeyValueException());
 
-            object old = SelectItemsByExample(type, FilterItemProperties(type, item, primProps)).FirstOrDefault();
+            object old = SelectItemsByExample(type, FilterItemProperties(type, item, primProps), "*").FirstOrDefault();
 
             //object old = Query(type, delegate(dynamic oldItem)
             //{

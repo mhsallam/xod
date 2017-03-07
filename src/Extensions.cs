@@ -155,7 +155,7 @@ namespace Xod
             if (!a.Name.LocalName.Equals(b.Name.LocalName))
                 return false;
 
-            if ((!a.HasElements && !b.HasElements) && !a.Value.Equals(b.Value, StringComparison.CurrentCultureIgnoreCase))
+            if (a.HasElements != b.HasElements || !a.Value.Equals(b.Value, StringComparison.CurrentCultureIgnoreCase))
                 return false;
 
             foreach (System.Xml.Linq.XAttribute at in a.Attributes())

@@ -181,7 +181,8 @@ namespace Xod.Services
                             if (primaryKeyProperty != null)
                             {
                                 primaryKeyProperty.IsPrimaryKey = true;
-                                primaryKeyProperty.IsAutonumber = true;
+                                if (primaryKeyProperty.PropertyType != typeof(string))
+                                    primaryKeyProperty.IsAutonumber = true;
                             }
                         }
                     }
