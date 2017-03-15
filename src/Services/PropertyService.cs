@@ -240,7 +240,7 @@ namespace Xod.Services
 
             var t = properties.FirstOrDefault(s => s.Key.Equals(key));
             if (!t.Equals(null) && t.Value != null)
-                return t.Value.ToList();
+                return t.Value.Where(s => !s.IsReadOnly && !s.IsNotMapped).ToList();
             else
                 return Enumerable.Empty<PropertyInfoItem>();
         }

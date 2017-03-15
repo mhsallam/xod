@@ -1166,7 +1166,7 @@ namespace Xod.Engines.Xml
                                     {
                                         var oldKeyValue = oldParentKeyValues != null ? oldParentKeyValues[parentKey] : null;
                                         var newKeyValue = newParentKeyValues != null ? newParentKeyValues[parentKey] : null;
-                                        if (!oldKeyValue.Equals(newKeyValue))
+                                        if (oldKeyValue != newKeyValue)
                                         {
                                             sameParent = false;
                                             break;
