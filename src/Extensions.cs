@@ -130,10 +130,13 @@ namespace Xod
             if (!a.Name.LocalName.Equals(b.Name.LocalName))
                 return false;
 
+            if (!a.ElementAttributesEquals(b))
+                return false;
+
             if ((!a.HasElements && !b.HasElements) && !a.Value.Equals(b.Value))
                 return false;
 
-            if (!a.ElementAttributesEquals(b))
+            if (a.HasElements != b.HasElements)
                 return false;
 
             if (a.HasElements == b.HasElements == true && a.Elements().Count() != b.Elements().Count())

@@ -1,18 +1,17 @@
 <?xml version="1.0"?>
 <package >
-  <metadata>
-    <id>Xod</id>
-    <version>0.1.101</version>
-	  <title>XOD Database (.NET Framework)</title>
-    <authors>Mohammed Sallam</authors>
-    <owners>Mohammed Sallam</owners>
-    <licenseUrl>https://raw.githubusercontent.com/mhsallam/xod/master/LICENSE.md</licenseUrl>
-    <projectUrl>https://github.com/mhsallam/xod</projectUrl>
-    <iconUrl>https://raw.githubusercontent.com/mhsallam/xod/master/logo.jpg</iconUrl>
-    <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <description>Light-weight yet powerfull XML-based OO/NoSQL thread-safe embedded database for .NET Framework</description>
-    <releaseNotes>Initial release of Xod for .NET Framework</releaseNotes>
-    <copyright>Copyright 2016</copyright>
-    <tags>Object Oriented NoSQL XML Thread-safe Database .NET</tags>
-  </metadata>
+	<metadata>
+		<id>Xod</id>
+		<version>0.1.102</version>
+		<title>XOD Database (.NET Framework)</title>
+		<authors>Mohammed Sallam</authors>
+		<licenseUrl>https://raw.githubusercontent.com/mhsallam/xod/master/LICENSE.md</licenseUrl>
+		<projectUrl>https://github.com/mhsallam/xod</projectUrl>
+		<iconUrl>https://raw.githubusercontent.com/mhsallam/xod/master/logo.jpg</iconUrl>
+		<requireLicenseAcceptance>false</requireLicenseAcceptance>
+		<description>Light-weight yet powerfull XML-based OO/NoSQL thread-safe embedded database for .NET Framework</description>
+		<releaseNotes>Initial release of Xod for .NET Framework</releaseNotes>
+		<copyright>Copyright 2016</copyright>
+		<tags>Object Oriented NoSQL XML Thread-safe Database .NET</tags>
+		</metadata>
 </package>
