@@ -2,7 +2,7 @@
 <package >
 	<metadata>
 		<id>Xod</id>
-		<version>0.1.102</version>
+		<version>0.1.1021</version>
 		<title>XOD Database (.NET Framework)</title>
 		<authors>Mohammed Sallam</authors>
 		<licenseUrl>https://raw.githubusercontent.com/mhsallam/xod/master/LICENSE.md</licenseUrl>

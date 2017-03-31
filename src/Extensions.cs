@@ -142,11 +142,18 @@ namespace Xod
             if (a.HasElements == b.HasElements == true && a.Elements().Count() != b.Elements().Count())
                 return false;
 
-            foreach (var ae in a.Elements())
+            if (a.Attribute("refType") == null || a.Attribute("refType").Value != "children")
             {
-                var be = b.Elements().Where(s => ae.ElementEquals(s));
-                if (!be.Any())
-                    return false;
+                foreach (var ae in a.Elements())
+                {
+                    var be = b.Elements().Where(s => ae.ElementEquals(s));
+                    if (!be.Any())
+                        return false;
+                }
+            }
+            else
+            {
+                return false;
             }
 
             return true;
