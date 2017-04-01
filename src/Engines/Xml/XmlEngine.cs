@@ -2938,9 +2938,24 @@ namespace Xod.Engines.Xml
                     foreach (var parRefProp in parRefProps)
                     {
                         object parentValue = parRefProp.Property.GetValue(item);
-                        var parentPrmVals = GetPrimaryValues(type, parentValue);
+                        Dictionary<string, object> parentPrmVals = null;
+
+                        if (parentValue == null)
+                        {
+                            parentPrmVals = new Dictionary<string,object>();
+                            foreach(var pk in parRefProp.ParentKeys) {
+                                var pkProp = this.propertyService.Properties(type.FullName).FirstOrDefault(s => s.PropertyName == pk.LocalProperty);
+                                if(pkProp != null) {
+                                    parentPrmVals.Add(pk.RemoteProperty, pkProp.Property.GetValue(item));
+                                }
+                            }
+                        }
+                        else
+                        {
+                            parentPrmVals = GetPrimaryValues(type, parentValue);
+                        }
                         //object parent = GetReferenceByProperties(parRefProp.PropertyType, parentPrmVals);
-                        object parent = SelectItemsByExample(parRefProp.PropertyType, PopulateItemProperties(parRefProp.PropertyType, parentPrmVals)).FirstOrDefault();
+                        object parent = SelectItemsByExample(parRefProp.PropertyType, PopulateItemProperties(parRefProp.PropertyType, parentPrmVals), "*").FirstOrDefault();
                         if (parent == null)
                             continue;
 
