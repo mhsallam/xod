@@ -8,17 +8,18 @@
     <AssemblyName>Xod</AssemblyName>
     <RootNamespace>Xod</RootNamespace>
     <PackageId>Xod</PackageId>
-    <Version>2.0.0</Version>
+    <Version>2.0.1</Version>
     <Authors>Mohammed Sallam</Authors>
     <Product>XOD - embedded object database for .NET</Product>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <!-- nuget.org renders the README as Markdown only, not HTML: keep the repository README free of HTML tags. -->
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>logo.png</PackageIcon>
     <PackageProjectUrl>https://xod.sabaeon.com</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mhsallam/xod</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>database;embedded-database;embedded;nosql;object;dotnet;csharp;xml;json;acid</PackageTags>
-    <PackageReleaseNotes>XOD 2.0: a rework of the 2017 library. Versions before 2.0.0 (0.1.x and the 1.0.0 betas) were MIT; 2.0.0 is Apache-2.0. Notes and migration guide: https://github.com/mhsallam/xod</PackageReleaseNotes>
+    <PackageReleaseNotes>2.0.1: the package page README renders on nuget.org (no library change from 2.0.0). XOD 2.0: a rework of the 2017 library. Versions before 2.0.0 (0.1.x and the 1.0.0 betas) were MIT; 2.0.0 is Apache-2.0. Notes and migration guide: https://github.com/mhsallam/xod</PackageReleaseNotes>
     <Description>XOD is an embedded, ACID, object-oriented database for .NET: native POCOs, concurrent readers and writers behind a commit journal, three storage formats (XML, JSON, Binary) and no server to run.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>

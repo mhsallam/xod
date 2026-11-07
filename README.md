@@ -1,24 +1,16 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/mhsallam/xod/main/docs/screens/logo.png" alt="XOD" width="380">
-</p>
+![XOD](https://raw.githubusercontent.com/mhsallam/xod/main/docs/screens/logo.png)
 
-<h1 align="center">XOD</h1>
+# XOD
 
-<p align="center">
-  An embedded database for .NET. Your objects go in, files you can read come out.
-</p>
+An embedded database for .NET. Your objects go in, files you can read come out.
 
-<p align="center">
-  <a href="https://www.nuget.org/packages/Xod"><img src="https://img.shields.io/nuget/v/Xod?label=nuget" alt="NuGet version"></a>
-  <a href="https://www.nuget.org/packages/Xod"><img src="https://img.shields.io/nuget/dt/Xod?label=downloads" alt="NuGet downloads"></a>
-  <a href="https://github.com/mhsallam/xod/blob/main/LICENSE.md"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0"></a>
-  <img src="https://img.shields.io/badge/.NET-8.0%20%7C%209.0-512BD4" alt=".NET 8 and 9">
-  <img src="https://img.shields.io/badge/tests-60%20passing-brightgreen" alt="60 tests passing">
-</p>
+[![NuGet version](https://img.shields.io/nuget/v/Xod?label=nuget)](https://www.nuget.org/packages/Xod)
+[![NuGet downloads](https://img.shields.io/nuget/dt/Xod?label=downloads)](https://www.nuget.org/packages/Xod)
+[![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/mhsallam/xod/blob/main/LICENSE.md)
+![.NET 8 and 9](https://img.shields.io/badge/.NET-8.0%20%7C%209.0-512BD4)
+![60 tests passing](https://img.shields.io/badge/tests-60%20passing-brightgreen)
 
-<p align="center">
-  XOD 2.0 starts here. The 2017 library (0.1.x) is on the <a href="https://github.com/mhsallam/xod/tree/legacy"><code>legacy</code></a> branch.
-</p>
+XOD 2.0 starts here. The 2017 library (0.1.x) is on the [`legacy`](https://github.com/mhsallam/xod/tree/legacy) branch.
 
 ---
 
