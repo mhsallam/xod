@@ -1,0 +1,54 @@
+name: publish
+
+# Publishes the Xod package to nuget.org with Trusted Publishing: GitHub's OIDC token is exchanged for a
+# NuGet API key that lives one hour, so no long-lived key is stored anywhere
+# (https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing). The nuget.org policy trusts
+# this file name and the `nuget` environment; the environment requires the owner's approval, so every
+# push waits for a click. The package version comes from src/Xod/Xod.csproj; a version already on
+# nuget.org is refused there, never overwritten.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: nuget
+    permissions:
+      contents: read
+      id-token: write # for the OIDC token the NuGet login exchanges
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Build engine and tests
+        run: |
+          dotnet build src/Xod/Xod.csproj -c Release --nologo
+          dotnet build tests/Xod.CrashWriter/Xod.CrashWriter.csproj -c Release --nologo
+
+      # The package is only pushed from a tree whose tests pass, on both frameworks.
+      - name: Test
+        run: dotnet test tests/Xod.Tests/Xod.Tests.csproj -c Release --nologo
+
+      - name: Pack
+        run: dotnet pack src/Xod/Xod.csproj -c Release --nologo --no-build -o artifacts
+
+      # Requested just before the push: the key lives one hour.
+      - name: NuGet login (OIDC, short-lived key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }} # the nuget.org profile name, not the email
+
+      - name: Push
+        run: dotnet nuget push "artifacts/*.nupkg" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
