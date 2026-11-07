@@ -4,8 +4,12 @@ name: publish
 # NuGet API key that lives one hour, so no long-lived key is stored anywhere
 # (https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing). The nuget.org policy trusts
 # this file name and the `nuget` environment; the environment requires the owner's approval, so every
-# push waits for a click. The package version comes from src/Xod/Xod.csproj; a version already on
-# nuget.org is refused there, never overwritten.
+# push waits for a click.
+#
+# The owner's rule (2026-11-08): the git tag and the NuGet version match. A publish runs only from a
+# tag named v<Version>, where <Version> is the one in src/Xod/Xod.csproj, and stops before building if
+# they differ. Run it from a release, or by hand with the tag picked in "Use workflow from". The
+# nuget environment also admits only v* tags. nuget.org refuses a version it already has.
 
 on:
   release:
@@ -24,6 +28,15 @@ jobs:
       id-token: write # for the OIDC token the NuGet login exchanges
     steps:
       - uses: actions/checkout@v4
+
+      - name: The tag matches the package version
+        run: |
+          version=$(grep -o '<Version>[^<]*' src/Xod/Xod.csproj | cut -d'>' -f2)
+          if [ -z "$version" ] || [ "$GITHUB_REF" != "refs/tags/v$version" ]; then
+            echo "::error::Xod.csproj says $version; publish only from the tag v$version (this run: $GITHUB_REF)."
+            exit 1
+          fi
+          echo "Publishing $version from $GITHUB_REF"
 
       - uses: actions/setup-dotnet@v4
         with:
