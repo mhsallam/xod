@@ -152,7 +152,7 @@ the version number. From now on `main` is public, so a run from it stays checkab
 the library code (`src/`) changes in a way that can move the numbers, or a release wants new numbers.
 
 **Next, in order (each outward step on the owner's go):** the soak - run it again on a free machine, or
-keep the 2026-11-06 soak (passed, same library code, but cites the private `4926465`); then GitHub,
+keep the 2026-11-07 soak (`stress-soak-20261107_014729`, passed, same library code, but cites the private `4926465`); then GitHub,
 NuGet and the site, below. The README line about the `legacy` branch (GitHub step 2) goes in as a
 commit on `main` before the push.
 
