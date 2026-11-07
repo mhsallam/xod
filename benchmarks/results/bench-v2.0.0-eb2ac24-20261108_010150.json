@@ -1,0 +1,2237 @@
+[
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 1,
+    "Metrics": {
+      "bulkInsertMs": 970.6816,
+      "closeMs": 3.447,
+      "sizeMB": 253.83813095092773,
+      "coldOpenInsertMs": 19.7639,
+      "pkLookup1000Ms": 4.6806,
+      "countLastMs": 0.07651,
+      "indexedQuery20Ms": 20.3059,
+      "deepPageMs": 0.18304,
+      "updateDeleteMs": 70.2181,
+      "peakWorkingSetMB": 404.171875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 1,
+    "Metrics": {
+      "bulkInsertMs": 2841.9065,
+      "closeMs": 2.9212,
+      "sizeMB": 325.93266677856445,
+      "coldOpenInsertMs": 38.1663,
+      "pkLookup1000Ms": 3.0055,
+      "countLastMs": 0.07763,
+      "indexedQuery20Ms": 13.0018,
+      "deepPageMs": 0.09272,
+      "updateDeleteMs": 196.7209,
+      "peakWorkingSetMB": 967.68359375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 1,
+    "Metrics": {
+      "bulkInsertMs": 5037.4633,
+      "closeMs": 3.0031,
+      "sizeMB": 70.56719303131104,
+      "coldOpenInsertMs": 35.6504,
+      "pkLookup1000Ms": 2.4794,
+      "countLastMs": 0.059030000000000006,
+      "indexedQuery20Ms": 11.1969,
+      "deepPageMs": 0.1018,
+      "updateDeleteMs": 267.0927,
+      "peakWorkingSetMB": 785.98046875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 1,
+    "Metrics": {
+      "bulkInsertMs": 2627.0703,
+      "closeMs": 343.9416,
+      "sizeMB": 394.78515625,
+      "coldOpenInsertMs": 1.9878,
+      "pkLookup1000Ms": 10.1212,
+      "countLastMs": 0.03227,
+      "indexedQuery20Ms": 54.1508,
+      "deepPageMs": 26.919760000000004,
+      "updateDeleteMs": 7.8717,
+      "peakWorkingSetMB": 455.2734375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 1,
+    "Metrics": {
+      "bulkInsertMs": 3561.2336,
+      "closeMs": 3.0741,
+      "sizeMB": 292.859375,
+      "coldOpenInsertMs": 3.6856,
+      "pkLookup1000Ms": 55.8892,
+      "countLastMs": 49.46184,
+      "indexedQuery20Ms": 135.5961,
+      "deepPageMs": 164.02388000000002,
+      "updateDeleteMs": 20.8122,
+      "peakWorkingSetMB": 692.19140625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 2,
+    "Metrics": {
+      "bulkInsertMs": 2612.3093,
+      "closeMs": 2.6822,
+      "sizeMB": 325.93266677856445,
+      "coldOpenInsertMs": 33.5025,
+      "pkLookup1000Ms": 2.7397,
+      "countLastMs": 0.07241,
+      "indexedQuery20Ms": 10.0421,
+      "deepPageMs": 0.09356,
+      "updateDeleteMs": 212.0939,
+      "peakWorkingSetMB": 966.3203125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 2,
+    "Metrics": {
+      "bulkInsertMs": 4676.2484,
+      "closeMs": 3.1284,
+      "sizeMB": 70.56148529052734,
+      "coldOpenInsertMs": 35.5711,
+      "pkLookup1000Ms": 2.7924,
+      "countLastMs": 0.06988,
+      "indexedQuery20Ms": 11.0594,
+      "deepPageMs": 0.09076,
+      "updateDeleteMs": 229.7264,
+      "peakWorkingSetMB": 771.6796875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 2,
+    "Metrics": {
+      "bulkInsertMs": 2630.6409,
+      "closeMs": 54.6544,
+      "sizeMB": 394.78515625,
+      "coldOpenInsertMs": 1.6294,
+      "pkLookup1000Ms": 7.7086,
+      "countLastMs": 0.02753,
+      "indexedQuery20Ms": 48.7658,
+      "deepPageMs": 22.669800000000002,
+      "updateDeleteMs": 5.9961,
+      "peakWorkingSetMB": 454.921875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 2,
+    "Metrics": {
+      "bulkInsertMs": 3120.4415,
+      "closeMs": 4.6358,
+      "sizeMB": 292.859375,
+      "coldOpenInsertMs": 2.559,
+      "pkLookup1000Ms": 43.5969,
+      "countLastMs": 46.29679,
+      "indexedQuery20Ms": 130.2027,
+      "deepPageMs": 164.55630000000002,
+      "updateDeleteMs": 20.1939,
+      "peakWorkingSetMB": 692.0234375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 2,
+    "Metrics": {
+      "bulkInsertMs": 925.1566,
+      "closeMs": 3.2946,
+      "sizeMB": 253.83813095092773,
+      "coldOpenInsertMs": 20.0929,
+      "pkLookup1000Ms": 4.5217,
+      "countLastMs": 0.08051,
+      "indexedQuery20Ms": 18.571,
+      "deepPageMs": 0.15855999999999998,
+      "updateDeleteMs": 57.947,
+      "peakWorkingSetMB": 408.19921875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 3,
+    "Metrics": {
+      "bulkInsertMs": 4605.1442,
+      "closeMs": 2.8138,
+      "sizeMB": 70.57228469848633,
+      "coldOpenInsertMs": 31.8521,
+      "pkLookup1000Ms": 2.3988,
+      "countLastMs": 0.05821,
+      "indexedQuery20Ms": 9.1577,
+      "deepPageMs": 0.07776,
+      "updateDeleteMs": 262.8271,
+      "peakWorkingSetMB": 762.49609375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 3,
+    "Metrics": {
+      "bulkInsertMs": 2599.6478,
+      "closeMs": 54.9494,
+      "sizeMB": 394.78515625,
+      "coldOpenInsertMs": 1.5897,
+      "pkLookup1000Ms": 6.8053,
+      "countLastMs": 0.02477,
+      "indexedQuery20Ms": 43.7245,
+      "deepPageMs": 25.25842,
+      "updateDeleteMs": 4.9702,
+      "peakWorkingSetMB": 454.97265625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 3,
+    "Metrics": {
+      "bulkInsertMs": 3269.9104,
+      "closeMs": 4.8121,
+      "sizeMB": 292.859375,
+      "coldOpenInsertMs": 2.6876,
+      "pkLookup1000Ms": 54.9256,
+      "countLastMs": 55.4981,
+      "indexedQuery20Ms": 148.7714,
+      "deepPageMs": 157.64138,
+      "updateDeleteMs": 20.894,
+      "peakWorkingSetMB": 692.13671875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 3,
+    "Metrics": {
+      "bulkInsertMs": 986.8528,
+      "closeMs": 3.3599,
+      "sizeMB": 253.83813095092773,
+      "coldOpenInsertMs": 18.6929,
+      "pkLookup1000Ms": 7.0294,
+      "countLastMs": 0.12715,
+      "indexedQuery20Ms": 19.7053,
+      "deepPageMs": 0.18084,
+      "updateDeleteMs": 56.3222,
+      "peakWorkingSetMB": 403.1328125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "flat",
+    "Scale": "250mb",
+    "Iteration": 3,
+    "Metrics": {
+      "bulkInsertMs": 2733.4613,
+      "closeMs": 2.8479,
+      "sizeMB": 325.93266677856445,
+      "coldOpenInsertMs": 34.7917,
+      "pkLookup1000Ms": 2.5401,
+      "countLastMs": 0.06283,
+      "indexedQuery20Ms": 9.5921,
+      "deepPageMs": 0.0874,
+      "updateDeleteMs": 200.3854,
+      "peakWorkingSetMB": 967.55078125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 1,
+    "Metrics": {
+      "bulkInsertMs": 2604.1955,
+      "closeMs": 3.1751,
+      "sizeMB": 1015.6545610427856,
+      "coldOpenInsertMs": 30.1262,
+      "pkLookup1000Ms": 5.5065,
+      "countLastMs": 0.8516400000000001,
+      "indexedQuery20Ms": 72.0693,
+      "deepPageMs": 0.2804,
+      "updateDeleteMs": 163.398,
+      "peakWorkingSetMB": 1441.546875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 1,
+    "Metrics": {
+      "bulkInsertMs": 9413.2953,
+      "closeMs": 2.5534,
+      "sizeMB": 1304.0332536697388,
+      "coldOpenInsertMs": 75.5333,
+      "pkLookup1000Ms": 2.622,
+      "countLastMs": 0.9895799999999999,
+      "indexedQuery20Ms": 41.5437,
+      "deepPageMs": 0.20656,
+      "updateDeleteMs": 284.6036,
+      "peakWorkingSetMB": 3127.875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 1,
+    "Metrics": {
+      "bulkInsertMs": 17225.5889,
+      "closeMs": 2.4799,
+      "sizeMB": 282.2268991470337,
+      "coldOpenInsertMs": 46.217,
+      "pkLookup1000Ms": 2.805,
+      "countLastMs": 0.99223,
+      "indexedQuery20Ms": 51.2246,
+      "deepPageMs": 0.25566,
+      "updateDeleteMs": 317.0396,
+      "peakWorkingSetMB": 2759.2265625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 1,
+    "Metrics": {
+      "bulkInsertMs": 11430.764,
+      "closeMs": 269.8866,
+      "sizeMB": 1579.6953125,
+      "coldOpenInsertMs": 95.8068,
+      "pkLookup1000Ms": 10.1974,
+      "countLastMs": 0.06416,
+      "indexedQuery20Ms": 307.6859,
+      "deepPageMs": 736.55804,
+      "updateDeleteMs": 7.5214,
+      "peakWorkingSetMB": 642.16015625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 1,
+    "Metrics": {
+      "bulkInsertMs": 12112.4257,
+      "closeMs": 12.8673,
+      "sizeMB": 1171.5859375,
+      "coldOpenInsertMs": 3.5872,
+      "pkLookup1000Ms": 62.5406,
+      "countLastMs": 124.45012999999999,
+      "indexedQuery20Ms": 444.714,
+      "deepPageMs": 1599.4377200000001,
+      "updateDeleteMs": 20.7681,
+      "peakWorkingSetMB": 2481.6484375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 2,
+    "Metrics": {
+      "bulkInsertMs": 10529.6032,
+      "closeMs": 2.8049,
+      "sizeMB": 1304.0332536697388,
+      "coldOpenInsertMs": 75.9398,
+      "pkLookup1000Ms": 3.0703,
+      "countLastMs": 1.27621,
+      "indexedQuery20Ms": 57.2382,
+      "deepPageMs": 0.29066000000000003,
+      "updateDeleteMs": 301.3531,
+      "peakWorkingSetMB": 3109.8984375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 2,
+    "Metrics": {
+      "bulkInsertMs": 19496.8354,
+      "closeMs": 3.0133,
+      "sizeMB": 282.2741050720215,
+      "coldOpenInsertMs": 53.1273,
+      "pkLookup1000Ms": 2.9693,
+      "countLastMs": 1.17588,
+      "indexedQuery20Ms": 47.1451,
+      "deepPageMs": 0.22313999999999998,
+      "updateDeleteMs": 342.6724,
+      "peakWorkingSetMB": 2776.2265625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 2,
+    "Metrics": {
+      "bulkInsertMs": 12363.5977,
+      "closeMs": 217.2138,
+      "sizeMB": 1579.6953125,
+      "coldOpenInsertMs": 101.2033,
+      "pkLookup1000Ms": 8.1966,
+      "countLastMs": 0.06304,
+      "indexedQuery20Ms": 264.3229,
+      "deepPageMs": 673.40256,
+      "updateDeleteMs": 5.9655,
+      "peakWorkingSetMB": 642.56640625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 2,
+    "Metrics": {
+      "bulkInsertMs": 11578.5203,
+      "closeMs": 26.5474,
+      "sizeMB": 1171.5859375,
+      "coldOpenInsertMs": 2.5828,
+      "pkLookup1000Ms": 56.2577,
+      "countLastMs": 116.31839,
+      "indexedQuery20Ms": 422.4359,
+      "deepPageMs": 1549.90504,
+      "updateDeleteMs": 17.8441,
+      "peakWorkingSetMB": 2479.8359375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 2,
+    "Metrics": {
+      "bulkInsertMs": 2646.8012,
+      "closeMs": 3.0957,
+      "sizeMB": 1015.6545610427856,
+      "coldOpenInsertMs": 25.8353,
+      "pkLookup1000Ms": 5.2069,
+      "countLastMs": 0.80212,
+      "indexedQuery20Ms": 65.0347,
+      "deepPageMs": 0.25874,
+      "updateDeleteMs": 147.3453,
+      "peakWorkingSetMB": 1441.76953125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 3,
+    "Metrics": {
+      "bulkInsertMs": 16811.7036,
+      "closeMs": 2.5563,
+      "sizeMB": 282.22361183166504,
+      "coldOpenInsertMs": 44.2856,
+      "pkLookup1000Ms": 2.6851,
+      "countLastMs": 1.05677,
+      "indexedQuery20Ms": 59.09,
+      "deepPageMs": 0.22679999999999997,
+      "updateDeleteMs": 343.8259,
+      "peakWorkingSetMB": 2789.921875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 3,
+    "Metrics": {
+      "bulkInsertMs": 10838.759,
+      "closeMs": 191.2025,
+      "sizeMB": 1579.6953125,
+      "coldOpenInsertMs": 1.9229,
+      "pkLookup1000Ms": 9.7979,
+      "countLastMs": 0.06455999999999999,
+      "indexedQuery20Ms": 298.3427,
+      "deepPageMs": 696.4806,
+      "updateDeleteMs": 24.4098,
+      "peakWorkingSetMB": 642.18359375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 3,
+    "Metrics": {
+      "bulkInsertMs": 10984.9666,
+      "closeMs": 11.0136,
+      "sizeMB": 1171.5859375,
+      "coldOpenInsertMs": 2.6782,
+      "pkLookup1000Ms": 68.8175,
+      "countLastMs": 127.78374,
+      "indexedQuery20Ms": 437.3527,
+      "deepPageMs": 1511.3046,
+      "updateDeleteMs": 20.0682,
+      "peakWorkingSetMB": 2481.5234375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 3,
+    "Metrics": {
+      "bulkInsertMs": 2598.5103,
+      "closeMs": 2.7286,
+      "sizeMB": 1015.6545610427856,
+      "coldOpenInsertMs": 26.3515,
+      "pkLookup1000Ms": 4.7217,
+      "countLastMs": 0.7662,
+      "indexedQuery20Ms": 60.8073,
+      "deepPageMs": 0.2197,
+      "updateDeleteMs": 145.8646,
+      "peakWorkingSetMB": 1441.80078125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "flat",
+    "Scale": "1gb",
+    "Iteration": 3,
+    "Metrics": {
+      "bulkInsertMs": 9189.0743,
+      "closeMs": 2.5135,
+      "sizeMB": 1304.0332536697388,
+      "coldOpenInsertMs": 62.2435,
+      "pkLookup1000Ms": 3.0982,
+      "countLastMs": 1.0932600000000001,
+      "indexedQuery20Ms": 48.051,
+      "deepPageMs": 0.22035999999999997,
+      "updateDeleteMs": 291.798,
+      "peakWorkingSetMB": 3127.97265625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 1,
+    "Metrics": {
+      "productInsertMs": 37.7939,
+      "graphInsertMs": 4625.7873,
+      "closeMs": 2.4166,
+      "sizeMB": 104.82548141479492,
+      "coldOpenLoadGraphMs": 26.6355,
+      "loadGraph200Ms": 159.0237,
+      "ordersByStatus10Ms": 108.5917,
+      "updateStatus200Ms": 513.2525,
+      "cascadeDelete100Ms": 177.9274,
+      "peakWorkingSetMB": 586.34375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 1,
+    "Metrics": {
+      "productInsertMs": 49.5163,
+      "graphInsertMs": 7065.598,
+      "closeMs": 2.3985,
+      "sizeMB": 446.05646324157715,
+      "coldOpenLoadGraphMs": 292.1671,
+      "loadGraph200Ms": 2775.5685,
+      "ordersByStatus10Ms": 22.6322,
+      "updateStatus200Ms": 614.9659,
+      "cascadeDelete100Ms": 930.8875,
+      "peakWorkingSetMB": 1601.3984375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 1,
+    "Metrics": {
+      "productInsertMs": 50.6774,
+      "graphInsertMs": 6583.6977,
+      "closeMs": 2.6385,
+      "sizeMB": 24.588858604431152,
+      "coldOpenLoadGraphMs": 125.5634,
+      "loadGraph200Ms": 2754.0299,
+      "ordersByStatus10Ms": 20.7877,
+      "updateStatus200Ms": 542.7713,
+      "cascadeDelete100Ms": 721.6123,
+      "peakWorkingSetMB": 717.0703125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 1,
+    "Metrics": {
+      "productInsertMs": 8.8022,
+      "graphInsertMs": 693.4257,
+      "closeMs": 3.0267,
+      "sizeMB": 10.62890625,
+      "coldOpenLoadGraphMs": 2.5355,
+      "loadGraph200Ms": 11.8766,
+      "ordersByStatus10Ms": 8.3605,
+      "updateStatus200Ms": 5.0424,
+      "cascadeDelete100Ms": 12.5737,
+      "peakWorkingSetMB": 86.7734375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 1,
+    "Metrics": {
+      "productInsertMs": 71.6219,
+      "graphInsertMs": 2649.1584,
+      "closeMs": 1.6372,
+      "sizeMB": 57.578125,
+      "coldOpenLoadGraphMs": 12.6821,
+      "loadGraph200Ms": 198.3326,
+      "ordersByStatus10Ms": 30.0929,
+      "updateStatus200Ms": 20.2453,
+      "cascadeDelete100Ms": 97.6064,
+      "peakWorkingSetMB": 168.16015625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 2,
+    "Metrics": {
+      "productInsertMs": 50.4772,
+      "graphInsertMs": 6937.8237,
+      "closeMs": 2.3731,
+      "sizeMB": 446.05646324157715,
+      "coldOpenLoadGraphMs": 296.4442,
+      "loadGraph200Ms": 2800.1547,
+      "ordersByStatus10Ms": 23.7794,
+      "updateStatus200Ms": 555.8339,
+      "cascadeDelete100Ms": 900.1943,
+      "peakWorkingSetMB": 1609.0390625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 2,
+    "Metrics": {
+      "productInsertMs": 50.0143,
+      "graphInsertMs": 6624.6578,
+      "closeMs": 2.504,
+      "sizeMB": 24.583370208740234,
+      "coldOpenLoadGraphMs": 127.2386,
+      "loadGraph200Ms": 2846.0617,
+      "ordersByStatus10Ms": 21.7723,
+      "updateStatus200Ms": 509.2574,
+      "cascadeDelete100Ms": 765.3067,
+      "peakWorkingSetMB": 723.921875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 2,
+    "Metrics": {
+      "productInsertMs": 9.2885,
+      "graphInsertMs": 698.3775,
+      "closeMs": 2.9182,
+      "sizeMB": 10.62890625,
+      "coldOpenLoadGraphMs": 2.6016,
+      "loadGraph200Ms": 10.922,
+      "ordersByStatus10Ms": 8.3405,
+      "updateStatus200Ms": 5.3527,
+      "cascadeDelete100Ms": 13.0445,
+      "peakWorkingSetMB": 86.84765625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 2,
+    "Metrics": {
+      "productInsertMs": 67.985,
+      "graphInsertMs": 2595.3585,
+      "closeMs": 1.6604,
+      "sizeMB": 57.578125,
+      "coldOpenLoadGraphMs": 12.8542,
+      "loadGraph200Ms": 194.3371,
+      "ordersByStatus10Ms": 28.4532,
+      "updateStatus200Ms": 19.2783,
+      "cascadeDelete100Ms": 89.782,
+      "peakWorkingSetMB": 168.1640625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 2,
+    "Metrics": {
+      "productInsertMs": 35.2191,
+      "graphInsertMs": 4381.4163,
+      "closeMs": 2.381,
+      "sizeMB": 104.82548141479492,
+      "coldOpenLoadGraphMs": 26.6138,
+      "loadGraph200Ms": 166.4025,
+      "ordersByStatus10Ms": 117.9047,
+      "updateStatus200Ms": 506.1609,
+      "cascadeDelete100Ms": 155.2436,
+      "peakWorkingSetMB": 589.5859375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 3,
+    "Metrics": {
+      "productInsertMs": 48.4121,
+      "graphInsertMs": 6507.2584,
+      "closeMs": 2.4969,
+      "sizeMB": 24.541972160339355,
+      "coldOpenLoadGraphMs": 118.3469,
+      "loadGraph200Ms": 2965.6062,
+      "ordersByStatus10Ms": 26.0601,
+      "updateStatus200Ms": 555.9982,
+      "cascadeDelete100Ms": 752.8422,
+      "peakWorkingSetMB": 720.875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 3,
+    "Metrics": {
+      "productInsertMs": 8.6271,
+      "graphInsertMs": 666.4639,
+      "closeMs": 3.3492,
+      "sizeMB": 10.62890625,
+      "coldOpenLoadGraphMs": 2.5637,
+      "loadGraph200Ms": 11.0248,
+      "ordersByStatus10Ms": 7.6089,
+      "updateStatus200Ms": 4.8153,
+      "cascadeDelete100Ms": 12.5749,
+      "peakWorkingSetMB": 86.765625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 3,
+    "Metrics": {
+      "productInsertMs": 68.9484,
+      "graphInsertMs": 2620.9713,
+      "closeMs": 1.9473,
+      "sizeMB": 57.578125,
+      "coldOpenLoadGraphMs": 13.2116,
+      "loadGraph200Ms": 202.8024,
+      "ordersByStatus10Ms": 29.1269,
+      "updateStatus200Ms": 18.8421,
+      "cascadeDelete100Ms": 98.3331,
+      "peakWorkingSetMB": 168.0078125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 3,
+    "Metrics": {
+      "productInsertMs": 33.6132,
+      "graphInsertMs": 4412.7039,
+      "closeMs": 2.5319,
+      "sizeMB": 104.82548141479492,
+      "coldOpenLoadGraphMs": 24.2066,
+      "loadGraph200Ms": 157.0124,
+      "ordersByStatus10Ms": 121.2306,
+      "updateStatus200Ms": 446.5399,
+      "cascadeDelete100Ms": 189.4614,
+      "peakWorkingSetMB": 586.1796875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "relational",
+    "Scale": "10k",
+    "Iteration": 3,
+    "Metrics": {
+      "productInsertMs": 55.6484,
+      "graphInsertMs": 6833.3179,
+      "closeMs": 2.5648,
+      "sizeMB": 446.05646324157715,
+      "coldOpenLoadGraphMs": 301.5078,
+      "loadGraph200Ms": 2876.691,
+      "ordersByStatus10Ms": 21.9354,
+      "updateStatus200Ms": 518.0913,
+      "cascadeDelete100Ms": 932.1908,
+      "peakWorkingSetMB": 1598.62890625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 1,
+    "Metrics": {
+      "productInsertMs": 42.7055,
+      "graphInsertMs": 14903.0781,
+      "closeMs": 2.6151,
+      "sizeMB": 420.408709526062,
+      "coldOpenLoadGraphMs": 33.6234,
+      "loadGraph200Ms": 305.1367,
+      "ordersByStatus10Ms": 501.3962,
+      "updateStatus200Ms": 1529.9576,
+      "cascadeDelete100Ms": 394.0543,
+      "peakWorkingSetMB": 2343
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 1,
+    "Metrics": {
+      "productInsertMs": 52.5601,
+      "graphInsertMs": 25405.257,
+      "closeMs": 2.6196,
+      "sizeMB": 1781.553074836731,
+      "coldOpenLoadGraphMs": 345.5425,
+      "loadGraph200Ms": 12901.0782,
+      "ordersByStatus10Ms": 653.9436,
+      "updateStatus200Ms": 5108.0854,
+      "cascadeDelete100Ms": 3012.5937,
+      "peakWorkingSetMB": 3524.421875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 1,
+    "Metrics": {
+      "productInsertMs": 56.4401,
+      "graphInsertMs": 25857.7191,
+      "closeMs": 2.5505,
+      "sizeMB": 97.76014614105225,
+      "coldOpenLoadGraphMs": 132.7086,
+      "loadGraph200Ms": 6104.6833,
+      "ordersByStatus10Ms": 99.2196,
+      "updateStatus200Ms": 3046.038,
+      "cascadeDelete100Ms": 2457.3865,
+      "peakWorkingSetMB": 2162.2265625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 1,
+    "Metrics": {
+      "productInsertMs": 10.0322,
+      "graphInsertMs": 2760.5673,
+      "closeMs": 8.4165,
+      "sizeMB": 43.578125,
+      "coldOpenLoadGraphMs": 2.5235,
+      "loadGraph200Ms": 12.72,
+      "ordersByStatus10Ms": 33.1417,
+      "updateStatus200Ms": 7.1896,
+      "cascadeDelete100Ms": 20.847,
+      "peakWorkingSetMB": 192.109375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 1,
+    "Metrics": {
+      "productInsertMs": 79.5325,
+      "graphInsertMs": 10622.3191,
+      "closeMs": 4.8637,
+      "sizeMB": 228.6953125,
+      "coldOpenLoadGraphMs": 14.2936,
+      "loadGraph200Ms": 236.5815,
+      "ordersByStatus10Ms": 132.109,
+      "updateStatus200Ms": 28.1916,
+      "cascadeDelete100Ms": 152.9985,
+      "peakWorkingSetMB": 454.32421875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 2,
+    "Metrics": {
+      "productInsertMs": 64.0888,
+      "graphInsertMs": 25913.7843,
+      "closeMs": 2.59,
+      "sizeMB": 1781.553074836731,
+      "coldOpenLoadGraphMs": 330.8452,
+      "loadGraph200Ms": 6533.5482,
+      "ordersByStatus10Ms": 124.0043,
+      "updateStatus200Ms": 3150.9159,
+      "cascadeDelete100Ms": 3038.6947,
+      "peakWorkingSetMB": 3542.296875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 2,
+    "Metrics": {
+      "productInsertMs": 59.1845,
+      "graphInsertMs": 26063.9714,
+      "closeMs": 2.3342,
+      "sizeMB": 97.65279579162598,
+      "coldOpenLoadGraphMs": 136.7538,
+      "loadGraph200Ms": 6411.9775,
+      "ordersByStatus10Ms": 103.8765,
+      "updateStatus200Ms": 3160.5318,
+      "cascadeDelete100Ms": 2372.6611,
+      "peakWorkingSetMB": 2161.7734375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 2,
+    "Metrics": {
+      "productInsertMs": 10.0771,
+      "graphInsertMs": 2739.5563,
+      "closeMs": 10.7838,
+      "sizeMB": 43.578125,
+      "coldOpenLoadGraphMs": 3.4488,
+      "loadGraph200Ms": 15.1893,
+      "ordersByStatus10Ms": 39.3917,
+      "updateStatus200Ms": 8.8348,
+      "cascadeDelete100Ms": 25.1508,
+      "peakWorkingSetMB": 192.1640625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 2,
+    "Metrics": {
+      "productInsertMs": 87.4214,
+      "graphInsertMs": 10906.7232,
+      "closeMs": 3.81,
+      "sizeMB": 228.6953125,
+      "coldOpenLoadGraphMs": 15.4211,
+      "loadGraph200Ms": 255.1038,
+      "ordersByStatus10Ms": 149.5551,
+      "updateStatus200Ms": 29.1168,
+      "cascadeDelete100Ms": 140.8831,
+      "peakWorkingSetMB": 454.359375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 2,
+    "Metrics": {
+      "productInsertMs": 48.1197,
+      "graphInsertMs": 15708.1576,
+      "closeMs": 2.9842,
+      "sizeMB": 420.408709526062,
+      "coldOpenLoadGraphMs": 76.3972,
+      "loadGraph200Ms": 359.4272,
+      "ordersByStatus10Ms": 537.1424,
+      "updateStatus200Ms": 1643.7841,
+      "cascadeDelete100Ms": 409.3505,
+      "peakWorkingSetMB": 2342.61328125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 3,
+    "Metrics": {
+      "productInsertMs": 51.8434,
+      "graphInsertMs": 24408.5505,
+      "closeMs": 2.7554,
+      "sizeMB": 97.75545310974121,
+      "coldOpenLoadGraphMs": 146.9497,
+      "loadGraph200Ms": 6604.9847,
+      "ordersByStatus10Ms": 103.5563,
+      "updateStatus200Ms": 3177.2083,
+      "cascadeDelete100Ms": 2332.3833,
+      "peakWorkingSetMB": 2161.82421875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 3,
+    "Metrics": {
+      "productInsertMs": 9.7008,
+      "graphInsertMs": 2641.2852,
+      "closeMs": 9.9557,
+      "sizeMB": 43.578125,
+      "coldOpenLoadGraphMs": 3.0851,
+      "loadGraph200Ms": 13.5629,
+      "ordersByStatus10Ms": 38.0093,
+      "updateStatus200Ms": 8.2463,
+      "cascadeDelete100Ms": 22.6517,
+      "peakWorkingSetMB": 192.140625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 3,
+    "Metrics": {
+      "productInsertMs": 71.1452,
+      "graphInsertMs": 10310.9927,
+      "closeMs": 5.9663,
+      "sizeMB": 228.6953125,
+      "coldOpenLoadGraphMs": 13.372,
+      "loadGraph200Ms": 232.6476,
+      "ordersByStatus10Ms": 161.03,
+      "updateStatus200Ms": 27.8291,
+      "cascadeDelete100Ms": 131.6063,
+      "peakWorkingSetMB": 454.28515625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 3,
+    "Metrics": {
+      "productInsertMs": 63.9783,
+      "graphInsertMs": 15274.8413,
+      "closeMs": 2.887,
+      "sizeMB": 420.408709526062,
+      "coldOpenLoadGraphMs": 31.626,
+      "loadGraph200Ms": 334.4977,
+      "ordersByStatus10Ms": 465.7482,
+      "updateStatus200Ms": 1629.2002,
+      "cascadeDelete100Ms": 393.3422,
+      "peakWorkingSetMB": 2343.14453125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "relational",
+    "Scale": "40k",
+    "Iteration": 3,
+    "Metrics": {
+      "productInsertMs": 48.9492,
+      "graphInsertMs": 25070.2051,
+      "closeMs": 2.6451,
+      "sizeMB": 1781.553074836731,
+      "coldOpenLoadGraphMs": 313.8179,
+      "loadGraph200Ms": 6135.6187,
+      "ordersByStatus10Ms": 120.0403,
+      "updateStatus200Ms": 3650.7871,
+      "cascadeDelete100Ms": 2862.3975,
+      "peakWorkingSetMB": 3510.28515625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 1,
+    "Metrics": {
+      "r1_readsPerSec": 4483.639355220258,
+      "r1_writesPerSec": 4888.667296262316,
+      "r1_readP50Us": 187,
+      "r1_readP99Us": 1020.2000122070312,
+      "r1_writeP50Us": 183.6999969482422,
+      "r1_writeP99Us": 675.5999755859375,
+      "r4_readsPerSec": 85615.58830174808,
+      "r4_writesPerSec": 1914.3513029174935,
+      "r4_readP50Us": 13.5,
+      "r4_readP99Us": 789.2999877929688,
+      "r4_writeP50Us": 205.8000030517578,
+      "r4_writeP99Us": 6247.5,
+      "r8_readsPerSec": 140791.08877494608,
+      "r8_writesPerSec": 752.448451293433,
+      "r8_readP50Us": 15.100000381469727,
+      "r8_readP99Us": 1290.5999755859375,
+      "r8_writeP50Us": 648.2999877929688,
+      "r8_writeP99Us": 11984,
+      "peakWorkingSetMB": 444.4140625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 1,
+    "Metrics": {
+      "r1_readsPerSec": 543.1386309518625,
+      "r1_writesPerSec": 420.4879801962746,
+      "r1_readP50Us": 1236.9000244140625,
+      "r1_readP99Us": 13361.099609375,
+      "r1_writeP50Us": 1470.300048828125,
+      "r1_writeP99Us": 9939.099609375,
+      "r4_readsPerSec": 1862.600231322805,
+      "r4_writesPerSec": 454.21580577558666,
+      "r4_readP50Us": 7.800000190734863,
+      "r4_readP99Us": 24630.69921875,
+      "r4_writeP50Us": 1402.4000244140625,
+      "r4_writeP99Us": 6724.7998046875,
+      "r8_readsPerSec": 16764.260422532298,
+      "r8_writesPerSec": 392.46095108503056,
+      "r8_readP50Us": 7.199999809265137,
+      "r8_readP99Us": 7251.60009765625,
+      "r8_writeP50Us": 1760.199951171875,
+      "r8_writeP99Us": 5944.7001953125,
+      "peakWorkingSetMB": 1215.03125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 1,
+    "Metrics": {
+      "r1_readsPerSec": 92.20826609067103,
+      "r1_writesPerSec": 115.50927501639136,
+      "r1_readP50Us": 8050,
+      "r1_readP99Us": 58546.6015625,
+      "r1_writeP50Us": 7860.2998046875,
+      "r1_writeP99Us": 18461.5,
+      "r4_readsPerSec": 1235.3372898502603,
+      "r4_writesPerSec": 127.91067230289056,
+      "r4_readP50Us": 6.900000095367432,
+      "r4_readP99Us": 38292.69921875,
+      "r4_writeP50Us": 7632,
+      "r4_writeP99Us": 12330.2001953125,
+      "r8_readsPerSec": 8932.30243977986,
+      "r8_writesPerSec": 124.37534525868327,
+      "r8_readP50Us": 7.5,
+      "r8_readP99Us": 21296.599609375,
+      "r8_writeP50Us": 7891.39990234375,
+      "r8_writeP99Us": 12157,
+      "peakWorkingSetMB": 893.625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 1,
+    "Metrics": {
+      "r1_readsPerSec": 39529.789603615034,
+      "r1_writesPerSec": 12827.679811179363,
+      "r1_readP50Us": 12.100000381469727,
+      "r1_readP99Us": 86.5999984741211,
+      "r1_writeP50Us": 49.79999923706055,
+      "r1_writeP99Us": 214.10000610351562,
+      "r4_readsPerSec": 84210.57005756363,
+      "r4_writesPerSec": 8453.38175626243,
+      "r4_readP50Us": 12.100000381469727,
+      "r4_readP99Us": 383.1000061035156,
+      "r4_writeP50Us": 62.599998474121094,
+      "r4_writeP99Us": 678.2000122070312,
+      "r8_readsPerSec": 50253.714245856725,
+      "r8_writesPerSec": 3321.1581531193087,
+      "r8_readP50Us": 23.100000381469727,
+      "r8_readP99Us": 1313.0999755859375,
+      "r8_writeP50Us": 93.30000305175781,
+      "r8_writeP99Us": 2507.699951171875,
+      "peakWorkingSetMB": 366.94140625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 1,
+    "Metrics": {
+      "r1_readsPerSec": 17009.847164147017,
+      "r1_writesPerSec": 6852.539568108402,
+      "r1_readP50Us": 30.600000381469727,
+      "r1_readP99Us": 193,
+      "r1_writeP50Us": 81.4000015258789,
+      "r1_writeP99Us": 735.9000244140625,
+      "r4_readsPerSec": 58399.7834298784,
+      "r4_writesPerSec": 5204.5195565382555,
+      "r4_readP50Us": 33.900001525878906,
+      "r4_readP99Us": 819.2999877929688,
+      "r4_writeP50Us": 104.0999984741211,
+      "r4_writeP99Us": 1224,
+      "r8_readsPerSec": 70052.85902402583,
+      "r8_writesPerSec": 3299.041478930071,
+      "r8_readP50Us": 51,
+      "r8_readP99Us": 1377.4000244140625,
+      "r8_writeP50Us": 166.5,
+      "r8_writeP99Us": 1808.699951171875,
+      "peakWorkingSetMB": 445.91015625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 2,
+    "Metrics": {
+      "r1_readsPerSec": 394.36889942801184,
+      "r1_writesPerSec": 330.7039649912027,
+      "r1_readP50Us": 1697.5,
+      "r1_readP99Us": 12919.7001953125,
+      "r1_writeP50Us": 1768.0999755859375,
+      "r1_writeP99Us": 13153.400390625,
+      "r4_readsPerSec": 2099.797560688966,
+      "r4_writesPerSec": 381.5094247884881,
+      "r4_readP50Us": 14,
+      "r4_readP99Us": 14018.900390625,
+      "r4_writeP50Us": 1760.0999755859375,
+      "r4_writeP99Us": 5110.2998046875,
+      "r8_readsPerSec": 16030.09109190399,
+      "r8_writesPerSec": 426.61520853069624,
+      "r8_readP50Us": 6.599999904632568,
+      "r8_readP99Us": 8371,
+      "r8_writeP50Us": 1583.199951171875,
+      "r8_writeP99Us": 4181.10009765625,
+      "peakWorkingSetMB": 1221.03125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 2,
+    "Metrics": {
+      "r1_readsPerSec": 104.75932195528476,
+      "r1_writesPerSec": 112.35637202074435,
+      "r1_readP50Us": 7799.89990234375,
+      "r1_readP99Us": 53008.69921875,
+      "r1_writeP50Us": 7993.60009765625,
+      "r1_writeP99Us": 18042.80078125,
+      "r4_readsPerSec": 466.21980494558795,
+      "r4_writesPerSec": 126.11843441476803,
+      "r4_readP50Us": 7427.39990234375,
+      "r4_readP99Us": 53458.5,
+      "r4_writeP50Us": 7737.2001953125,
+      "r4_writeP99Us": 10855.400390625,
+      "r8_readsPerSec": 7214.058977031161,
+      "r8_writesPerSec": 125.6422512793971,
+      "r8_readP50Us": 7.300000190734863,
+      "r8_readP99Us": 21391.099609375,
+      "r8_writeP50Us": 7680.10009765625,
+      "r8_writeP99Us": 12470.7001953125,
+      "peakWorkingSetMB": 896.39453125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 2,
+    "Metrics": {
+      "r1_readsPerSec": 37506.590906525416,
+      "r1_writesPerSec": 12812.654476708845,
+      "r1_readP50Us": 12.100000381469727,
+      "r1_readP99Us": 84.69999694824219,
+      "r1_writeP50Us": 50.79999923706055,
+      "r1_writeP99Us": 208.39999389648438,
+      "r4_readsPerSec": 82929.86227816538,
+      "r4_writesPerSec": 8297.274688939962,
+      "r4_readP50Us": 12.699999809265137,
+      "r4_readP99Us": 343,
+      "r4_writeP50Us": 66,
+      "r4_writeP99Us": 632.0999755859375,
+      "r8_readsPerSec": 48793.01345874787,
+      "r8_writesPerSec": 2984.1362096920943,
+      "r8_readP50Us": 24.5,
+      "r8_readP99Us": 1188,
+      "r8_writeP50Us": 110.0999984741211,
+      "r8_writeP99Us": 2168.800048828125,
+      "peakWorkingSetMB": 367.0703125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 2,
+    "Metrics": {
+      "r1_readsPerSec": 16451.637460938975,
+      "r1_writesPerSec": 6569.0658063500305,
+      "r1_readP50Us": 30.799999237060547,
+      "r1_readP99Us": 270.29998779296875,
+      "r1_writeP50Us": 82.4000015258789,
+      "r1_writeP99Us": 708.4000244140625,
+      "r4_readsPerSec": 52576.55619460404,
+      "r4_writesPerSec": 4653.848324310861,
+      "r4_readP50Us": 35.79999923706055,
+      "r4_readP99Us": 834.5,
+      "r4_writeP50Us": 111.5,
+      "r4_writeP99Us": 1311.5,
+      "r8_readsPerSec": 82057.24202740927,
+      "r8_writesPerSec": 3628.3609113343246,
+      "r8_readP50Us": 40.20000076293945,
+      "r8_readP99Us": 1229,
+      "r8_writeP50Us": 138.10000610351562,
+      "r8_writeP99Us": 1600,
+      "peakWorkingSetMB": 447.14453125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 2,
+    "Metrics": {
+      "r1_readsPerSec": 4595.089967729264,
+      "r1_writesPerSec": 4883.631884297409,
+      "r1_readP50Us": 172.3000030517578,
+      "r1_readP99Us": 1273.0999755859375,
+      "r1_writeP50Us": 182.10000610351562,
+      "r1_writeP99Us": 607.7999877929688,
+      "r4_readsPerSec": 61101.333275882746,
+      "r4_writesPerSec": 4920.138826296576,
+      "r4_readP50Us": 5.800000190734863,
+      "r4_readP99Us": 442.79998779296875,
+      "r4_writeP50Us": 181.89999389648438,
+      "r4_writeP99Us": 789.2000122070312,
+      "r8_readsPerSec": 93325.81445861865,
+      "r8_writesPerSec": 4257.241106350383,
+      "r8_readP50Us": 8.800000190734863,
+      "r8_readP99Us": 525.7000122070312,
+      "r8_writeP50Us": 212.1999969482422,
+      "r8_writeP99Us": 1063.199951171875,
+      "peakWorkingSetMB": 446.32421875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-bin",
+    "EngineLabel": "XOD\u002B\u002B (Binary)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 3,
+    "Metrics": {
+      "r1_readsPerSec": 128.8455476881643,
+      "r1_writesPerSec": 126.44842121954727,
+      "r1_readP50Us": 6536.2001953125,
+      "r1_readP99Us": 57352.30078125,
+      "r1_writeP50Us": 7141.7001953125,
+      "r1_writeP99Us": 16146.7001953125,
+      "r4_readsPerSec": 363.3691612537312,
+      "r4_writesPerSec": 130.88461564895908,
+      "r4_readP50Us": 13.399999618530273,
+      "r4_readP99Us": 86852.703125,
+      "r4_writeP50Us": 7482.89990234375,
+      "r4_writeP99Us": 13206.900390625,
+      "r8_readsPerSec": 6977.910351457628,
+      "r8_writesPerSec": 132.49196869856254,
+      "r8_readP50Us": 7.099999904632568,
+      "r8_readP99Us": 23960.30078125,
+      "r8_writeP50Us": 7397.7998046875,
+      "r8_writeP99Us": 10041.5,
+      "peakWorkingSetMB": 895.66015625
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "sqlite",
+    "EngineLabel": "SQLite 3 (WAL)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 3,
+    "Metrics": {
+      "r1_readsPerSec": 40928.672408574086,
+      "r1_writesPerSec": 14004.260551333622,
+      "r1_readP50Us": 11.399999618530273,
+      "r1_readP99Us": 74.5,
+      "r1_writeP50Us": 46.70000076293945,
+      "r1_writeP99Us": 179.10000610351562,
+      "r4_readsPerSec": 91891.0857380245,
+      "r4_writesPerSec": 8897.129044556217,
+      "r4_readP50Us": 12.100000381469727,
+      "r4_readP99Us": 264,
+      "r4_writeP50Us": 65.30000305175781,
+      "r4_writeP99Us": 550.2999877929688,
+      "r8_readsPerSec": 60394.29883834258,
+      "r8_writesPerSec": 4040.32493859372,
+      "r8_readP50Us": 23.100000381469727,
+      "r8_readP99Us": 786.7000122070312,
+      "r8_writeP50Us": 94.9000015258789,
+      "r8_writeP99Us": 1406,
+      "peakWorkingSetMB": 367.11328125
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "litedb",
+    "EngineLabel": "LiteDB 5.0",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 3,
+    "Metrics": {
+      "r1_readsPerSec": 18577.830733333576,
+      "r1_writesPerSec": 7672.042117597754,
+      "r1_readP50Us": 28.600000381469727,
+      "r1_readP99Us": 174.10000610351562,
+      "r1_writeP50Us": 74.9000015258789,
+      "r1_writeP99Us": 738.4000244140625,
+      "r4_readsPerSec": 64804.41663427778,
+      "r4_writesPerSec": 5896.432692186853,
+      "r4_readP50Us": 30.700000762939453,
+      "r4_readP99Us": 850,
+      "r4_writeP50Us": 92.5,
+      "r4_writeP99Us": 1145.0999755859375,
+      "r8_readsPerSec": 103015.28621327302,
+      "r8_writesPerSec": 4416.95064176393,
+      "r8_readP50Us": 36.70000076293945,
+      "r8_readP99Us": 1162.0999755859375,
+      "r8_writeP50Us": 125.19999694824219,
+      "r8_writeP99Us": 1461.800048828125,
+      "peakWorkingSetMB": 448.83984375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-xml",
+    "EngineLabel": "XOD\u002B\u002B (XML)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 3,
+    "Metrics": {
+      "r1_readsPerSec": 4083.0916234417828,
+      "r1_writesPerSec": 5520.870255455322,
+      "r1_readP50Us": 166.5,
+      "r1_readP99Us": 1699.4000244140625,
+      "r1_writeP50Us": 162.6999969482422,
+      "r1_writeP99Us": 379,
+      "r4_readsPerSec": 62691.416144003684,
+      "r4_writesPerSec": 5468.1844256519225,
+      "r4_readP50Us": 6.300000190734863,
+      "r4_readP99Us": 334.20001220703125,
+      "r4_writeP50Us": 169.6999969482422,
+      "r4_writeP99Us": 386.5,
+      "r8_readsPerSec": 105208.03030303936,
+      "r8_writesPerSec": 4342.001004233545,
+      "r8_readP50Us": 7.800000190734863,
+      "r8_readP99Us": 618.2999877929688,
+      "r8_writeP50Us": 193.6999969482422,
+      "r8_writeP99Us": 962.4000244140625,
+      "peakWorkingSetMB": 446.60546875
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  },
+  {
+    "Engine": "xod-json",
+    "EngineLabel": "XOD\u002B\u002B (JSON)",
+    "Suite": "concurrency",
+    "Scale": "250mb",
+    "Iteration": 3,
+    "Metrics": {
+      "r1_readsPerSec": 619.6032769303264,
+      "r1_writesPerSec": 394.69248072673275,
+      "r1_readP50Us": 7.900000095367432,
+      "r1_readP99Us": 14680.7998046875,
+      "r1_writeP50Us": 1577.4000244140625,
+      "r1_writeP99Us": 12220.2998046875,
+      "r4_readsPerSec": 1305.4267083593647,
+      "r4_writesPerSec": 458.17761153249427,
+      "r4_readP50Us": 9.199999809265137,
+      "r4_readP99Us": 34446.8984375,
+      "r4_writeP50Us": 1487.300048828125,
+      "r4_writeP99Us": 4899.5,
+      "r8_readsPerSec": 13105.520248423616,
+      "r8_writesPerSec": 400.3755336468533,
+      "r8_readP50Us": 7.699999809265137,
+      "r8_readP99Us": 8158.5,
+      "r8_writeP50Us": 1724.199951171875,
+      "r8_writeP99Us": 6068.39990234375,
+      "peakWorkingSetMB": 1224.99609375
+    },
+    "Stamp": {
+      "Tool": "XodBench v2",
+      "LibraryVersion": "2.0.0",
+      "GitCommit": "eb2ac24",
+      "GitWorkingTree": "clean",
+      "DotnetRuntime": "9",
+      "CapturedAtUtc": "2026-11-07T21:42:20.9480386Z"
+    },
+    "Error": null
+  }
+]
