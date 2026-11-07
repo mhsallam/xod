@@ -1,4 +1,4 @@
-![XOD](https://raw.githubusercontent.com/mhsallam/xod/main/docs/screens/logo.png)
+![XOD](https://raw.githubusercontent.com/mhsallam/xod/main/docs/screens/logo.svg)
 
 # XOD
 
