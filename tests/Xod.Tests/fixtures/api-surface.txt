@@ -1,0 +1,670 @@
+type Xod.AnonymousTypeException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.AnynomousTypeException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.AutonumberDataTypeException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.CascadeOptions (sealed)
+  field Int32 value__
+  field CascadeOptions None
+  field CascadeOptions Delete
+  field CascadeOptions Update
+  field CascadeOptions All
+
+type Xod.ChildrenAttribute
+  ctor()
+  prop String RemoteParentProperty { get; set; }
+  prop Object TypeId { get; }
+
+type Xod.CollectionExtensions (static)
+  method Void Add(IList`1, Object)
+  method Void AddRange(IList`1, Object[])
+  method Void AddRangeFomString(IList`1, Object[])
+  method Void AddRangeFromString(IList`1, Object[])
+  method Boolean DictionaryEqual(IDictionary`2, IDictionary`2)
+
+type Xod.CryptoAttribute
+  ctor()
+  ctor(CryptoMethod method)
+  prop CryptoMethod Method { get; set; }
+  prop Object TypeId { get; }
+
+type Xod.CryptoMethod (sealed)
+  field Int32 value__
+  field CryptoMethod None
+  field CryptoMethod MD5
+  field CryptoMethod SHA1
+  field CryptoMethod SHA256
+  field CryptoMethod SHA512
+  field CryptoMethod AES256
+
+type Xod.DatabaseActions (sealed)
+  field Int32 value__
+  field DatabaseActions Insert
+  field DatabaseActions Update
+  field DatabaseActions Delete
+  field DatabaseActions Drop
+
+type Xod.DatabaseFileException
+  ctor()
+  ctor(String message)
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.DatabaseLockedException
+  ctor(String databasePath)
+  ctor(String databasePath, Exception innerException)
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.DatabaseOptions
+  ctor()
+  prop Boolean InitialCreate { get; set; }
+  prop Boolean LazyLoad { get; set; }
+  prop Boolean LazyLoadParent { get; set; }
+  prop StorageFormat StorageFormat { get; set; }
+  prop Int32 PageSize { get; set; }
+  prop Boolean EnableIndexing { get; set; }
+  prop Boolean EnableCompression { get; set; }
+  prop Boolean LockDatabase { get; set; }
+  prop Int32 LockRetryTimeoutMs { get; set; }
+  prop Int32 TransactionTimeoutMs { get; set; }
+  prop DurabilityMode Durability { get; set; }
+
+type Xod.DatabaseStatistics
+  ctor()
+  prop String DatabasePath { get; set; }
+  prop StorageFormat StorageFormat { get; set; }
+  prop Boolean IsEncrypted { get; set; }
+  prop Int64 TotalSizeBytes { get; set; }
+  prop Int32 TableCount { get; set; }
+  prop Int32 TotalPageCount { get; set; }
+  prop Int32 TotalRowCount { get; set; }
+  prop List`1 Tables { get; set; }
+
+type Xod.DurabilityMode (sealed)
+  field Int32 value__
+  field DurabilityMode Immediate
+  field DurabilityMode Buffered
+
+type Xod.Engines.Binary.BinaryEngine
+  ctor(String file, String password, DatabaseOptions options)
+  prop String Path { get; }
+  prop Boolean IsNew { get; }
+  prop Boolean LazyLoad { get; set; }
+  prop Boolean LazyLoadParent { get; set; }
+  prop StorageFormat StorageFormat { get; }
+
+type Xod.Engines.Json.JsonEngine
+  ctor(String file, String password, DatabaseOptions options)
+  prop String Path { get; }
+  prop Boolean IsNew { get; }
+  prop Boolean LazyLoad { get; set; }
+  prop Boolean LazyLoadParent { get; set; }
+  prop StorageFormat StorageFormat { get; }
+
+type Xod.Engines.Serializers.BinaryStorageSerializer (sealed)
+  ctor()
+  prop StorageFormat Format { get; }
+  method XDocument Deserialize(Byte[])
+  method Byte[] Serialize(XDocument)
+
+type Xod.Engines.Serializers.JsonStorageSerializer (sealed)
+  ctor()
+  prop StorageFormat Format { get; }
+  method XDocument Deserialize(Byte[])
+  method Byte[] Serialize(XDocument)
+
+type Xod.Engines.Serializers.StorageSerializerFactory (static)
+  method StorageFormat DetectFormat(Byte[])
+  method IXodStorageSerializer Get(StorageFormat)
+
+type Xod.Engines.Serializers.XmlStorageSerializer (sealed)
+  ctor()
+  prop StorageFormat Format { get; }
+  method XDocument Deserialize(Byte[])
+  method Byte[] Serialize(XDocument)
+
+type Xod.Engines.Xml.XmlEngine
+  ctor(String file, String password, DatabaseOptions options)
+  prop String Path { get; }
+  prop Boolean IsNew { get; set; }
+  prop Boolean LazyLoad { get; set; }
+  prop Boolean LazyLoadParent { get; set; }
+  prop StorageFormat StorageFormat { get; set; }
+  method IXodTransaction BeginTransaction()
+  method Void ChangePassword(String, String)
+  method Void ClearCache()
+  method Void ClearCaches()
+  method Int32 Count(Type)
+  method Boolean Delete(Type, Object)
+  method Boolean Delete(Type, Object, Boolean)
+  method Void Dispose()
+  method Boolean DropType(Type)
+  method Object Find(Type, Func`2, String)
+  method Object FindLast(Type, Func`2, String)
+  method Object First(Type, String)
+  method Void Flush()
+  method DatabaseStatistics GetStatistics()
+  method Object Insert(Type, Object, Boolean)
+  method Object InsertOrUpdate(Type, Object, Boolean, UpdateFilter)
+  method Int32 InsertRange(Type, IEnumerable`1, Boolean)
+  method Object Last(Type, String)
+  method Void Loose(String)
+  method IEnumerable`1 Query(Type, Func`2, String)
+  method IEnumerable`1 QueryByExample(Type, Object, String)
+  method IEnumerable`1 QueryByExample(Type, Object[], String)
+  method IEnumerable`1 QueryExpression(Expression`1, String)
+  method Void RegisterType(Type)
+  method IEnumerable`1 RegisteredTypes()
+  method Void Secure(String)
+  method IEnumerable`1 Select(Type, Boolean, String)
+  method IEnumerable`1 Select(Type, Int32, Int32, Boolean, String)
+  method Boolean Update(Type, Object, Object, UpdateFilter)
+  method Boolean Update(Type, Object, UpdateFilter)
+
+type Xod.ForeignKeyAttribute
+  ctor(String localProp)
+  ctor(String localProp, String remoteProp)
+  prop String LocalProperty { get; set; }
+  prop String RemoteProperty { get; set; }
+  prop Object TypeId { get; }
+
+type Xod.GenericTypePropertyAttribute
+  ctor(String name)
+  prop String Name { get; set; }
+  prop Object TypeId { get; }
+
+type Xod.Helpers.CryptoHelper (static)
+  method String DecryptProperty(String, String)
+  method String EncryptProperty(String, String)
+  method String GenerateKey()
+  method String GetMD5HashData(String)
+  method String GetSHA1HashData(String)
+  method String GetSHA256HashData(String)
+  method String GetSHA512HashData(String)
+  method String HashProperty(String, CryptoMethod)
+  method Boolean VerifyHash(String, String, CryptoMethod)
+
+type Xod.Helpers.ValueHelper (static)
+  method Int32 CompareValues(Object, Object)
+  method Object CreateInstance(Type)
+  method T Default()
+  method Object Default(Type)
+  method Object DefaultOf(Type)
+  method String FormatScalar(Object)
+  method Func`1 GetFactory(Type)
+  method Boolean IsNumeric(Object)
+  method Boolean IsNumeric(Type)
+  method Boolean IsScalarType(Type)
+  method Object ParseScalar(Type, String)
+
+type Xod.Helpers.XodSecurityService
+  ctor(String path, String password)
+  prop String Password { get; set; }
+  prop String Path { get; set; }
+  method Void ChangePassword(String, String)
+  method Void Loose(String)
+  method Void Secure(String)
+
+type Xod.IXodEngine (abstract)
+  prop String Path { get; }
+  prop Boolean IsNew { get; }
+  prop Boolean LazyLoad { get; set; }
+  prop StorageFormat StorageFormat { get; }
+  method IXodTransaction BeginTransaction()
+  method Void ChangePassword(String, String)
+  method Void ClearCache()
+  method Void ClearCaches()
+  method Int32 Count(Type)
+  method Boolean Delete(Type, Object)
+  method Boolean DropType(Type)
+  method Object Find(Type, Func`2, String)
+  method Object FindLast(Type, Func`2, String)
+  method Object First(Type, String)
+  method Void Flush()
+  method DatabaseStatistics GetStatistics()
+  method Object Insert(Type, Object, Boolean)
+  method Object InsertOrUpdate(Type, Object, Boolean, UpdateFilter)
+  method Int32 InsertRange(Type, IEnumerable`1, Boolean)
+  method Object Last(Type, String)
+  method Void Loose(String)
+  method IEnumerable`1 Query(Type, Func`2, String)
+  method IEnumerable`1 QueryByExample(Type, Object, String)
+  method IEnumerable`1 QueryByExample(Type, Object[], String)
+  method IEnumerable`1 QueryExpression(Expression`1, String)
+  method Void RegisterType(Type)
+  method IEnumerable`1 RegisteredTypes()
+  method Void Secure(String)
+  method IEnumerable`1 Select(Type, Boolean, String)
+  method IEnumerable`1 Select(Type, Int32, Int32, Boolean, String)
+  method Boolean Update(Type, Object, Object, UpdateFilter)
+  method Boolean Update(Type, Object, UpdateFilter)
+
+type Xod.IndexDataTypeException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.Infra.IXodContext (abstract)
+  method Boolean Any(Func`2)
+  method IXodTransaction BeginTransaction()
+  method Void ChangePassword(String, String)
+  method Void ClearCache()
+  method Void ClearCaches()
+  method Int32 Count(Func`2)
+  method Boolean Delete(Object)
+  method Boolean Delete(Type, Object)
+  method Boolean Delete(T)
+  method Task`1 DeleteAsync(T, CancellationToken)
+  method Int32 DeleteWhere(Func`2)
+  method Boolean Drop()
+  method Boolean Drop(Type)
+  method Boolean DropAll()
+  method T Find(Expression`1, String)
+  method Task`1 FindAsync(Expression`1, String, CancellationToken)
+  method T FindDelegate(Func`2, String)
+  method T FindLast(Func`2, String)
+  method T First(String)
+  method T FirstMatch(Func`2, String)
+  method Void Flush()
+  method DatabaseStatistics GetStatistics()
+  method Object Insert(Object, Boolean)
+  method T Insert(T, Boolean)
+  method Object Insert(Type, Object, Boolean)
+  method Task`1 InsertAsync(T, Boolean, CancellationToken)
+  method Object InsertOrUpdate(Object, Boolean, UpdateFilter)
+  method T InsertOrUpdate(T, Boolean, UpdateFilter)
+  method Object InsertOrUpdate(Type, Object, Boolean, UpdateFilter)
+  method Int32 InsertRange(IEnumerable`1, Boolean)
+  method T Last(String)
+  method Void Loose(String)
+  method IEnumerable`1 Query(Expression`1, String)
+  method IEnumerable`1 Query(T, String)
+  method IEnumerable`1 Query(T[], String)
+  method Task`1 QueryAsync(Expression`1, String, CancellationToken)
+  method IEnumerable`1 QueryDelegate(Func`2, String)
+  method Void RegisterType(Type)
+  method Void RegisterType()
+  method IEnumerable`1 RegisteredTypes()
+  method Void Secure(String)
+  method IEnumerable`1 Select(String)
+  method IEnumerable`1 Select(Int32, Int32, Boolean, String)
+  method Task`1 SelectAsync(String, CancellationToken)
+  method IEnumerable`1 SelectBackward(String)
+  method Boolean Update(Object, UpdateFilter)
+  method Boolean Update(Object, Object, UpdateFilter)
+  method Boolean Update(Type, Object, UpdateFilter)
+  method Boolean Update(Type, Object, Object, UpdateFilter)
+  method Boolean Update(T, UpdateFilter)
+  method Boolean Update(T, T, UpdateFilter)
+  method Task`1 UpdateAsync(T, UpdateFilter, CancellationToken)
+
+type Xod.Infra.IXodSecurityService (abstract)
+  prop String Password { get; set; }
+  prop String Path { get; set; }
+  method Void ChangePassword(String, String)
+  method Void Loose(String)
+  method Void Secure(String)
+
+type Xod.Infra.IXodStorageSerializer (abstract)
+  prop StorageFormat Format { get; }
+  method XDocument Deserialize(Byte[])
+  method Byte[] Serialize(XDocument)
+
+type Xod.Infra.IXodTransaction (abstract)
+  prop Guid TransactionId { get; }
+  prop Boolean IsActive { get; }
+  method Void Commit()
+  method Void Rollback()
+
+type Xod.InheritedAttribute
+  ctor()
+  prop Object TypeId { get; }
+
+type Xod.LazyLoadFilter
+  ctor()
+  prop String[] Properties { get; set; }
+
+type Xod.MarkupAttribute
+  ctor()
+  prop Object TypeId { get; }
+
+type Xod.MissingParentKeyException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.MissingPrimaryKeyValueException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.NotMappedAttribute
+  ctor()
+  prop Object TypeId { get; }
+
+type Xod.NumericOperations (static)
+  method T Sum(Object[])
+
+type Xod.ParentKeyAttribute
+  ctor()
+  ctor(String localProperty)
+  ctor(String localProperty, String remoteProperty)
+  prop String LocalProperty { get; set; }
+  prop String RemoteProperty { get; set; }
+  prop Object TypeId { get; }
+
+type Xod.PrimaryKeyAttribute
+  ctor()
+  prop Object TypeId { get; }
+
+type Xod.PrimaryKeyDataTypeException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.PropertyAttribute
+  ctor()
+  prop ValuePosition Position { get; set; }
+  prop CascadeOptions Cascade { get; set; }
+  prop Boolean AutoNumber { get; set; }
+  prop Boolean Indexed { get; set; }
+  prop Object IdentitySeed { get; set; }
+  prop Object IdentityIncrement { get; set; }
+  prop Object TypeId { get; }
+
+type Xod.PropertyKeyNameException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.RequiredAttribute
+  ctor()
+  prop Object TypeId { get; }
+
+type Xod.RequiredPropertyException
+  ctor()
+  ctor(String propertyName)
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.ReservedChildException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.ReservedKeyWordException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.ReservedPrimaryKeyException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.ReservedPropertyType (sealed)
+  field Int32 value__
+  field ReservedPropertyType Primary
+  field ReservedPropertyType Unique
+  field ReservedPropertyType None
+
+type Xod.ReservedUniqueKeyException
+  ctor()
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.SecurityException
+  ctor()
+  ctor(String message)
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.StorageFormat (sealed)
+  field Int32 value__
+  field StorageFormat Xml
+  field StorageFormat Json
+  field StorageFormat Binary
+
+type Xod.StringExtensions (static)
+  method String Compress(String)
+  method String Decompress(String)
+  method Boolean EqualsExcludingWhitespace(String, String)
+
+type Xod.TableStatistics
+  ctor()
+  prop String TableName { get; set; }
+  prop Int32 PageCount { get; set; }
+  prop Int32 RowCount { get; set; }
+  prop Int32 IndexedPropertyCount { get; set; }
+  prop Int64 SizeBytes { get; set; }
+
+type Xod.TransactionException
+  ctor(String message)
+  ctor(String message, Exception innerException)
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.TriggerEventArgs
+  ctor()
+  prop Object Item { get; set; }
+  prop Type Type { get; set; }
+  prop DatabaseActions Action { get; set; }
+  prop Boolean Cancel { get; set; }
+
+type Xod.TypeExtentions (static)
+  method Type ActualType(T)
+  method Boolean ArraysEqual(T[], T[])
+  method Type GetActualType(Object)
+  method Boolean ListsEqual(List`1, List`1)
+  method Object ToType(Object, Type)
+
+type Xod.UniqueKeyAttribute
+  ctor()
+  prop Object TypeId { get; }
+
+type Xod.UpdateFilter
+  ctor()
+  prop String[] Properties { get; set; }
+  prop UpdateFilterBehavior Behavior { get; set; }
+
+type Xod.UpdateFilterBehavior (sealed)
+  field Int32 value__
+  field UpdateFilterBehavior Target
+  field UpdateFilterBehavior Skip
+
+type Xod.ValuePosition (sealed)
+  field Int32 value__
+  field ValuePosition Body
+  field ValuePosition Attribute
+
+type Xod.XmlExtensions (static)
+  method Boolean ElementAttributesEquals(XElement, XElement)
+  method Boolean ElementEquals(XElement, XElement)
+  method Boolean ElementMatch(XElement, XElement)
+
+type Xod.XodContext
+  ctor(String file, String password, DatabaseOptions options)
+  ctor(IXodEngine engine)
+  prop IXodEngine Engine { get; }
+  prop StorageFormat StorageFormat { get; }
+  method Boolean Any(Func`2)
+  method IXodTransaction BeginTransaction()
+  method Void ChangePassword(String, String)
+  method Void ClearCache()
+  method Void ClearCaches()
+  method Int32 Count(Func`2)
+  method Boolean Delete(T)
+  method Boolean Delete(Type, Object)
+  method Boolean Delete(Object)
+  method Task`1 DeleteAsync(T, CancellationToken)
+  method Int32 DeleteWhere(Func`2)
+  method Void Dispose()
+  method Boolean Drop()
+  method Boolean Drop(Type)
+  method Boolean DropAll()
+  method T Find(Expression`1, String)
+  method Task`1 FindAsync(Expression`1, String, CancellationToken)
+  method T FindDelegate(Func`2, String)
+  method T FindLast(Func`2, String)
+  method T First(String)
+  method T FirstMatch(Func`2, String)
+  method Void Flush()
+  method DatabaseStatistics GetStatistics()
+  method Object Insert(Object, Boolean)
+  method T Insert(T, Boolean)
+  method Object Insert(Type, Object, Boolean)
+  method Task`1 InsertAsync(T, Boolean, CancellationToken)
+  method Object InsertOrUpdate(Object, Boolean, UpdateFilter)
+  method T InsertOrUpdate(T, Boolean, UpdateFilter)
+  method Object InsertOrUpdate(Type, Object, Boolean, UpdateFilter)
+  method Int32 InsertRange(IEnumerable`1, Boolean)
+  method T Last(String)
+  method Void Loose(String)
+  method IEnumerable`1 Query(Expression`1, String)
+  method IEnumerable`1 Query(T, String)
+  method IEnumerable`1 Query(T[], String)
+  method Task`1 QueryAsync(Expression`1, String, CancellationToken)
+  method IEnumerable`1 QueryDelegate(Func`2, String)
+  method Void RegisterType()
+  method Void RegisterType(Type)
+  method IEnumerable`1 RegisteredTypes()
+  method Void Secure(String)
+  method IEnumerable`1 Select(String)
+  method IEnumerable`1 Select(Int32, Int32, Boolean, String)
+  method Task`1 SelectAsync(String, CancellationToken)
+  method IEnumerable`1 SelectBackward(String)
+  method Boolean Update(T, T, UpdateFilter)
+  method Boolean Update(Type, Object, Object, UpdateFilter)
+  method Boolean Update(Object, Object, UpdateFilter)
+  method Boolean Update(T, UpdateFilter)
+  method Boolean Update(Type, Object, UpdateFilter)
+  method Boolean Update(Object, UpdateFilter)
+  method Task`1 UpdateAsync(T, UpdateFilter, CancellationToken)
+
+type Xod.XodException
+  ctor(String message)
+  ctor(String message, Exception innerException)
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
+type Xod.XodMigrator (static)
+  method Int32 ConvertDatabase(String, String, StorageFormat, String)

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net8.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Xod</AssemblyName>
+    <RootNamespace>Xod</RootNamespace>
+    <PackageId>Xod</PackageId>
+    <Version>2.0.0</Version>
+    <Authors>Mohammed Sallam</Authors>
+    <Product>XOD - embedded object database for .NET</Product>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo.png</PackageIcon>
+    <PackageProjectUrl>https://github.com/mhsallam/xod</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mhsallam/xod</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>database;embedded;nosql;object;dotnet;xml;json;acid</PackageTags>
+    <Description>XOD is an embedded, ACID, object-oriented database for .NET: native POCOs, concurrent readers and writers behind a commit journal, three storage formats (XML, JSON, Binary) and no server to run.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\docs\screens\logo.png" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Xod.Cli</AssemblyName>
+    <RootNamespace>Xod.Cli</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>xod</ToolCommandName>
+    <Version>2.0.0</Version>
+    <Authors>Mohammed Sallam</Authors>
+    <Description>CLI inspector, query runner, and storage engine migrator for XOD++ databases.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Xod\Xod.csproj" />
+  </ItemGroup>
+
+</Project>

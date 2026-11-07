@@ -1,0 +1,41 @@
+name: tests
+
+# Gate layer 10: the suite has to pass on Windows and Linux, on both target frameworks. The Linux job is
+# the half that cannot be verified on the development machine, so it lives here.
+
+on:
+  push:
+    branches: [master, legacy-v1]
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / net${{ matrix.framework }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        framework: ['8.0', '9.0']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.framework }}.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build engine and tests
+        run: |
+          dotnet build src/Xod/Xod.csproj -c Release --nologo
+          dotnet build tests/Xod.CrashWriter/Xod.CrashWriter.csproj -c Release --nologo
+
+      - name: Test
+        run: dotnet test tests/Xod.Tests/Xod.Tests.csproj -c Release --nologo -f net${{ matrix.framework }}
+
+      # The stress harness writes the files the site publishes; these pin what those files must say.
+      - name: Stress harness tests
+        if: matrix.framework == '9.0'
+        run: dotnet test benchmarks/XodBench.Tests/XodBench.Tests.csproj -c Release --nologo
