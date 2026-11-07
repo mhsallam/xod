@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/screens/logo.svg" alt="XOD" width="380">
+  <img src="https://raw.githubusercontent.com/mhsallam/xod/main/docs/screens/logo.png" alt="XOD" width="380">
 </p>
 
 <h1 align="center">XOD</h1>
@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://www.nuget.org/packages/Xod"><img src="https://img.shields.io/nuget/v/Xod?label=nuget" alt="NuGet version"></a>
   <a href="https://www.nuget.org/packages/Xod"><img src="https://img.shields.io/nuget/dt/Xod?label=downloads" alt="NuGet downloads"></a>
-  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0"></a>
+  <a href="https://github.com/mhsallam/xod/blob/main/LICENSE.md"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0"></a>
   <img src="https://img.shields.io/badge/.NET-8.0%20%7C%209.0-512BD4" alt=".NET 8 and 9">
   <img src="https://img.shields.io/badge/tests-60%20passing-brightgreen" alt="60 tests passing">
 </p>
@@ -136,11 +136,11 @@ command-line tool for stats, conversion and encryption.
 The engine targets .NET 8 and .NET 9. The test suite covers the API, stress, referential integrity,
 crash safety, migration from a real 1.x database, format equivalence, a million rows, a differential
 check against SQLite and the public API surface: 54 tests, no skips, green on Windows and Linux. The
-release gate is in [docs/TEST-PLAN-2.0.md](docs/TEST-PLAN-2.0.md).
+release gate is in [docs/TEST-PLAN-2.0.md](https://github.com/mhsallam/xod/blob/main/docs/TEST-PLAN-2.0.md).
 
 ## Licence
 
-Apache-2.0. Versions published before 2.0.0 (the 0.1.x line and the 1.0.0 betas) were MIT and stay under those terms. See [NOTICE](NOTICE).
+Apache-2.0. Versions published before 2.0.0 (the 0.1.x line and the 1.0.0 betas) were MIT and stay under those terms. See [NOTICE](https://github.com/mhsallam/xod/blob/main/NOTICE).
 
 If XOD saves you time, sponsoring the project or a paid support arrangement keeps it maintained. Issues
 and pull requests are welcome; for anything large, please open an issue first so we can agree on the

@@ -14,10 +14,11 @@
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>logo.png</PackageIcon>
-    <PackageProjectUrl>https://github.com/mhsallam/xod</PackageProjectUrl>
+    <PackageProjectUrl>https://xod.sabaeon.com</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mhsallam/xod</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>database;embedded;nosql;object;dotnet;xml;json;acid</PackageTags>
+    <PackageTags>database;embedded-database;embedded;nosql;object;dotnet;csharp;xml;json;acid</PackageTags>
+    <PackageReleaseNotes>XOD 2.0: a rework of the 2017 library. Versions before 2.0.0 (0.1.x and the 1.0.0 betas) were MIT; 2.0.0 is Apache-2.0. Notes and migration guide: https://github.com/mhsallam/xod</PackageReleaseNotes>
     <Description>XOD is an embedded, ACID, object-oriented database for .NET: native POCOs, concurrent readers and writers behind a commit journal, three storage formats (XML, JSON, Binary) and no server to run.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>

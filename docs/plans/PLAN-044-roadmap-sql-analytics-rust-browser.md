@@ -156,6 +156,15 @@ keep the 2026-11-07 soak (`stress-soak-20261107_014729`, passed, same library co
 NuGet and the site, below. The README line about the `legacy` branch (GitHub step 2) goes in as a
 commit on `main` before the push.
 
+**Done on GitHub, 2026-11-08:** the 2017 head (`ee3f764`) tagged `legacy-final`, `master` renamed
+`legacy`, `main` pushed (only `main`; no other branch or tag) and made the default; description,
+topics and homepage (xod.sabaeon.com) updated; the README says the 2017 library is on `legacy`. The
+test workflow ran only on `master` and `legacy-v1`; it now runs on `main` (and by hand).
+**NuGet, prepared:** the package's project link is the site, its README links are absolute (nuget.org
+shows no relative links or SVG), release notes name the licence change; `Xod.2.0.0.nupkg` installs in
+a clean project on .NET 8 and .NET 9 and opens, inserts, queries and reopens. Not done: Source Link and
+symbols. The push is the owner's.
+
 **GitHub** (nothing force-pushed, nothing overwritten):
 
 1. Rename `master` to `legacy` on `mhsallam/xod` and tag its head (`legacy-final`). GitHub keeps
