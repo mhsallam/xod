@@ -192,7 +192,7 @@ namespace Xod.Tests
 
             db.Insert(new UserAccount
             {
-                Email = "dev@mhsallam.com",
+                Email = "dev@example.com",
                 PasswordHash = "my-secret",
                 SecretApiKey = "not-a-real-key",
                 Score = 90
@@ -203,7 +203,7 @@ namespace Xod.Tests
             {
                 db.Insert(new UserAccount
                 {
-                    Email = "dev@mhsallam.com",
+                    Email = "dev@example.com",
                     PasswordHash = "other",
                     Score = 50
                 });
