@@ -137,10 +137,24 @@ passing in a worktree and in the main checkout with the new one. Named debt: two
 (`Machine.Git`, `BenchStamp.Git`) and two definitions of a dirty tree (`Machine.IsDirty` ignores
 `benchmarks/results/`; the comparison stamp also ignores `benchmarks/dashboard.html`).
 
-**Next, in order (each outward step on the owner's go):** the publishable runs from the public commit,
-with the machine left alone (the soak and capacity runs take about 70 minutes, the comparison suite's
-length is not recorded); then GitHub, NuGet and the site, below. The README line about the `legacy`
-branch (GitHub step 2) goes in as a commit on `main` before the push.
+**Runs from the public commit, 2026-11-07/08** (`benchmarks/run-stress.ps1`, then the comparison suite
+with its defaults; committed on `main` as `09a02d2`, all stamped `eb2ac24`, clean, mains power, no
+machine identity in the files): five capacity runs to the 10M-row target, all counted by the site's
+rules; the comparison suite, 75 runs, no errors (about 19 minutes); a 60-minute soak that ended as
+planned and passed every criterion but is **void**: in minutes 2-10 other programs used 11-17% CPU,
+over the 10% limit, so only 9 of 20 samples in the first comparison window were quiet (the last
+window: 21 of 21). Whole set about 88 minutes. The test address `dev@mhsallam.com` became
+`dev@example.com` (`45d9c6f`).
+
+**When to re-run (decided 2026-11-08):** these runs were needed once, because the fresh public history
+leaves the commits the site cited private; the library code was the same as the cited runs except
+the version number. From now on `main` is public, so a run from it stays checkable: re-run only when
+the library code (`src/`) changes in a way that can move the numbers, or a release wants new numbers.
+
+**Next, in order (each outward step on the owner's go):** the soak - run it again on a free machine, or
+keep the 2026-11-06 soak (passed, same library code, but cites the private `4926465`); then GitHub,
+NuGet and the site, below. The README line about the `legacy` branch (GitHub step 2) goes in as a
+commit on `main` before the push.
 
 **GitHub** (nothing force-pushed, nothing overwritten):
 
