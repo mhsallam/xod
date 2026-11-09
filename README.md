@@ -10,6 +10,8 @@ An embedded database for .NET. Your objects go in, files you can read come out.
 ![.NET 8 and 9](https://img.shields.io/badge/.NET-8.0%20%7C%209.0-512BD4)
 ![60 tests passing](https://img.shields.io/badge/tests-60%20passing-brightgreen)
 
+**[Documentation](https://xod.sabaeon.com/docs/)** · [Getting started](https://xod.sabaeon.com/docs/getting-started/) · [API reference](https://xod.sabaeon.com/docs/api/) · [Benchmarks](https://xod.sabaeon.com/benchmarks)
+
 XOD 2.0 starts here. The 2017 library (0.1.x) is on the [`legacy`](https://github.com/mhsallam/xod/tree/legacy) branch.
 
 ---
