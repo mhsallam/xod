@@ -10,6 +10,7 @@ The project's memory. `xod2` is the active rework of XOD; `xod` and `xod.core` a
 
 ## Direction
 - [PLAN-044](plans/PLAN-044-roadmap-sql-analytics-rust-browser.md) - roadmap (proposed): what makes XOD special, who it suits, and the order for SQL and analytics, a Rust core, WASM and the browser, and the packed file
+- [PLAN-045](plans/PLAN-045-query-language-spec.md) - XOD SQL, the query-language spec (draft): the SQL subset, object-model paths, type mapping, writes, and decisions D1-D8
 
 ## Repos
 - `xod2/` - XOD++ (local git, no remote)

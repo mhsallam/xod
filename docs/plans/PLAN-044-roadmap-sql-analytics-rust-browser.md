@@ -200,6 +200,8 @@ when `dotnet add package Xod` in a clean project installs the release.
 
 ### Step 1: two specs, no engine code
 
+**Started 2026-11-11:** the query-language spec is drafted in [`PLAN-045`](PLAN-045-query-language-spec.md) (`TASK-057`); it found that the files carry no column types, so the file-format spec gains a schema manifest (its D1).
+
 - **File format:** pages, index sidecars and the journal, exact enough that a second implementation can
   read today's files. The Rust trial and the browser both need it.
 - **Query language:** a real SQL subset rather than a new language - people, BI tools and LLMs already
