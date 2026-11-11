@@ -127,14 +127,17 @@ A case marked `known` must fail on the C# library. If it passes, the runner fail
 marker to be removed and the issue closed, so the marker can't outlive the defect. `KnownDefectTests.cs`
 does the same for defects a query can't show:
 
-| Issue | Where |
-| :--- | :--- |
-| ISS-053 indexed decimal rounding | case `where-033` |
-| ISS-056 indexed enum lookup | cases `where-001`, `where-011` |
-| ISS-050 constant AES key | `KnownDefectTests` |
-| ISS-051 control character in an XML page | `KnownDefectTests` |
-| ISS-052 deleted Id reused | `KnownDefectTests` |
-| ISS-054 indexed double overflow | `KnownDefectTests` |
+| Issue | Where | Now |
+| :--- | :--- | :--- |
+| ISS-053 indexed decimal rounding | case `where-033` | fixed; marker removed |
+| ISS-056 indexed enum lookup | cases `where-001`, `where-011` | fixed; markers removed |
+| ISS-050 constant AES key | `KnownDefectTests` | still open |
+| ISS-051 control character in an XML page | `KnownDefectTests` | fixed; an ordinary test |
+| ISS-052 deleted Id reused | `KnownDefectTests` | fixed; an ordinary test |
+| ISS-054 indexed double overflow | `KnownDefectTests` | fixed; an ordinary test |
+
+The fixes are in [`PLAN-048`](PLAN-048-format-defect-fixes.md) (2026-11-11, not released). Each marker
+reported "looks fixed" first, as designed, and was then removed.
 
 ## 5. Results, 2026-11-11
 
@@ -152,6 +155,10 @@ return NULL, but the C# library decrypts with its built-in key (ISS-050).
 
 **The file reader** reads the four 2.0 fixtures to the same 101 rows: 140 index keys, all matching their
 pages. It also reads the 1.2.5 fixture: 260 rows, 310 index keys.
+
+**After the fixes** ([`PLAN-048`](PLAN-048-format-defect-fixes.md), 2026-11-11): no case is marked
+known; 10/10 on .NET 8 and 9. The fixtures are unchanged, so they still hold 2.0's v1 index keys, which
+the library now rebuilds rather than trusts; the reader checks them as v1.
 
 **New defect: ISS-056.** `Query` on an indexed enum returns no rows. C# compiles `c.Tier == Tier.Gold`
 as `(int)c.Tier == 2`. The index planner drops the conversion on the property side and looks up the key
@@ -172,6 +179,9 @@ for the number `2`, but the index stores `Gold`.
 `.github/workflows/tests.yml`:
 - `dotnet test conformance/Xod.Conformance` on Windows and Linux, .NET 8 and 9;
 - `node conformance/format/read.mjs --check` on .NET 9 runners.
+- since [`PLAN-048`](PLAN-048-format-defect-fixes.md): `-- data` into a scratch folder, then
+  `read.mjs --check-fresh`, so the files the tree writes today (keys v2) are read by the independent
+  reader too.
 
 Each guard was broken on purpose and seen red on 2026-11-11:
 - a hand-edited row in `cases/basic.json` failed the drift test and all four fixture runs;

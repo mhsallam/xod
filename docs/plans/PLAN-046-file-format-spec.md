@@ -17,7 +17,8 @@ model, a Rust core, the browser) to read the files XOD 2.0 writes, and to know w
   `tests/Xod.Tests/fixtures/v1.2.5-xml` fixture). The 2017 XOD 0.1/1.x files differ; see the migration
   guide.
 - **Words:** *must* is a rule a reader or writer has to follow. *Writer* means the .NET library.
-  *Today* means 2.0.1 as of 2026-11-11.
+  *Today* means 2.0.1 as of 2026-11-11. *The next release* means the library in the tree after the
+  2026-11-11 fixes of ISS-051 to ISS-057 (unreleased; its version number is the owner's call).
 - **Where each statement comes from:** the code (`StorageSerializers`, `IOService.*`,
   `XmlEngine.Mutations`/`Relations`, `IndexService.*`, `TransactionService`, `FileCryptoHelper`,
   `CryptoHelper`, `ValueHelper`), checked against real files (section 12). Defects found on the way are
@@ -107,17 +108,24 @@ There is no mixed content and there are no namespaces.
 - UTF-8 without a BOM. It starts with `<?xml version="1.0" encoding="utf-8"?>` and has no indentation.
 - The five standard entities and numeric character references.
 - Readers must refuse a DTD; the library prohibits them.
-- **Whitespace between elements is padding** and must be ignored. Pages contain runs of spaces where rows
-  were deleted or shrunk in place (section 7.3).
-- **Two writers, two escapings.** The fast row writer (section 7.3) escapes only `&`, `<` and `>`. It
-  writes every other character as UTF-8: a tab, a raw CR LF, even U+0001. The document writer
-  (`XmlWriter`, with `CheckCharacters = false`) writes U+0001 as `&#x1;`, which XML 1.0 forbids.
-  A reader of today's files must therefore:
-  - accept raw control characters and references to them;
-  - keep a raw CR in text, **without** XML's line-end normalisation. A conforming XML parser turns a
-    raw CR LF into LF and changes the value; the library's fast reader keeps it.
+- **Whitespace beside child elements is padding** and must be ignored. Pages contain runs of spaces where
+  rows were deleted or shrunk in place (section 7.3). **Whitespace that is an element's whole content is
+  its value** (a string of two spaces is `<Name>  </Name>`) and must be kept: a reader that drops
+  whitespace-only text loses it.
+- **Text must round-trip exactly** (ISS-051, fixed 2026-11-11). XML can't carry every character raw: a
+  control character is forbidden, a parser turns a raw CR (or CR LF) into LF, and it turns a tab, CR or
+  LF in an attribute value into a space. So both writers (the document writer and the fast row writer
+  of section 7.3) write these as numeric character references:
+  - in text: U+0000 to U+001F except tab and LF, U+FFFE and U+FFFF; CR is `&#xD;`;
+  - in attribute values: the same, plus tab, LF and CR (`&#x9;`, `&#xA;`, `&#xD;`).
 
-  The library's own document reader fails on these files (ISS-051).
+  A reference to a character XML 1.0 forbids (`&#x1;`) is not well-formed XML, so **readers must accept
+  references to any character** (the library reads with `CheckCharacters = false`). The one policy lives
+  in `XmlText`.
+- **Files from 2.0** may hold what its writers produced: the fast row writer wrote control characters
+  and CR raw, and the document writer wrote control characters as references but CR raw. A reader of
+  2.0 files must accept raw control characters and keep a raw CR in text, **without** XML's line-end
+  normalisation (the library's fast reader keeps it; its document reader turns CR LF into LF).
 
 ### 4.3 JSON
 
@@ -164,11 +172,10 @@ element ends.
 ```xml
 <Table>
   <Pages dataType="Xod.TablePage" collType="generic" refType="complex">
-    <Page file="e2d552584.xpag" full="false" count="1">
-      <Index property="Id" begins="1000000000000000001.00000000" ends="1000000000000000001.00000000" />
-    </Page>
+    <Page file="e2d552584.xpag" full="false" count="1" />
   </Pages>
   <Indexes dataType="Xod.PageIndex" collType="generic" refType="complex" />
+  <Autonumber property="Id" last="7" />
 </Table>
 ```
 
@@ -179,9 +186,15 @@ element ends.
 - `count` (advisory): the library uses it only to skip whole **full** pages when paging. It is exact on
   disk only as of the table file's last write; appends to a page that isn't full don't rewrite the table
   file. Readers must count rows themselves.
-- `<Index>` (advisory, unused): `begins` is the first normalised key written to the page and `ends` the
-  **last** (not the largest). Nothing in the library reads them. Readers must ignore them (ISS-055).
+- `<Index property begins ends>` inside a `<Page>`: written by 2.0 only (the first and **last**, not
+  largest, key written to the page, in keys v1). Nothing reads them, and the next release stops writing them
+  (ISS-055). Readers must ignore them.
 - `<Indexes>` is always empty.
+- `<Autonumber property last>` (next release, ISS-052): the highest value the autonumber property has held, as
+  of the last delete. Written when a row is deleted, in the same save of this file as the page's new
+  count. **The next value is above both this mark and every row**, so a value is never handed out
+  twice, even after its row is deleted. A table that holds a mark is kept when its last page goes
+  (`<Pages>` is then empty); dropping the table removes it. 2.0 ignores the element and keeps it.
 - **Unknown children** (the `<Schema>` of section 10) must be ignored. 2.0 keeps them when it rewrites the
   file (section 12).
 
@@ -198,8 +211,9 @@ element ends.
 </TablePage>
 ```
 
-- A page created by the fast writer starts as `<TablePage full="false"><Rows>` instead: lower-case,
-  without the `Rows` attributes (ISS-055). Nothing reads the page's own `Full`/`full`.
+- Both writers start a page this way. In 2.0, a page created by the fast writer started as
+  `<TablePage full="false"><Rows>` instead: lower-case, without the `Rows` attributes (ISS-055, fixed
+  for the next release). Nothing reads the page's own `Full`/`full`.
 - Each `<Row>` has a `code` (nine lowercase hex digits, unique in its page) and exactly one child: the
   **entity element**, named by the class's short name (`Type.Name`).
 - A row's **item code** is `<page code>.<row code>` (`30ee1031c.ec4cb8f22`). References and the index use
@@ -272,11 +286,11 @@ page of the same setting.
 ### 7.5 Scalar text forms
 
 Every scalar is invariant-culture text (`ValueHelper.FormatScalar`; the fast writer uses
-`Utf8Formatter`, which gives the same text except for booleans).
+`Utf8Formatter`, which gives the same text; in 2.0 its booleans were lower-case, ISS-055).
 
 | .NET type | Written | Readers accept |
 | :--- | :--- | :--- |
-| `bool` | `True`/`False` (document writer); `true`/`false` (fast writer, key attributes) | either case; `1`/`0` |
+| `bool` | `True`/`False` (both writers from the next release; 2.0's fast writer wrote `true`/`false`) | either case; `1`/`0` |
 | integers | `-42` | the same |
 | `float`, `double` | shortest round-trip: `0.1`, `1E+30`, `NaN`, `Infinity`, `-Infinity` | the same |
 | `decimal` | keeps its scale, never an exponent: `12.50` | the same |
@@ -314,8 +328,10 @@ crash recovery. Readers may ignore it. A reader that uses it must accept the sta
 
 ```
 "XIDX2:<TableIndex>\n"                 19 bytes, UTF-8
-int32 marker                           -3: snapshot + closed log (written today)
-                                       -2: snapshot + log (older); >= 0: unframed snapshot (older, see below)
+int32 marker                           -4: snapshot + closed log, keys v2 (the next release)
+                                       -3: snapshot + closed log, keys v1 (2.0)
+                                       -2: snapshot + log, keys v1; >= 0: unframed snapshot, keys v1 (older)
+string zone                            -4 only: what the keys assume about the writing machine
 int32 propertyCount
 per property:
   string name | int32 entryCount | string minKey | string maxKey | int32 blockBytes
@@ -328,8 +344,17 @@ log, to end of file, per record:
 - `minKey`/`maxKey` are the ordinal minimum and maximum of the block's keys. The library uses them to
   load a block only when a lookup falls inside it.
 - Entries in a block are unordered.
-- With marker `-3`, the log must end exactly after an op-3 record. If it doesn't, a flush was cut short
-  and the index isn't trusted.
+- With marker `-4` or `-3`, the log must end exactly after an op-3 record. If it doesn't, a flush was
+  cut short and the index isn't trusted.
+- **The next release loads only `-4`.** Every other marker holds keys v1 (section 8.3), which can give
+  wrong answers, so it rebuilds that table's index from the pages and writes `-4`. 2.0 reads `-4` as a
+  negative property count and rebuilds too, so moving between the two versions never trusts the other's
+  keys.
+- **`zone`** (marker `-4`): a local `DateTime` is stored with its offset and read back in the reading
+  machine's zone (section 7.5), so its key depends on that zone. For a type with an indexed `DateTime`
+  property, `zone` is the first 8 bytes of SHA-256 over the local zone's serialized rules, in upper-case
+  hex; for any other type it is empty. It is the rules, not the zone's name, so the file says nothing
+  about where it was written. The library rebuilds an index whose `zone` differs from its own.
 - **Unframed (marker >= 0):** the marker is the property count. Each property is then `string name |
   int32 entryCount | entries`, with no keys or length in the header.
 
@@ -339,19 +364,53 @@ With a password the index is a document (sections 3-4) in the database's encodin
 rest:
 
 ```xml
-<TableIndex type="MyApp.Customer">
+<TableIndex2 type="MyApp.Customer">
   <Property name="Email"><Entry key="nadia@example.com" codes="e2d552584.bb84ea1aa" /></Property>
-</TableIndex>
+</TableIndex2>
 ```
 
-`codes` is a comma-separated list. It is rewritten whole on every save.
+`codes` is a comma-separated list. It is rewritten whole on every save. A `zone` attribute on the root,
+present only when not empty, is the stamp of section 8.1. The root is `TableIndex2` for
+keys v2 (the next release) and `TableIndex` for keys v1 (2.0); as with the markers, each version
+rebuilds the other's.
 
 ### 8.3 Normalised keys
 
 The key depends on the property's **type**, which is another reason a model-less reader needs the
-manifest:
+manifest. An entry holds one or more item codes; the file doesn't say whether the property is unique (the
+manifest does). A null value has no key.
 
-| Type | Key |
+**Keys v2** (the next release, `IndexKeys`) obey two rules, so that an index never changes an answer
+(`PLAN-045` principle 3):
+- **exact:** two values share a key exactly when C# says they are equal (`12.5m == 12.50m`, `0.0 == -0.0`;
+  `DateTime` compares ticks and ignores `Kind`);
+- **ordered:** for every type but text, ordinal order of keys is the order C# compares values in, so a
+  range (`<`, `<=`, `>`, `>=`) can be answered from the keys.
+
+| Type | Key v2 |
+| :--- | :--- |
+| every integer type, enum (by value), `char` (code point), `TimeSpan` (ticks) | `value + 2^63`, 20 digits: `1` is `09223372036854775809`, `long.MinValue` is all zeros, `ulong.MaxValue` is `27670116110564327423` |
+| `decimal` | zero is `1`. Otherwise the digits without trailing zeros and E, the power of ten of the first digit: positive `2` + (E+50, 2 digits) + digits (`12.50` is `2`, `51`, `125`: `251125`); negative `0` + (50-E, 2 digits) + each digit as 9-d + `~` |
+| `float`, `double` | the IEEE-754 bits of the value as a double (a float widened, which is exact), sign bit set for positives and all bits inverted for negatives, as an unsigned 20-digit number; `-0.0` is keyed as `0.0`; **NaN has no key** (it equals nothing) |
+| `DateTime` | ticks, 20 digits (the `Kind` is ignored, as C# ignores it) |
+| `DateTimeOffset` | UTC ticks, 20 digits |
+| `DateOnly` | day number, 10 digits |
+| `TimeOnly` | ticks, 20 digits |
+| `string` | the value (equality only) |
+| anything else (`bool`, `Guid`) | the scalar text, section 7.5 (equality only) |
+
+A query constant is converted to the property's type before its key is made, and only when the
+conversion is exact (`x.Ratio == 0.1` on a `float` matches nothing, as in C#). A comparison whose
+conversion would round (a `long` property against a `double`) is answered from the rows, not the index.
+
+A local `DateTime` is stored with the writing machine's offset and read back in the reading machine's
+zone, so its ticks, and its key, depend on the machine (ISS-057). The key is made from the value as it
+reads back (a local time in a daylight-saving gap moves), and the index records the zone it was built
+in (`zone`, section 8.1), so a database opened in another zone rebuilds its index.
+
+**Keys v1** (2.0, markers `-3`/`-2`/unframed, `TableIndex`), for reading old files only:
+
+| Type | Key v1 |
 | :--- | :--- |
 | `string` | the value |
 | `int`, `long` (within ±9×10^17) | `10^18 + value`, 19 digits, then `.00000000`: `1` is `1000000000000000001.00000000` |
@@ -361,9 +420,6 @@ manifest:
 | `DateOnly` | day number, 10 digits |
 | `TimeOnly` | ticks, 20 digits |
 | anything else (enum, `bool`, `Guid`, `TimeSpan`) | the scalar text (section 7.5) |
-
-Keys compare ordinally; for numbers that matches numeric order. An entry holds one or more item codes;
-the file doesn't say whether the property is unique (the manifest does).
 
 ## 9. Durability files
 
@@ -485,7 +541,9 @@ the file doesn't say whether the property is unique (the manifest does).
 
 ## 11. Defects found writing this spec
 
-Each was reproduced on 2026-11-11 (section 12) and filed in `KNOWN-ISSUES.md`.
+Each was reproduced on 2026-11-11 (section 12) and filed in `KNOWN-ISSUES.md`. All but ISS-050 are fixed
+in the tree, not yet released ([`PLAN-048`](PLAN-048-format-defect-fixes.md)); the sections above
+describe the files as the next release writes them, and say where 2.0 differs.
 
 | Issue | Severity | What happens |
 | :--- | :--- | :--- |
@@ -537,10 +595,14 @@ Decided 2026-11-11: the owner accepted all three recommendations.
 2. ~~The conformance set~~ - built in [`PLAN-047`](PLAN-047-conformance-set.md) (2026-11-11): the sample
    generator and the independent reader are in `conformance/` and the CI gate, with the cases from
    section 11.
-3. Fixing ISS-050 to ISS-055 is separate work, in the order the owner picks. ISS-051 and ISS-050 come
-   first: one loses a page of data on read, the other is a wrong public claim.
+3. ~~Fixing ISS-051 to ISS-055~~ - fixed in the tree, 2026-11-11, with ISS-056, ISS-057 and ISS-061
+   ([`PLAN-048`](PLAN-048-format-defect-fixes.md)); not released.
+4. ISS-050 (with ISS-058 and ISS-063): property encryption, the owner's choice
+   ([`PLAN-048`](PLAN-048-format-defect-fixes.md) section 8), and the site's security page.
 
 ## Verdict
 
-Spec accepted. Sections 2-9 describe today's files and were checked against them. Section 10 is
-decided (E1-E3) and not built. Six defects were found and are filed, none fixed.
+Spec accepted. Sections 2-9 describe the files and were checked against them, as 2.0 writes them and
+as the tree writes them now (keys v2, the zone stamp, one XML character policy). Section 10 is decided
+(E1-E3) and not built. Of the six defects found, five are fixed in the tree (not released); ISS-050
+waits on the owner.

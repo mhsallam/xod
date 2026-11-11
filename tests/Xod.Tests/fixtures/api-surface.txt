@@ -367,6 +367,17 @@ type Xod.InheritedAttribute
   ctor()
   prop Object TypeId { get; }
 
+type Xod.InvalidTextException
+  ctor(String propertyName)
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
 type Xod.LazyLoadFilter
   ctor()
   prop String[] Properties { get; set; }

@@ -361,13 +361,9 @@ namespace Xod.Services
             }
         }
 
-        internal XFile OpenPageOrCreate(XFile table) => OpenPageOrCreate(table, out _, out _);
-
-        internal XFile OpenPageOrCreate(XFile table, out bool tableModified) => OpenPageOrCreate(table, out tableModified, out _);
-
         /// <summary>
         /// The page a new row of a table goes to: the tail page while it has room, else the first page that
-        /// has, else null (the caller then adds one with <see cref="AddPageElement"/>). Both write paths ask
+        /// has, else null (the caller then names a new one and adds it once its row exists). Both write paths ask
         /// here (PLAN-041).
         ///
         /// The tail is read through <see cref="XContainer.LastNode"/>, a field LINQ to XML keeps for the
@@ -391,9 +387,10 @@ namespace Xod.Services
 
         private static bool IsFullPage(XElement page) => page.Attribute("full")?.Value == "true";
 
-        private static XElement AddPageElement(XElement pagesRoot, out string pageFileName)
+        private static string NewPageFileName() => $"{ValueHelper.PickCode()}.xpag";
+
+        private static XElement AddPageElement(XElement pagesRoot, string pageFileName)
         {
-            pageFileName = $"{ValueHelper.PickCode()}.xpag";
             var page = new XElement(PageElementName,
                 new XAttribute("file", pageFileName),
                 new XAttribute("full", false),
@@ -404,27 +401,28 @@ namespace Xod.Services
 
         private static readonly XName PageElementName = "Page";
 
-        internal XFile OpenPageOrCreate(XFile table, out bool tableModified, out XElement pageElement)
+        /// <summary>
+        /// The page the document writer's next row goes to, chosen without changing the table: the file
+        /// of a page with room (<paramref name="pageElement"/> is its element), or the name of a new page
+        /// (<paramref name="pageElement"/> is null). The writer builds the row, which names its page, and
+        /// only then registers a new page with <see cref="AddPage"/>, so a row that fails to build leaves
+        /// the table as it was (ISS-061).
+        /// </summary>
+        internal string ChooseAppendPage(XFile table, out XElement pageElement)
         {
             lock (syncLock)
             {
-                XElement pagesRoot = table.Root()?.Element("Pages");
-                XElement page = FindAppendPage(pagesRoot);
+                pageElement = FindAppendPage(table.Root()?.Element("Pages"));
+                return pageElement != null ? pageElement.Attribute("file").Value : NewPageFileName();
+            }
+        }
 
-                string pageFileName;
-                if (page == null)
-                {
-                    page = AddPageElement(table.Root().Element("Pages"), out pageFileName);
-                    tableModified = true;
-                }
-                else
-                {
-                    pageFileName = page.Attribute("file").Value;
-                    tableModified = false;
-                }
-
-                pageElement = page;
-                return OpenFileOrCreate(pageFileName, typeof(TablePage));
+        /// <summary>Registers a new page in the table; the caller saves the table.</summary>
+        internal XElement AddPage(XFile table, string pageFileName)
+        {
+            lock (syncLock)
+            {
+                return AddPageElement(table.Root().Element("Pages"), pageFileName);
             }
         }
 

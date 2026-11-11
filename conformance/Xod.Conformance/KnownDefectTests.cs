@@ -34,21 +34,24 @@ namespace Xod.Conformance
         public class Reading { public int Id { get; set; } [Property(Indexed = true)] public double Value { get; set; } }
         public class Secret { public int Id { get; set; } [Crypto(CryptoMethod.AES256)] public string Key { get; set; } }
 
+        // ISS-051, fixed: one XML character policy (XmlText). Xod.Tests/XodTextRoundTripTests covers the rest.
         [Fact]
-        public void ISS_051_an_xml_page_with_a_control_character_reads_back() => StillOpen("ISS-051", () =>
+        public void ISS_051_an_xml_page_with_a_control_character_reads_back()
         {
             string path = NewFolder("iss051");
             const string text = "a\u0001b";
             using (var db = new XodContext(path)) db.Insert(new Parent { Text = text, Kids = new() { new Kid() } });
             using (var db = new XodContext(path))
             {
-                try { return db.Find<Parent>(p => p.Id == 1)?.Text == text && db.Count<Parent>() == 1; }
-                catch (DatabaseFileException) { return false; }
+                Assert.Equal(text, db.Find<Parent>(p => p.Id == 1)?.Text);
+                Assert.Equal(1, db.Count<Parent>());
             }
-        });
+        }
 
+        // ISS-052, fixed: the table records its highest autonumber when a row is deleted.
+        // Xod.Tests/XodAutonumberTests covers the rest.
         [Fact]
-        public void ISS_052_a_deleted_id_is_not_reused_after_reopening() => StillOpen("ISS-052", () =>
+        public void ISS_052_a_deleted_id_is_not_reused_after_reopening()
         {
             string path = NewFolder("iss052");
             using (var db = new XodContext(path))
@@ -56,20 +59,17 @@ namespace Xod.Conformance
                 for (int i = 0; i < 5; i++) db.Insert(new Item { Name = "i" + i });
                 db.Delete(db.Find<Item>(x => x.Id == 5));
             }
-            using (var db = new XodContext(path)) return db.Insert(new Item { Name = "new" }).Id != 5;
-        });
+            using (var db = new XodContext(path)) Assert.Equal(6, db.Insert(new Item { Name = "new" }).Id);
+        }
 
+        // ISS-054, fixed: keys v2. Xod.Tests/XodIndexSemanticsTests covers the edges.
         [Fact]
-        public void ISS_054_an_indexed_double_beyond_decimal_range_can_be_stored() => StillOpen("ISS-054", () =>
+        public void ISS_054_an_indexed_double_beyond_decimal_range_can_be_stored()
         {
             using var db = new XodContext(NewFolder("iss054"));
-            try
-            {
-                db.Insert(new Reading { Value = 1e30 });
-                return db.Query<Reading>(r => r.Value == 1e30).Count() == 1;
-            }
-            catch (OverflowException) { return false; }
-        });
+            db.Insert(new Reading { Value = 1e30 });
+            Assert.Single(db.Query<Reading>(r => r.Value == 1e30));
+        }
 
         [Fact]
         public void ISS_050_an_aes256_value_without_a_password_cannot_be_read_with_the_library_constants() => StillOpen("ISS-050", () =>

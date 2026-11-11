@@ -5,6 +5,17 @@ namespace Xod.Services
 {
     internal partial class IndexService
     {
+        /// <summary>The value a read of this row gives the property: its text parsed, or, when the row
+        /// leaves it out, the property's value without a row (StoredValue).</summary>
+        private static object ReadBackFromRow(PropertyInfoItem prop, System.Xml.Linq.XElement entityElement)
+        {
+            string raw = prop.ValuePosition == ValuePosition.Attribute
+                ? entityElement.Attribute(prop.PropertyName)?.Value
+                : entityElement.Element(prop.PropertyName)?.Value;
+            return raw == null ? StoredValue.ReadBackOfMissing(prop) : ValueHelper.ParseScalar(prop.PropertyType, raw);
+        }
+
+        // Keys of the ints most tables hold, made once.
         private static readonly string[] SmallIntNormalizedCache = InitSmallIntCache();
 
         private static string[] InitSmallIntCache()
@@ -12,108 +23,63 @@ namespace Xod.Services
             var arr = new string[2048];
             for (int i = 0; i < arr.Length; i++)
             {
-                arr[i] = FormatNormalizedInt64(i);
+                arr[i] = IndexKeys.EncodeInt64(i);
             }
             return arr;
         }
 
+        /// <summary>The index key of a value of a property of <paramref name="propertyType"/>: see
+        /// <see cref="IndexKeys"/>. Null when the value has no key (null, NaN), and is not indexed.</summary>
         internal static string NormalizeIndexValue(Type propertyType, object value)
         {
-            if (value == null) return string.Empty;
-            if (value is string sVal) return sVal;
-            if (value is int iVal)
-            {
+            if (value is int iVal && IndexKeys.Underlying(propertyType) == typeof(int))
                 return NormalizeInt32(iVal);
-            }
-            if (value is long lVal && lVal >= -900_000_000_000_000_000L && lVal <= 900_000_000_000_000_000L)
-            {
-                return NormalizeInt64(lVal);
-            }
-
-            Type underlying = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
-
-            if (ValueHelper.IsNumeric(underlying))
-            {
-                decimal dec = Convert.ToDecimal(value, System.Globalization.CultureInfo.InvariantCulture);
-                // Shift by 10^18 so negative and positive numbers sort lexicographically
-                decimal shifted = dec + 1_000_000_000_000_000_000m;
-                return shifted.ToString("0000000000000000000.00000000", System.Globalization.CultureInfo.InvariantCulture);
-            }
-
-            if (underlying == typeof(DateTime))
-            {
-                var dt = (DateTime)value;
-                return dt.ToUniversalTime().Ticks.ToString("D20", System.Globalization.CultureInfo.InvariantCulture);
-            }
-
-            if (underlying == typeof(DateTimeOffset))
-            {
-                var dto = (DateTimeOffset)value;
-                return dto.UtcTicks.ToString("D20", System.Globalization.CultureInfo.InvariantCulture);
-            }
-
-            if (underlying == typeof(DateOnly))
-            {
-                var d = (DateOnly)value;
-                return d.DayNumber.ToString("D10", System.Globalization.CultureInfo.InvariantCulture);
-            }
-
-            if (underlying == typeof(TimeOnly))
-            {
-                var t = (TimeOnly)value;
-                return t.Ticks.ToString("D20", System.Globalization.CultureInfo.InvariantCulture);
-            }
-
-            return ValueHelper.FormatScalar(value);
+            return IndexKeys.Encode(propertyType, value);
         }
 
+        /// <summary>The key of an int property's value; equal to <see cref="IndexKeys.Encode"/>.</summary>
         internal static string NormalizeInt32(int iVal)
         {
             if ((uint)iVal < (uint)SmallIntNormalizedCache.Length)
                 return SmallIntNormalizedCache[iVal];
-            return FormatNormalizedInt64(iVal);
+            return IndexKeys.EncodeInt64(iVal);
         }
 
+        /// <summary>The key of a long property's value; equal to <see cref="IndexKeys.Encode"/>.</summary>
         internal static string NormalizeInt64(long lVal)
         {
             if ((ulong)lVal < (ulong)SmallIntNormalizedCache.Length)
                 return SmallIntNormalizedCache[(int)lVal];
-            if (lVal >= -900_000_000_000_000_000L && lVal <= 900_000_000_000_000_000L)
-                return FormatNormalizedInt64(lVal);
-            decimal shifted = (decimal)lVal + 1_000_000_000_000_000_000m;
-            return shifted.ToString("0000000000000000000.00000000", System.Globalization.CultureInfo.InvariantCulture);
+            return IndexKeys.EncodeInt64(lVal);
         }
 
-        private static string FormatNormalizedInt64(long val)
-        {
-            long shifted = 1_000_000_000_000_000_000L + val;
-            return string.Create(28, shifted, static (span, s) =>
-            {
-                for (int i = 18; i >= 0; i--)
-                {
-                    s = Math.DivRem(s, 10, out long rem);
-                    span[i] = (char)('0' + rem);
-                }
-                ".00000000".AsSpan().CopyTo(span.Slice(19));
-            });
-        }
-
+        /// <summary>The key of the value a read of the row gives back for this property: the same from
+        /// the stored row (<see cref="ReadBackFromRow"/>) as from the object written.</summary>
         internal static string GetNormalizedPropertyValue(PropertyInfoItem prop, object item)
         {
             if (prop == null || item == null)
                 return null;
 
+            // A non-zero number and a non-empty string are always stored as they are.
             switch (prop.ScalarKind)
             {
                 case ScalarPropertyKind.Int32 when prop.IntGetter != null:
-                    return NormalizeInt32(prop.IntGetter(item));
+                    int i = prop.IntGetter(item);
+                    if (i != 0) return NormalizeInt32(i);
+                    break;
                 case ScalarPropertyKind.String when prop.StringGetter != null:
-                    return prop.StringGetter(item);
+                    string s = prop.StringGetter(item);
+                    if (!string.IsNullOrEmpty(s)) return s;
+                    break;
                 case ScalarPropertyKind.Int64 when prop.LongGetter != null:
-                    return NormalizeInt64(prop.LongGetter(item));
+                    long l = prop.LongGetter(item);
+                    if (l != 0L) return NormalizeInt64(l);
+                    break;
             }
 
-            object val = prop.GetValue(item);
+            // Keyed as a read of the stored row gives it back: a value the writers leave out reads back
+            // as the property's value without a row (StoredValue), and the rows rebuild the same key.
+            object val = StoredValue.AsReadBack(prop, prop.GetValue(item));
             return val != null ? NormalizeIndexValue(prop.PropertyType, val) : null;
         }
     }

@@ -4,7 +4,7 @@
     "Xod.Conformance.Model.Customer": {
       "Id": "int",
       "Email": "text",
-      "Tier": "enum",
+      "Tier": { "enum": { "Basic": 0, "Silver": 1, "Gold": 2 } },
       "Active": "bool"
     },
     "Xod.Conformance.Model.Order": {

@@ -23,6 +23,12 @@ namespace Xod.Tests
         public string Payload { get; set; }
     }
 
+    public class IndexLogDatedRow
+    {
+        [PrimaryKey, Property(AutoNumber = true)] public int Id { get; set; }
+        [Property(Indexed = true)] public DateTime When { get; set; }
+    }
+
     /// <summary>
     /// The .xidx file is a snapshot followed by a log of delta records. Appending to the log is cheap; a
     /// snapshot costs the size of the whole index. These tests pin the policy that keeps an insert's cost
@@ -70,14 +76,15 @@ namespace Xod.Tests
         private static List<IndexLogRow> Rows(int start, int count) =>
             Enumerable.Range(start, count).Select(Row).ToList();
 
-        /// <summary>Reads where the snapshot of a framed (-3) .xidx file ends; the rest is the delta log.</summary>
+        /// <summary>Reads where the snapshot of a framed (-4) .xidx file ends; the rest is the delta log.</summary>
         private static (long SnapshotEnd, long Length) ReadLayout(string xidxPath)
         {
             byte[] bytes = File.ReadAllBytes(xidxPath);
             using var ms = new MemoryStream(bytes);
             using var r = new BinaryReader(ms, Encoding.UTF8);
             Assert.True(r.ReadBytes(Xidx2Header.Length).AsSpan().SequenceEqual(Xidx2Header));
-            Assert.Equal(-3, r.ReadInt32()); // framed snapshot whose log flushes are closed
+            Assert.Equal(-4, r.ReadInt32()); // framed snapshot, closed log flushes, keys v2
+            r.ReadString();                  // zone stamp
             int props = r.ReadInt32();
             for (int p = 0; p < props; p++)
             {
@@ -89,6 +96,40 @@ namespace Xod.Tests
                 ms.Position += blockLength;
             }
             return (ms.Position, bytes.Length);
+        }
+
+        /// <summary>The item code the index snapshot holds for a Sku.</summary>
+        private static string CodeOf(string dbPath, string sku) => CodeIn(IndexPath(dbPath), nameof(IndexLogRow.Sku), sku);
+
+        /// <summary>The item code an index snapshot holds for a property's key.</summary>
+        private static string CodeIn(string xidxPath, string property, string sku)
+        {
+            using var r = new BinaryReader(File.OpenRead(xidxPath), Encoding.UTF8);
+            r.ReadBytes(Xidx2Header.Length);
+            r.ReadInt32(); // marker
+            r.ReadString(); // zone stamp
+            int props = r.ReadInt32();
+            for (int p = 0; p < props; p++)
+            {
+                string name = r.ReadString();
+                int entries = r.ReadInt32();
+                r.ReadString();
+                r.ReadString();
+                int blockLength = r.ReadInt32();
+                if (name != property)
+                {
+                    r.BaseStream.Position += blockLength;
+                    continue;
+                }
+                for (int e = 0; e < entries; e++)
+                {
+                    string key = r.ReadString();
+                    int codes = r.ReadInt32();
+                    var held = Enumerable.Range(0, codes).Select(_ => r.ReadString()).ToList();
+                    if (key == sku) return held.Single();
+                }
+            }
+            throw new InvalidOperationException(property + " " + sku + " is not in the index");
         }
 
         /// <summary>Byte offsets where each delta record after the snapshot starts.</summary>
@@ -110,29 +151,168 @@ namespace Xod.Tests
             return starts;
         }
 
-        // Files written before flush-end records existed (marker -2) cannot tell a cut log from a whole
-        // one, so nothing is appended to them: their first save writes a snapshot in the new layout.
-        [Fact]
-        public void An_index_file_from_before_flush_end_records_is_rewritten_before_it_is_appended_to()
+        // Files from 2.0 (marker -2, before flush-end records; -3, with them) hold keys v1, which are
+        // rounded and misordered (ISS-053, ISS-054, ISS-056). They are never loaded or appended to: the
+        // index is rebuilt from the pages and written in the current layout. A planted wrong key proves the
+        // old file was not read.
+        [Theory]
+        [InlineData(-2)]
+        [InlineData(-3)]
+        public void An_index_file_with_v1_keys_is_rebuilt_from_the_pages(int oldMarker)
         {
-            string path = DbPath("legacy-marker");
+            string path = DbPath("legacy-marker" + oldMarker);
             string xidx = IndexPath(path);
             using (var db = new XodContext(path))
                 db.InsertRange(Rows(0, 5_000));
 
+            string planted = CodeOf(path, "SKU-00000007");
             int markerAt = Xidx2Header.Length;
             byte[] bytes = File.ReadAllBytes(xidx);
-            BitConverter.GetBytes(-2).CopyTo(bytes, markerAt); // the layouts are otherwise identical
+            BitConverter.GetBytes(oldMarker).CopyTo(bytes, markerAt); // the layouts are otherwise identical
             File.WriteAllBytes(xidx, bytes);
+            using (var fs = new FileStream(xidx, FileMode.Append, FileAccess.Write))
+            using (var w = new BinaryWriter(fs, Encoding.UTF8))
+            {
+                // A log record that removes row SKU-00000007 from the index, closed as a whole flush.
+                w.Write((byte)2); w.Write(string.Empty); w.Write(string.Empty); w.Write(planted);
+                w.Write((byte)3); w.Write(string.Empty); w.Write(string.Empty); w.Write(string.Empty);
+            }
 
             using (var db = new XodContext(path))
+            {
+                Assert.NotNull(db.Find<IndexLogRow>(r => r.Sku == "SKU-00000007"));
                 db.InsertRange(Rows(5_000, 1_500));
+            }
 
-            var layout = ReadLayout(xidx); // asserts marker -3
-            Assert.Equal(layout.Length, layout.SnapshotEnd);
+            ReadLayout(xidx); // asserts marker -4
 
             using (var db = new XodContext(path))
+            {
                 Assert.NotNull(db.Find<IndexLogRow>(r => r.Sku == "SKU-00006499"));
+                Assert.NotNull(db.Find<IndexLogRow>(r => r.Sku == "SKU-00000007"));
+            }
+        }
+
+        // With a password the index is an encrypted document. 2.0 wrote it with a TableIndex root and keys
+        // v1; such a document is never loaded. The planted removal proves the old document was not read.
+        [Fact]
+        public void An_encrypted_index_document_with_v1_keys_is_rebuilt_from_the_pages()
+        {
+            const string password = "index-pw";
+            string path = DbPath("legacy-document");
+            string xidx = IndexPath(path);
+            using (var db = new XodContext(path, password))
+                db.InsertRange(Rows(0, 50));
+
+            var doc = System.Xml.Linq.XDocument.Parse(Encoding.UTF8.GetString(Envelope.Open(File.ReadAllBytes(xidx), password)));
+            Assert.Equal("TableIndex2", doc.Root!.Name.LocalName);
+            doc.Root.Name = "TableIndex";
+            doc.Root.Descendants("Entry").Single(e => (string)e.Attribute("key") == "SKU-00000007").Remove();
+            File.WriteAllBytes(xidx, Envelope.Seal(Encoding.UTF8.GetBytes(doc.ToString()), password));
+
+            using (var db = new XodContext(path, password))
+                Assert.NotNull(db.Find<IndexLogRow>(r => r.Sku == "SKU-00000007"));
+
+            doc = System.Xml.Linq.XDocument.Parse(Encoding.UTF8.GetString(Envelope.Open(File.ReadAllBytes(xidx), password)));
+            Assert.Equal("TableIndex2", doc.Root!.Name.LocalName);
+        }
+
+        // A local DateTime reads back in the reading machine's zone, so an index of one is valid only in the
+        // zone that built it (ISS-057). The index records that zone; a different stamp is never trusted. The
+        // planted removal proves the old index was not read.
+        [Fact]
+        public void An_index_built_in_another_zone_is_rebuilt_from_the_pages()
+        {
+            string path = DbPath("zone");
+            string xidx = Path.Combine(Path.GetDirectoryName(path)!, typeof(IndexLogDatedRow).FullName + ".xidx");
+            var start = new DateTime(2026, 3, 1, 9, 0, 0, DateTimeKind.Local);
+            using (var db = new XodContext(path))
+                db.InsertRange(Enumerable.Range(0, 20).Select(i => new IndexLogDatedRow { When = start.AddDays(i) }).ToList());
+
+            byte[] bytes = File.ReadAllBytes(xidx);
+            using var ms = new MemoryStream(bytes);
+            using var r = new BinaryReader(ms, Encoding.UTF8);
+            r.ReadBytes(Xidx2Header.Length);
+            Assert.Equal(-4, r.ReadInt32());
+            int zoneAt = (int)ms.Position;
+            string zone = r.ReadString();
+            Assert.Equal(16, zone.Length); // a type with an indexed DateTime is stamped
+            string other = zone[0] == '0' ? "1" + zone[1..] : "0" + zone[1..];
+            Encoding.UTF8.GetBytes(other).CopyTo(bytes, zoneAt + 1);
+            File.WriteAllBytes(xidx, bytes);
+            string code = CodeIn(xidx, nameof(IndexLogDatedRow.Id), "09223372036854775809"); // Id 1, keys v2
+            using (var fs = new FileStream(xidx, FileMode.Append, FileAccess.Write))
+            using (var w = new BinaryWriter(fs, Encoding.UTF8))
+            {
+                // Remove row 1 from the index everywhere: a stale index would no longer find it.
+                w.Write((byte)2); w.Write(string.Empty); w.Write(string.Empty); w.Write(code);
+                w.Write((byte)3); w.Write(string.Empty); w.Write(string.Empty); w.Write(string.Empty);
+            }
+
+            using (var db = new XodContext(path))
+                Assert.Equal(1, db.Query<IndexLogDatedRow>(x => x.When == start).Single().Id);
+
+            using var after = new BinaryReader(File.OpenRead(xidx), Encoding.UTF8);
+            after.ReadBytes(Xidx2Header.Length);
+            after.ReadInt32();
+            Assert.Equal(zone, after.ReadString()); // rebuilt, and stamped with this machine's zone again
+        }
+
+        [Fact]
+        public void An_encrypted_index_built_in_another_zone_is_rebuilt_from_the_pages()
+        {
+            const string password = "index-pw";
+            string path = DbPath("zone-document");
+            string xidx = Path.Combine(Path.GetDirectoryName(path)!, typeof(IndexLogDatedRow).FullName + ".xidx");
+            var start = new DateTime(2026, 3, 1, 9, 0, 0, DateTimeKind.Local);
+            using (var db = new XodContext(path, password))
+                db.InsertRange(Enumerable.Range(0, 20).Select(i => new IndexLogDatedRow { When = start.AddDays(i) }).ToList());
+
+            var doc = System.Xml.Linq.XDocument.Parse(Encoding.UTF8.GetString(Envelope.Open(File.ReadAllBytes(xidx), password)));
+            string zone = (string)doc.Root!.Attribute("zone");
+            Assert.Equal(16, zone?.Length);
+            doc.Root.SetAttributeValue("zone", "0000000000000000" == zone ? "1111111111111111" : "0000000000000000");
+            doc.Root.Descendants("Entry").Where(e => e.Parent!.Attribute("name")!.Value == nameof(IndexLogDatedRow.When)).First().Remove();
+            File.WriteAllBytes(xidx, Envelope.Seal(Encoding.UTF8.GetBytes(doc.ToString()), password));
+
+            using (var db = new XodContext(path, password))
+                Assert.Equal(20, Enumerable.Range(0, 20).Count(i => db.Query<IndexLogDatedRow>(x => x.When == start.AddDays(i)).Count() == 1));
+
+            doc = System.Xml.Linq.XDocument.Parse(Encoding.UTF8.GetString(Envelope.Open(File.ReadAllBytes(xidx), password)));
+            Assert.Equal(zone, (string)doc.Root!.Attribute("zone"));
+        }
+
+        /// <summary>The file envelope as PLAN-046 section 5 states it, written from the spec.</summary>
+        private static class Envelope
+        {
+            private static readonly byte[] Magic = Encoding.ASCII.GetBytes("XODENC2\0");
+
+            private static byte[] Key(string password, byte[] salt)
+            {
+                string passphrase = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(password))).ToLowerInvariant();
+                return System.Security.Cryptography.Rfc2898DeriveBytes.Pbkdf2(
+                    Encoding.UTF8.GetBytes(passphrase), salt, 100_000, System.Security.Cryptography.HashAlgorithmName.SHA256, 32);
+            }
+
+            internal static byte[] Open(byte[] file, string password)
+            {
+                Assert.True(file.AsSpan(0, 8).SequenceEqual(Magic));
+                byte[] salt = file[8..24], nonce = file[24..36], tag = file[36..52], cipher = file[52..];
+                byte[] plain = new byte[cipher.Length];
+                using var gcm = new System.Security.Cryptography.AesGcm(Key(password, salt), 16);
+                gcm.Decrypt(nonce, cipher, tag, plain, Magic);
+                return plain;
+            }
+
+            internal static byte[] Seal(byte[] plain, string password)
+            {
+                byte[] salt = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
+                byte[] nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+                byte[] tag = new byte[16], cipher = new byte[plain.Length];
+                using (var gcm = new System.Security.Cryptography.AesGcm(Key(password, salt), 16))
+                    gcm.Encrypt(nonce, plain, cipher, tag, Magic);
+                return Magic.Concat(salt).Concat(nonce).Concat(tag).Concat(cipher).ToArray();
+            }
         }
 
         // A crash during an append can cut the log anywhere, including exactly between two records; the

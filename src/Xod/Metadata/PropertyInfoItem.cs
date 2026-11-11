@@ -118,6 +118,10 @@ namespace Xod
         public ValuePosition ValuePosition { get; set; }
         public dynamic DefaultValue { get; set; }
 
+        // What a read gives this property when its row leaves it out (Helpers.StoredValue).
+        internal object MissingValue { get; set; }
+        internal bool MissingValueKnown { get; set; }
+
         public CryptoMethod Encryption { get; set; }
     }
 }

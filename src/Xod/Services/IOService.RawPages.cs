@@ -264,7 +264,7 @@ namespace Xod.Services
                     if (rawPage.TryFindRow(rowCode, out int startIdx, out int rowLen))
                     {
                         string rowXml = System.Text.Encoding.UTF8.GetString(rawPage.Span.Slice(startIdx, rowLen));
-                        return XElement.Parse(rowXml, LoadOptions.None);
+                        return XmlText.Parse(rowXml);
                     }
                 }
                 catch
@@ -337,7 +337,7 @@ namespace Xod.Services
                         if (endIdx >= 0)
                         {
                             string rowXml = System.Text.Encoding.UTF8.GetString(tail.Slice(0, endIdx + 6));
-                            return XElement.Parse(rowXml, LoadOptions.None);
+                            return XmlText.Parse(rowXml);
                         }
                     }
                 }
@@ -372,7 +372,7 @@ namespace Xod.Services
                                     if (endIdx >= 0)
                                     {
                                         string rowXml = System.Text.Encoding.UTF8.GetString(tail.Slice(0, endIdx + 6));
-                                        return XElement.Parse(rowXml, LoadOptions.None);
+                                        return XmlText.Parse(rowXml);
                                     }
                                 }
                             }
@@ -486,7 +486,7 @@ namespace Xod.Services
                 if (rawPage.TryFindRow(rowCode, out int startIdx, out int len))
                 {
                     string rowXml = System.Text.Encoding.UTF8.GetString(rawPage.Span.Slice(startIdx, len));
-                    rowElement = XElement.Parse(rowXml, LoadOptions.None);
+                    rowElement = XmlText.Parse(rowXml);
                     startOffset = startIdx;
                     byteLength = len;
                     return true;
@@ -567,7 +567,7 @@ namespace Xod.Services
             string fullPath = Path.IsPathRooted(pageFileName) ? pageFileName : Path.Combine(root, normalizedName);
 
             byte[] replacementBytes = newRowElement != null
-                ? System.Text.Encoding.UTF8.GetBytes(newRowElement.ToString(SaveOptions.DisableFormatting))
+                ? XmlText.SerializeElement(newRowElement)
                 : Array.Empty<byte>();
 
             lock (syncLock)
@@ -713,7 +713,8 @@ namespace Xod.Services
                 RawPageBuffer rawPage;
                 if (page == null)
                 {
-                    page = AddPageElement(pagesRoot, out pageFileName);
+                    pageFileName = NewPageFileName();
+                    page = AddPageElement(pagesRoot, pageFileName);
                     tableModified = true;
 
                     byte[] initialBuf = PageBufferPool.Rent(Math.Max(pageMaxSizeBytes + 16384, 65536));
@@ -988,14 +989,15 @@ namespace Xod.Services
                         EnsureScratchCapacity(ref buf, pos + prop.Utf8OpenTag.Length + prop.Utf8CloseTag.Length + 8);
                         Buffer.BlockCopy(prop.Utf8OpenTag, 0, buf, pos, prop.Utf8OpenTag.Length);
                         pos += prop.Utf8OpenTag.Length;
+                        // As the document writer writes it (ValueHelper.FormatScalar), ISS-055.
                         if (v)
                         {
-                            "true"u8.CopyTo(buf.AsSpan(pos));
+                            "True"u8.CopyTo(buf.AsSpan(pos));
                             pos += 4;
                         }
                         else
                         {
-                            "false"u8.CopyTo(buf.AsSpan(pos));
+                            "False"u8.CopyTo(buf.AsSpan(pos));
                             pos += 5;
                         }
                         Buffer.BlockCopy(prop.Utf8CloseTag, 0, buf, pos, prop.Utf8CloseTag.Length);
@@ -1025,6 +1027,7 @@ namespace Xod.Services
                             exceptionService.Throw(new RequiredPropertyException(prop.PropertyName));
                         if (string.IsNullOrEmpty(v))
                             continue;
+                        StoredValue.CheckText(v, prop.PropertyName);
 
                         ReadOnlySpan<char> chars = v.AsSpan();
                         int maxUtf8 = System.Text.Encoding.UTF8.GetMaxByteCount(chars.Length);
@@ -1032,7 +1035,7 @@ namespace Xod.Services
                         Buffer.BlockCopy(prop.Utf8OpenTag, 0, buf, pos, prop.Utf8OpenTag.Length);
                         pos += prop.Utf8OpenTag.Length;
 
-                        if (chars.IndexOfAny('&', '<', '>') < 0)
+                        if (chars.IndexOfAny(XmlText.TextSpecials) < 0)
                         {
                             pos += System.Text.Encoding.UTF8.GetBytes(chars, buf.AsSpan(pos));
                         }
@@ -1056,13 +1059,14 @@ namespace Xod.Services
                         if (isDefault && (prop.IsPrimaryKey || prop.IsRelationshipKey || val is DateTime || val is DateOnly || val is TimeSpan || val is TimeOnly))
                             continue;
 
-                        string formatted = ValueHelper.FormatScalar(val);
+                        string formatted = StoredValue.Text(val, prop.PropertyName);
                         ReadOnlySpan<char> chars = formatted.AsSpan();
                         int maxUtf8 = System.Text.Encoding.UTF8.GetMaxByteCount(chars.Length);
-                        EnsureScratchCapacity(ref buf, pos + prop.Utf8OpenTag.Length + prop.Utf8CloseTag.Length + maxUtf8 * 2);
+                        // A reference is up to 8 bytes for one char (XmlText).
+                        EnsureScratchCapacity(ref buf, pos + prop.Utf8OpenTag.Length + prop.Utf8CloseTag.Length + maxUtf8 * 6);
                         Buffer.BlockCopy(prop.Utf8OpenTag, 0, buf, pos, prop.Utf8OpenTag.Length);
                         pos += prop.Utf8OpenTag.Length;
-                        if (chars.IndexOfAny('&', '<', '>') < 0)
+                        if (chars.IndexOfAny(XmlText.TextSpecials) < 0)
                             pos += System.Text.Encoding.UTF8.GetBytes(chars, buf.AsSpan(pos));
                         else
                             pos = WriteXmlEscapedUtf8(chars, ref buf, pos);
@@ -1085,13 +1089,26 @@ namespace Xod.Services
             return pos;
         }
 
+        // Element text by XmlText's policy: the markup three as entities, and the characters XML can't
+        // carry raw (control characters, CR) as numeric references, as the document writer writes them.
         private static int WriteXmlEscapedUtf8(ReadOnlySpan<char> chars, ref byte[] buf, int pos)
         {
             int start = 0;
             for (int i = 0; i < chars.Length; i++)
             {
                 char c = chars[i];
-                if (c == '&' || c == '<' || c == '>')
+                if (XmlText.NeedsReference(c))
+                {
+                    if (i > start)
+                        pos += System.Text.Encoding.UTF8.GetBytes(chars.Slice(start, i - start), buf.AsSpan(pos));
+                    "&#x"u8.CopyTo(buf.AsSpan(pos));
+                    pos += 3;
+                    ((int)c).TryFormat(buf.AsSpan(pos), out int hexLength, "X");
+                    pos += hexLength;
+                    buf[pos++] = (byte)';';
+                    start = i + 1;
+                }
+                else if (c == '&' || c == '<' || c == '>')
                 {
                     if (i > start)
                     {
@@ -1263,13 +1280,7 @@ namespace Xod.Services
                 return System.Text.Encoding.UTF8.GetString(utf8Span);
             }
 
-            string raw = System.Text.Encoding.UTF8.GetString(utf8Span);
-            return raw
-                .Replace("&lt;", "<")
-                .Replace("&gt;", ">")
-                .Replace("&quot;", "\"")
-                .Replace("&apos;", "'")
-                .Replace("&amp;", "&");
+            return XmlText.Unescape(System.Text.Encoding.UTF8.GetString(utf8Span));
         }
 
         internal bool TryReadEntitySliceFromRawPage(string pageFileName, TypeMetadata meta, ref int remainingSkip, int maxTake, System.Collections.IList outEntities)
@@ -1365,7 +1376,7 @@ namespace Xod.Services
                     try
                     {
                         string rowXml = System.Text.Encoding.UTF8.GetString(span.Slice(absStart, rowLen));
-                        outRows.Add(XElement.Parse(rowXml, LoadOptions.None));
+                        outRows.Add(XmlText.Parse(rowXml));
                         added++;
                     }
                     catch

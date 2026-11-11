@@ -12,33 +12,9 @@ namespace Xod.Engines.Serializers
 {
     public sealed class XmlStorageSerializer : IXodStorageSerializer
     {
-        private static readonly XmlWriterSettings SharedWriterSettings = new XmlWriterSettings
-        {
-            Indent = false,
-            CheckCharacters = false,
-            Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-            OmitXmlDeclaration = false
-        };
-
-        private static readonly XmlReaderSettings SharedReaderSettings = new XmlReaderSettings
-        {
-            IgnoreWhitespace = true,
-            IgnoreComments = true,
-            CheckCharacters = false,
-            DtdProcessing = DtdProcessing.Prohibit
-        };
-
         public StorageFormat Format => StorageFormat.Xml;
 
-        public byte[] Serialize(XDocument document)
-        {
-            using var ms = new MemoryStream(65536);
-            using (var writer = XmlWriter.Create(ms, SharedWriterSettings))
-            {
-                document.Save(writer);
-            }
-            return ms.ToArray();
-        }
+        public byte[] Serialize(XDocument document) => XmlText.Serialize(document);
 
         public XDocument Deserialize(byte[] data)
         {
@@ -46,7 +22,7 @@ namespace Xod.Engines.Serializers
                 return StorageSerializerFactory.Get(StorageSerializerFactory.DetectFormat(data)).Deserialize(data);
 
             using var ms = new MemoryStream(data, writable: false);
-            return XDocument.Load(ms, LoadOptions.None);
+            return XmlText.Load(ms);
         }
     }
 

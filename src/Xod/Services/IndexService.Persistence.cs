@@ -146,8 +146,10 @@ namespace Xod.Services
                             using var reader = new BinaryReader(source, Encoding.UTF8, leaveOpen: true);
 
                             int firstInt = reader.ReadInt32();
-                            if (firstInt == FramedSnapshot || firstInt == FramedSnapshotClosedFlushes)
+                            if (firstInt == FramedSnapshotKeysV2)
                             {
+                                if (reader.ReadString() != ZoneStampFor(type))
+                                    return false; // built in another zone: rebuilt from the pages
                                 int propCount = reader.ReadInt32();
                                 if (propCount < 0 || propCount > 1024)
                                     return false;
@@ -182,40 +184,8 @@ namespace Xod.Services
                             }
                             else
                             {
-                                int propCount = firstInt;
-                                if (propCount < 0 || propCount > 1024)
-                                    return false;
-
-                                for (int p = 0; p < propCount; p++)
-                                {
-                                    string propName = reader.ReadString();
-                                    int entryCount = reader.ReadInt32();
-                                    if (entryCount < 0)
-                                        return false;
-
-                                    string indexKey = GetIndexKey(type, propName);
-                                    var tree = new Dictionary<string, object>(Math.Max(16, entryCount), StringComparer.Ordinal);
-                                    propertyIndexes[indexKey] = tree;
-
-                                    for (int e = 0; e < entryCount; e++)
-                                    {
-                                        string normKey = reader.ReadString();
-                                        int codeCount = reader.ReadInt32();
-                                        if (codeCount == 1)
-                                        {
-                                            tree[normKey] = reader.ReadString();
-                                        }
-                                        else if (codeCount > 1)
-                                        {
-                                            var set = new HashSet<string>(codeCount, StringComparer.Ordinal);
-                                            for (int c = 0; c < codeCount; c++)
-                                            {
-                                                set.Add(reader.ReadString());
-                                            }
-                                            tree[normKey] = set;
-                                        }
-                                    }
-                                }
+                                // -2, -3 and the unframed layout: keys v1. Rebuilt from the pages.
+                                return false;
                             }
 
                             long snapshotEnd = source.Position;
@@ -281,17 +251,16 @@ namespace Xod.Services
                                 }
                             }
 
-                            // A v3 log ends with the record that closed its last flush. Anything after it is a
+                            // The log ends with the record that closed its last flush. Anything after it is a
                             // flush cut short by a crash, even when the cut falls between two whole records.
-                            if (firstInt == FramedSnapshotClosedFlushes && lastFlushEnd != source.Length)
+                            if (lastFlushEnd != source.Length)
                                 return false;
 
                             hydratedTypes.Add(type.FullName);
 
                             // Only a plain file can be appended to; an encrypted index is always rewritten.
                             if (blockFilePath != null)
-                                LogFor(type).Loaded(snapshotEnd, source.Length - snapshotEnd,
-                                closedFlushes: firstInt == FramedSnapshotClosedFlushes);
+                                LogFor(type).Loaded(snapshotEnd, source.Length - snapshotEnd);
                             loaded = true;
                         }
                     }
@@ -325,8 +294,10 @@ namespace Xod.Services
             }
 
             XElement root = idxFile?.Root();
-            if (root == null || root.Name.LocalName != "TableIndex")
+            if (root == null || root.Name.LocalName != IndexDocumentRoot)
                 return false;
+            if ((root.Attribute("zone")?.Value ?? string.Empty) != ZoneStampFor(type))
+                return false; // built in another zone: rebuilt from the pages
 
             lock (syncLock)
             {
@@ -630,9 +601,11 @@ namespace Xod.Services
 
                 using var fs = new FileStream(indexFilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 65536);
 
-                Span<byte> hdrBuf = stackalloc byte[Xidx2HeaderBytes.Length];
-                if (fs.Read(hdrBuf) != Xidx2HeaderBytes.Length || !hdrBuf.SequenceEqual(Xidx2HeaderBytes))
-                    return false;
+                Span<byte> hdrBuf = stackalloc byte[Xidx2HeaderBytes.Length + sizeof(int)];
+                if (fs.Read(hdrBuf) != hdrBuf.Length ||
+                    !hdrBuf.Slice(0, Xidx2HeaderBytes.Length).SequenceEqual(Xidx2HeaderBytes) ||
+                    BitConverter.ToInt32(hdrBuf.Slice(Xidx2HeaderBytes.Length)) != FramedSnapshotKeysV2)
+                    return false; // not the layout this context loaded (another writer replaced it): snapshot
 
                 // Appended at the end of whatever the file holds. Another context may have appended too
                 // (concurrent writers need DatabaseOptions.LockDatabase); appending keeps its records and
@@ -739,7 +712,8 @@ namespace Xod.Services
             using (var writer = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: false))
             {
                 writer.Write(Xidx2HeaderBytes);
-                writer.Write(FramedSnapshotClosedFlushes);
+                writer.Write(FramedSnapshotKeysV2);
+                writer.Write(ZoneStampFor(indexedProps));
                 writer.Write(indexedProps.Length);
 
                 for (int i = 0; i < indexedProps.Length; i++)
@@ -775,7 +749,10 @@ namespace Xod.Services
             lock (syncLock)
             {
                 EnsureAllPropertiesHydratedUnlocked(type);
-                var root = new XElement("TableIndex", new XAttribute("type", type.FullName));
+                var root = new XElement(IndexDocumentRoot, new XAttribute("type", type.FullName));
+                string zone = ZoneStampFor(indexedProps);
+                if (zone.Length > 0)
+                    root.SetAttributeValue("zone", zone);
                 foreach (var prop in indexedProps)
                 {
                     string indexKey = GetIndexKey(type, prop.PropertyName);

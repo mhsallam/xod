@@ -33,6 +33,13 @@ namespace Xod
         public IndexDataTypeException() : base("Wrong index datatype. Indices can only be a primitive, numeric, string, datetime, or guid datatype.") { }
     }
 
+    /// <summary>A string holds a lone surrogate: UTF-16 that isn't text, which no storage format can carry
+    /// unchanged. It is refused rather than stored as U+FFFD.</summary>
+    public class InvalidTextException : XodException
+    {
+        public InvalidTextException(string propertyName) : base($"Property '{propertyName}' holds a lone surrogate (invalid UTF-16), which can't be stored unchanged.") { }
+    }
+
     public class AutonumberDataTypeException : XodException
     {
         public AutonumberDataTypeException() : base("Wrong auto number datatype. This feature can only be applied on numeric or Guid datatypes.") { }

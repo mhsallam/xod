@@ -13,8 +13,56 @@ namespace Xod.Services
 
         // The int after the XIDX2 header. -2: framed property blocks, then a log of delta records.
         // -3: the same, and every flush appended to the log ends with DeltaLog.OpFlushEnd (PLAN-041).
-        private const int FramedSnapshot = -2;
-        private const int FramedSnapshotClosedFlushes = -3;
+        // -4: the -3 layout holding keys v2 (IndexKeys). The only layout loaded: the others hold v1 keys,
+        // which are rounded and misordered (ISS-053, ISS-054, ISS-056, ISS-057), so their tables are
+        // rebuilt from the pages. A 2.0 library reads -4 as a negative property count and rebuilds too.
+        private const int FramedSnapshotKeysV2 = -4;
+
+        /// <summary>
+        /// What an index's keys assume about the machine, written after the -4 marker (a <c>zone</c>
+        /// attribute in the document form) and compared on load: an index whose stamp differs is rebuilt
+        /// from the pages. A local <c>DateTime</c> is stored with its offset and read back in the reading
+        /// machine's zone, so its key (ticks, as C# compares) depends on that zone (ISS-057). For a type
+        /// with an indexed <c>DateTime</c> the stamp is a hash of the local zone's rules (not its name, so
+        /// the files say nothing about where they were written); otherwise it is empty.
+        /// </summary>
+        internal static string ZoneStampFor(IEnumerable<PropertyInfoItem> indexedProps)
+        {
+            foreach (var prop in indexedProps)
+            {
+                if (IndexKeys.Underlying(prop.PropertyType) == typeof(DateTime))
+                    return LocalZoneStamp();
+            }
+            return string.Empty;
+        }
+
+        // The zone last stamped and its hash, swapped as one reference so readers never see them torn.
+        private static Tuple<TimeZoneInfo, string> stampedZone;
+
+        private static string LocalZoneStamp()
+        {
+            TimeZoneInfo zone = TimeZoneInfo.Local;
+            var stamped = stampedZone;
+            if (stamped == null || !ReferenceEquals(stamped.Item1, zone))
+            {
+                byte[] hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(zone.ToSerializedString()));
+                stamped = Tuple.Create(zone, Convert.ToHexString(hash, 0, 8));
+                stampedZone = stamped;
+            }
+            return stamped.Item2;
+        }
+
+        private string ZoneStampFor(Type type)
+        {
+            var meta = propertyService.GetMetadata(type);
+            return ZoneStampFor(meta != null
+                ? meta.IndexedProperties
+                : propertyService.Properties(type.FullName).Where(s => s.IsIndexed || s.IsPrimaryKey || s.IsUnique));
+        }
+
+        /// <summary>The root of the document form of an index (written when the database has a password),
+        /// holding keys v2. A <c>TableIndex</c> root holds v1 keys and is rebuilt; 2.0 rebuilds this one.</summary>
+        private const string IndexDocumentRoot = "TableIndex2";
 
         /// <summary>
         /// The layout of one type's .xidx file - a snapshot followed by a log of delta records - and the
@@ -33,7 +81,7 @@ namespace Xod.Services
             internal const byte OpAdd = 1;
             internal const byte OpRemove = 2;
 
-            /// <summary>Closes every flush appended to a v3 file. A log that does not end with one was cut
+            /// <summary>Closes every flush appended to the log. A log that does not end with one was cut
             /// short (a crash during the append) and is not trusted.</summary>
             internal const byte OpFlushEnd = 3;
 
@@ -97,15 +145,12 @@ namespace Xod.Services
                 ClearPending();
             }
 
-            /// <param name="closedFlushes">The file is v3: each flush in its log ends with
-            /// <see cref="OpFlushEnd"/>. An older file cannot tell a cut log from a whole one, so it is
-            /// never appended to: its first save writes a v3 snapshot.</param>
-            internal void Loaded(long snapshotBytes, long logBytes, bool closedFlushes)
+            /// <summary>A file was loaded: each flush in its log ends with <see cref="OpFlushEnd"/>, so it
+            /// can be appended to.</summary>
+            internal void Loaded(long snapshotBytes, long logBytes)
             {
                 SnapshotBytes = snapshotBytes;
                 LogBytes = logBytes;
-                if (!closedFlushes)
-                    snapshotDue = true;
             }
 
             internal void Appended(long fileLength)
@@ -362,10 +407,12 @@ namespace Xod.Services
             }
         }
 
-        internal bool IndexItem(Type type, object item, string itemCodePath, XElement pageElementInTable = null)
+        // The keys live in the index only. 2.0 also wrote each page's first and last key into the table file
+        // (<Index begins/ends>); nothing read them, and they cost a table write per page (ISS-055).
+        internal void IndexItem(Type type, object item, string itemCodePath)
         {
             if (type == null || item == null || string.IsNullOrEmpty(itemCodePath))
-                return false;
+                return;
 
             var meta = propertyService.GetMetadata(type);
             var indexedProps = meta != null
@@ -375,14 +422,12 @@ namespace Xod.Services
                     .ToArray();
 
             if (indexedProps.Length == 0)
-                return false;
+                return;
 
-            bool tableStructureChanged = false;
             bool holdsIndex = HoldsWholeIndex(type);
             lock (syncLock)
             {
                 bool trackReverse = reverseHydratedTypes.Contains(type.FullName);
-                bool updatePageElms = pageElementInTable != null && !pageElementInTable.HasElements;
                 var log = LogFor(type);
 
                 for (int i = 0; i < indexedProps.Length; i++)
@@ -410,18 +455,10 @@ namespace Xod.Services
 
                         log.Record(DeltaLog.OpAdd, prop.PropertyName, normVal, itemCodePath);
                     }
-
-                    // The page's key range lives in the table file, not the index: always kept.
-                    if (updatePageElms)
-                    {
-                        if (UpdatePageIndexElement(pageElementInTable, prop.PropertyName, normVal))
-                            tableStructureChanged = true;
-                    }
                 }
                 if (holdsIndex)
                     dirtyTypes.Add(type);
             }
-            return tableStructureChanged;
         }
 
         internal void IndexRowElement(Type type, XElement rowElement, string pageCode)
@@ -447,16 +484,11 @@ namespace Xod.Services
 
                 foreach (var prop in indexedProps)
                 {
-                    string rawVal = prop.ValuePosition == ValuePosition.Attribute
-                        ? entityElement.Attribute(prop.PropertyName)?.Value
-                        : entityElement.Element(prop.PropertyName)?.Value;
-
-                    if (string.IsNullOrEmpty(rawVal)) continue;
-
-                    object parsed = ValueHelper.ParseScalar(prop.PropertyType, rawVal);
+                    object parsed = ReadBackFromRow(prop, entityElement);
                     if (parsed == null) continue;
 
                     string normVal = NormalizeIndexValue(prop.PropertyType, parsed);
+                    if (normVal == null) continue; // NaN: no key, not indexed
                     string key = GetIndexKey(type, prop.PropertyName);
 
                     if (!propertyIndexes.TryGetValue(key, out var tree))
@@ -479,29 +511,6 @@ namespace Xod.Services
                 codeToIndexEntries[itemCodePath] = list;
             }
             list.Add((indexKey, normVal));
-        }
-
-        private static bool UpdatePageIndexElement(XElement pageElement, string propertyName, string formattedValue)
-        {
-            if (pageElement == null || string.IsNullOrEmpty(formattedValue)) return false;
-
-            XElement indexElm = pageElement.Elements("Index")
-                .FirstOrDefault(s => s.Attribute("property")?.Value == propertyName);
-
-            if (indexElm == null)
-            {
-                indexElm = new XElement("Index",
-                    new XAttribute("property", propertyName),
-                    new XAttribute("begins", formattedValue),
-                    new XAttribute("ends", formattedValue));
-                pageElement.Add(indexElm);
-                return true;
-            }
-            else
-            {
-                indexElm.SetAttributeValue("ends", formattedValue);
-                return false;
-            }
         }
 
         internal void RemoveRowElement(Type type, XElement rowElement, string itemCodePath, bool persist = false)
@@ -539,18 +548,12 @@ namespace Xod.Services
                 for (int i = 0; i < indexedProps.Length; i++)
                 {
                     var prop = indexedProps[i];
-                    string rawVal = prop.ValuePosition == ValuePosition.Attribute
-                        ? entityElement.Attribute(prop.PropertyName)?.Value
-                        : entityElement.Element(prop.PropertyName)?.Value;
-
-                    if (string.IsNullOrEmpty(rawVal))
-                        continue;
-
-                    object parsed = ValueHelper.ParseScalar(prop.PropertyType, rawVal);
+                    object parsed = ReadBackFromRow(prop, entityElement);
                     if (parsed == null)
                         continue;
 
                     string normVal = NormalizeIndexValue(prop.PropertyType, parsed);
+                    if (normVal == null) continue; // NaN: never indexed
                     string key = GetIndexKey(type, prop.PropertyName);
 
                     EnsurePropertyHydratedUnlocked(key);
@@ -698,6 +701,40 @@ namespace Xod.Services
             return Array.Empty<string>();
         }
 
+        /// <summary>
+        /// The largest value an integer property's index holds, without reading the whole index: a block
+        /// not yet read keeps its largest key in its header, and a key can't leave such a block without
+        /// the block being read first. False when this context doesn't hold the type's whole index.
+        /// </summary>
+        internal bool TryGetHighestInteger(Type type, PropertyInfoItem prop, out decimal? highest)
+        {
+            highest = null;
+            if (type == null || prop == null || IndexKeys.KindOf(prop.PropertyType) != IndexKeys.Kind.Integer)
+                return false;
+
+            string key = GetIndexKey(type, prop.PropertyName);
+            lock (syncLock)
+            {
+                if (!hydratedTypes.Contains(type.FullName))
+                    return false;
+
+                string max = null;
+                if (unhydratedBlocks.TryGetValue(key, out var block) && block.EntryCount > 0)
+                    max = block.MaxKey;
+                if (propertyIndexes.TryGetValue(key, out var tree))
+                {
+                    foreach (string k in tree.Keys)
+                    {
+                        if (max == null || string.CompareOrdinal(k, max) > 0)
+                            max = k;
+                    }
+                }
+                if (!string.IsNullOrEmpty(max))
+                    highest = IndexKeys.DecodeInteger(max);
+                return true;
+            }
+        }
+
         internal IReadOnlyCollection<string> LookupExact(Type type, string propertyName, object value)
         {
             if (type == null || string.IsNullOrEmpty(propertyName) || value == null)
@@ -710,6 +747,7 @@ namespace Xod.Services
             if (prop == null) return Array.Empty<string>();
 
             string normVal = NormalizeIndexValue(prop.PropertyType, value);
+            if (normVal == null) return Array.Empty<string>();
             string key = GetIndexKey(type, propertyName);
 
             lock (syncLock)

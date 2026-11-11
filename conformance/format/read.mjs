@@ -4,6 +4,8 @@
 //   node conformance/format/read.mjs <folder> [password]   print a database's content as JSON
 //   node conformance/format/read.mjs --check               check every fixture against content*.json
 //   node conformance/format/read.mjs --write               rewrite content*.json (after a deliberate change)
+//   node conformance/format/read.mjs --check-fresh <root>  check the dataset as the library in the tree writes
+//                                                          it (after: dotnet run ... -- data <root>)
 //
 // Node 18 or later, standard library only (node:crypto for AES-GCM and PBKDF2, node:zlib for Brotli).
 import fs from 'node:fs';
@@ -131,9 +133,55 @@ function parseXml(s) {
   return el();
 }
 
-// ---- normalised index keys (section 8.3); the type comes from column-types.json until the manifest exists
-function normKey(type, text) {
+// ---- index keys (section 8.3); the type comes from column-types.json until the manifest exists.
+// Keys v1 (2.0: XIDX2 markers -2/-3, a TableIndex document) and keys v2 (the next release: marker -4, TableIndex2).
+function normKey(type, text, version) {
   if (text == null) return null;
+  return version === 2 ? keyV2(type, text) : keyV1(type, text);
+}
+
+const TWO63 = 2n ** 63n;
+function keyV2(type, text) {
+  if (type === 'int') return (BigInt(text) + TWO63).toString().padStart(20, '0');
+  if (type?.enum) {
+    // By value: a name, a number, or a [Flags] list such as "Read, Write".
+    let v = 0n;
+    for (const part of text.split(',').map((s) => s.trim())) {
+      if (/^-?\d+$/.test(part)) v |= BigInt(part);
+      else if (part in type.enum) v |= BigInt(type.enum[part]);
+      else throw new Error('enum value ' + part + ' is not in column-types.json');
+    }
+    return (v + TWO63).toString().padStart(20, '0');
+  }
+  if (type === 'decimal') {
+    // Zero is "1"; otherwise sign, exponent of the first digit, and the digits without trailing zeros.
+    const neg = text.startsWith('-');
+    const [ip, fp = ''] = (neg ? text.slice(1) : text).split('.');
+    const all = ip + fp;
+    const lead = all.search(/[1-9]/);
+    if (lead < 0) return '1';
+    const digits = all.slice(lead).replace(/0+$/, '');
+    const e = ip.length - lead - 1;
+    if (!neg) return '2' + String(e + 50).padStart(2, '0') + digits;
+    return '0' + String(50 - e).padStart(2, '0') + [...digits].map((d) => 9 - Number(d)).join('') + '~';
+  }
+  if (type === 'double' || type === 'float') {
+    // The IEEE bits of the double (a float widened), flipped so that unsigned order is numeric order.
+    let d = type === 'float' ? Math.fround(Number(text)) : Number(text);
+    if (Number.isNaN(d)) return null; // NaN has no key
+    if (d === 0) d = 0; // -0 takes the key of 0
+    const b = Buffer.alloc(8);
+    b.writeDoubleBE(d);
+    let u = b.readBigUInt64BE();
+    u = u & TWO63 ? ~u & (2n ** 64n - 1n) : u | TWO63;
+    return u.toString().padStart(20, '0');
+  }
+  if (type === 'text' || type === 'uuid') return text;
+  throw new Error('no key rule for type ' + JSON.stringify(type));
+}
+
+function keyV1(type, text) {
+  if (type?.enum) return text;
   if (type === 'int' || type === 'decimal') {
     // 10^18 + value, 19 integer digits, 8 decimals, rounded half away from zero.
     const neg = text.startsWith('-');
@@ -156,18 +204,22 @@ function readIndex(dir, file, unwrap) {
   const add = (prop, k, c) => ((idx[prop] ??= {})[k] ??= new Set()).add(c);
   if (raw.toString('utf8', 0, H.length) !== H) {
     const doc = parseDoc(raw).root; // the document form, used with a password (section 8.2)
-    if (doc.name !== 'TableIndex') throw new Error(file + ': neither XIDX2 nor a TableIndex document');
+    const version = { TableIndex: 1, TableIndex2: 2 }[doc.name];
+    if (!version) throw new Error(file + ': neither XIDX2 nor a TableIndex document');
     for (const pr of doc.children) {
       idx[pr.attrs.name] = {};
       for (const e of pr.children) for (const c of e.attrs.codes.split(',')) add(pr.attrs.name, e.attrs.key, c);
     }
-    return { idx, form: 'document' };
+    return { idx, form: 'document', version, zone: doc.attrs.zone ?? '' };
   }
   let p = H.length;
   const i32 = () => { const v = raw.readInt32LE(p); p += 4; return v; };
   const str = () => { const [s, np] = readString(raw, p); p = np; return s; };
   const marker = i32();
-  if (marker !== -3 && marker !== -2) throw new Error(file + ': an unframed snapshot (not produced by 2.0)');
+  if (marker !== -4 && marker !== -3 && marker !== -2) throw new Error(file + ': an unframed snapshot (not produced by 2.0 or later)');
+  // -4 records what its keys assume about the writing machine: a hash of the local zone's rules for a
+  // type with an indexed DateTime, else empty (section 8.1). A reader in another zone rebuilds.
+  const zone = marker === -4 ? str() : '';
   for (let n = i32(); n > 0; n--) {
     const prop = str(), entries = i32(), min = str(), max = str(), len = i32(), end = p + len;
     idx[prop] ??= {};
@@ -191,9 +243,9 @@ function readIndex(dir, file, unwrap) {
     } else if (op === 3) lastEnd = p;
     else throw new Error(file + ': log op ' + op);
   }
-  if (marker === -3 && lastEnd !== raw.length) throw new Error(file + ': log not closed by an end-of-flush record');
+  if (marker !== -2 && lastEnd !== raw.length) throw new Error(file + ': log not closed by an end-of-flush record');
   for (const b of Object.values(idx)) for (const [k, s] of Object.entries(b)) if (s.size === 0) delete b[k];
-  return { idx, form: 'binary' };
+  return { idx, form: 'binary', version: marker === -4 ? 2 : 1, zone };
 }
 
 // ---- a whole database (sections 2, 5-7)
@@ -253,16 +305,18 @@ export function readDatabase(dir, password, columnTypes = {}) {
 
   // Every index must equal what the pages say.
   const indexProblems = [];
+  const indexVersions = new Set();
   let indexEntries = 0;
   for (const xf of fs.readdirSync(dir).filter((f) => f.endsWith('.xidx')).sort()) {
     const table = xf.slice(0, -5);
-    const { idx } = readIndex(dir, xf, unwrap);
+    const { idx, version } = readIndex(dir, xf, unwrap);
+    indexVersions.add(version);
     for (const [prop, got] of Object.entries(idx)) {
       const type = columnTypes[table]?.[prop];
       if (!type) { indexProblems.push(`${table}.${prop}: no type in column-types.json`); continue; }
       const want = {};
       for (const r of tables[table] ?? []) {
-        const k = normKey(type, r.fields[prop]?.text ?? r.attrs[prop]);
+        const k = normKey(type, r.fields[prop]?.text ?? r.attrs[prop], version);
         if (k != null) (want[k] ??= new Set()).add(r.code);
       }
       const canon = (o) => JSON.stringify(Object.keys(o).sort().map((k) => [k, [...o[k]].sort()]));
@@ -270,27 +324,35 @@ export function readDatabase(dir, password, columnTypes = {}) {
       indexEntries += Object.keys(got).length;
     }
   }
-  return { database: { ...dbDoc.root.attrs }, content, indexEntries, indexProblems };
+  return { database: { ...dbDoc.root.attrs }, content, indexEntries, indexProblems, indexVersions: [...indexVersions].sort() };
 }
 
 // ---- command line
+// The committed fixtures (written by 2.0.1, so keys v1), and the same dataset as the library in the tree
+// writes it (--check-fresh <root>: keys v2, and nothing older).
+const DATASET = (root) => [
+  { name: 'xml', dir: path.join(root, 'xml'), expect: 'content.json', types: 'dataset' },
+  { name: 'json', dir: path.join(root, 'json'), expect: 'content.json', types: 'dataset' },
+  { name: 'binary', dir: path.join(root, 'binary'), expect: 'content.json', types: 'dataset' },
+  { name: 'password', dir: path.join(root, 'password'), password: 'conformance-password', expect: 'content.json', types: 'dataset' },
+];
 const FIXTURES = [
-  { name: 'xml', dir: 'conformance/data/xml', expect: 'content.json', types: 'dataset' },
-  { name: 'json', dir: 'conformance/data/json', expect: 'content.json', types: 'dataset' },
-  { name: 'binary', dir: 'conformance/data/binary', expect: 'content.json', types: 'dataset' },
-  { name: 'password', dir: 'conformance/data/password', password: 'conformance-password', expect: 'content.json', types: 'dataset' },
-  { name: 'v1.2.5', dir: 'tests/Xod.Tests/fixtures/v1.2.5-xml', expect: 'content-v1.2.5.json', types: 'v1.2.5' },
+  ...DATASET(path.join(repo, 'conformance', 'data')),
+  { name: 'v1.2.5', dir: path.join(repo, 'tests', 'Xod.Tests', 'fixtures', 'v1.2.5-xml'), expect: 'content-v1.2.5.json', types: 'v1.2.5' },
 ];
 const stable = (o) => JSON.stringify(o, null, 1) + '\n';
 
 function main(args) {
   const types = JSON.parse(fs.readFileSync(path.join(here, 'column-types.json'), 'utf8'));
-  if (args[0] === '--check' || args[0] === '--write') {
+  if (args[0] === '--check' || args[0] === '--write' || args[0] === '--check-fresh') {
+    const fresh = args[0] === '--check-fresh';
+    if (fresh && !args[1]) { console.error('usage: read.mjs --check-fresh <root written by: -- data <root>>'); process.exit(2); }
     let failed = 0;
-    for (const fx of FIXTURES) {
+    for (const fx of fresh ? DATASET(path.resolve(args[1])) : FIXTURES) {
       let line;
       try {
-        const r = readDatabase(path.join(repo, fx.dir), fx.password, types[fx.types]);
+        const r = readDatabase(fx.dir, fx.password, types[fx.types]);
+        if (fresh && r.indexVersions.join() !== '2') r.indexProblems.push('index keys v' + r.indexVersions.join(', v') + '; the library in the tree writes v2 only');
         const expectPath = path.join(here, fx.expect);
         if (args[0] === '--write' && fx.name !== 'json' && fx.name !== 'binary' && fx.name !== 'password') fs.writeFileSync(expectPath, stable(r.content));
         const same = fs.existsSync(expectPath) && fs.readFileSync(expectPath, 'utf8').replace(/\r\n/g, '\n') === stable(r.content);
@@ -305,7 +367,7 @@ function main(args) {
     }
     process.exit(failed ? 1 : 0);
   }
-  if (!args[0]) { console.error('usage: read.mjs <folder> [password] | --check | --write'); process.exit(2); }
+  if (!args[0]) { console.error('usage: read.mjs <folder> [password] | --check | --write | --check-fresh <root>'); process.exit(2); }
   const r = readDatabase(path.resolve(args[0]), args[1], types.dataset);
   console.log(stable(r));
 }

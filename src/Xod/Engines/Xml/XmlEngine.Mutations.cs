@@ -86,8 +86,7 @@ namespace Xod.Engines.Xml
                     WriteDiagnostics.End(ref WriteDiagnostics.RawTicks, tRaw);
                     if (rawOk)
                     {
-                        if (indexService.IndexItem(type, item, itemPath, rawPageElement))
-                            rawTableModified = true;
+                        indexService.IndexItem(type, item, itemPath);
 
                         if (rawTableModified)
                         {
@@ -101,13 +100,13 @@ namespace Xod.Engines.Xml
                     }
                 }
 
-                long tOpenPage = WriteDiagnostics.Begin();
-                XFile pageFile = ioService.OpenPageOrCreate(tableFile, out bool tableModified, out XElement tablePageElement);
-                WriteDiagnostics.End(ref WriteDiagnostics.OpenPageTicks, tOpenPage);
-                if (pageFile != null)
+                // The row is built before the table changes: a row that fails to build (a refused
+                // value, a child that breaks a constraint) must leave no page registered that nothing
+                // would save (ISS-061). The row's path names its page, so the page is chosen first and
+                // registered only once the row exists, as the fast row writer does.
+                string pageFileName = ioService.ChooseAppendPage(tableFile, out XElement tablePageElement);
                 {
-                    string pageFileName = System.IO.Path.GetFileName(pageFile.Path);
-                    string pageCode = System.IO.Path.GetFileNameWithoutExtension(pageFile.Path);
+                    string pageCode = System.IO.Path.GetFileNameWithoutExtension(pageFileName);
                     long tPick = WriteDiagnostics.Begin();
                     itemCode = ValueHelper.PickCode();
                     WriteDiagnostics.End(ref WriteDiagnostics.PickCodeTicks, tPick);
@@ -126,8 +125,18 @@ namespace Xod.Engines.Xml
                     WriteDiagnostics.End(ref WriteDiagnostics.WriteTicks, tWrite);
                     WriteDiagnostics.EndWrite();
                     WriteDiagnostics.Entity();
+                    bool tableModified = false;
                     if (xItem != null)
                     {
+                        long tOpenPage = WriteDiagnostics.Begin();
+                        if (tablePageElement == null)
+                        {
+                            tablePageElement = ioService.AddPage(tableFile, pageFileName);
+                            tableModified = true;
+                        }
+                        XFile pageFile = ioService.OpenFileOrCreate(pageFileName, typeof(TablePage));
+                        WriteDiagnostics.End(ref WriteDiagnostics.OpenPageTicks, tOpenPage);
+
                         long tAddRow = WriteDiagnostics.Begin();
                         var re = new XElement("Row", new XAttribute("code", itemCode), xItem);
                         pageFile.AddRow(itemCode, re);
@@ -151,8 +160,7 @@ namespace Xod.Engines.Xml
                         }
 
                         long tIndex = WriteDiagnostics.Begin();
-                        if (indexService.IndexItem(type, item, itemPath, tablePageElement))
-                            tableModified = true;
+                        indexService.IndexItem(type, item, itemPath);
                         WriteDiagnostics.End(ref WriteDiagnostics.IndexTicks, tIndex);
 
                         long tPageSave = WriteDiagnostics.Begin();
@@ -222,34 +230,6 @@ namespace Xod.Engines.Xml
             return xItem;
         }
 
-        private static bool ShouldOmitScalarValue(object value, Type effectivePropType, PropertyInfoItem prop, bool shallowWrite)
-        {
-            if (value == null)
-                return true;
-
-            bool isTypeDefault = value.Equals(ValueHelper.DefaultOf(effectivePropType));
-            if (shallowWrite || prop.IsPrimaryKey || prop.IsRelationshipKey)
-            {
-                return isTypeDefault;
-            }
-
-            if (isTypeDefault && prop.DefaultValue != null && !prop.DefaultValue.Equals(ValueHelper.DefaultOf(effectivePropType)))
-            {
-                return true;
-            }
-
-            return value switch
-            {
-                string s => string.IsNullOrEmpty(s),
-                Guid g => g == Guid.Empty,
-                DateTime dt => dt == default,
-                DateOnly d => d == default,
-                TimeSpan ts => ts == default,
-                TimeOnly to => to == default,
-                _ => false
-            };
-        }
-
         private XElement WriteProperty(Type type, object item, XElement xItem, PropertyInfoItem prop, bool shallowWrite = false, ReadWriteTrack writeTrack = null)
         {
             object value = prop.GetValue(item);
@@ -270,10 +250,10 @@ namespace Xod.Engines.Xml
             // Scalar / value types
             if (ValueHelper.IsScalarType(effectivePropType))
             {
-                if (ShouldOmitScalarValue(value, effectivePropType, prop, shallowWrite))
+                if (StoredValue.IsLeftOut(value, effectivePropType, prop, shallowWrite))
                     return null;
 
-                string formattedValue = ValueHelper.FormatScalar(value);
+                string formattedValue = StoredValue.Text(value, prop.PropertyName);
 
                 if (prop.ValuePosition == ValuePosition.Attribute)
                 {
@@ -290,9 +270,7 @@ namespace Xod.Engines.Xml
                         _ => strVal
                     };
 
-                    propertyElement = prop.IsMarkup
-                        ? new XElement(prop.PropertyName, new XCData(strVal))
-                        : new XElement(prop.PropertyName, strVal);
+                    propertyElement = new XElement(prop.PropertyName, XmlText.TextNode(strVal, preferCData: prop.IsMarkup));
 
                     xItem.Add(propertyElement);
                 }
@@ -315,8 +293,8 @@ namespace Xod.Engines.Xml
                         if (entry.Key != null)
                         {
                             propertyElement.Add(new XElement("Entry",
-                                new XAttribute("key", ValueHelper.FormatScalar(entry.Key)),
-                                entry.Value != null ? ValueHelper.FormatScalar(entry.Value) : string.Empty));
+                                new XAttribute("key", StoredValue.Text(entry.Key, prop.PropertyName)),
+                                entry.Value != null ? StoredValue.Text(entry.Value, prop.PropertyName) : string.Empty));
                         }
                     }
                     xItem.Add(propertyElement);
@@ -356,7 +334,7 @@ namespace Xod.Engines.Xml
                         foreach (var itm in items)
                         {
                             if (itm != null)
-                                propertyElement.Add(new XElement(itmType.Name, ValueHelper.FormatScalar(itm)));
+                                propertyElement.Add(new XElement(itmType.Name, StoredValue.Text(itm, prop.PropertyName)));
                         }
                     }
                 }
@@ -1036,37 +1014,12 @@ namespace Xod.Engines.Xml
                         rowTree.Page.RemoveRow(row);
                         deleted = true;
 
-                        XElement tablePage = rowTree.Table.Pages().FirstOrDefault(s =>
-                            rowTree.Page.Path.EndsWith(s.Attribute("file").Value, StringComparison.OrdinalIgnoreCase));
-
                         int remainingRows = rowTree.Page.Rows().Count();
                         if (remainingRows == 0)
-                        {
                             ioService.Delete(rowTree.Page.Path);
-
-                            if (tablePage != null)
-                            {
-                                tablePage.Remove();
-                                if (!rowTree.Table.Pages().Any())
-                                {
-                                    ioService.Delete(rowTree.Table.Path);
-                                    indexService.Remove(type);
-                                }
-                                else
-                                {
-                                    ioService.Save(rowTree.Table);
-                                }
-                            }
-                        }
                         else
-                        {
-                            if (tablePage != null)
-                            {
-                                tablePage.SetAttributeValue("count", remainingRows);
-                                ioService.Save(rowTree.Table);
-                            }
                             ioService.Save(rowTree.Page);
-                        }
+                        RecordRowRemoved(type, rowTree.Table, rowTree.Page.Path, row, remainingRows);
                     }
                 }
 
@@ -1158,35 +1111,9 @@ namespace Xod.Engines.Xml
                 XFile tableFile = ioService.OpenFileOrCreate(docFileName, type, openOnly: true);
                 if (tableFile != null)
                 {
-                    XElement tablePage = tableFile.Pages().FirstOrDefault(s =>
-                        string.Equals(s.Attribute("file")?.Value, pageFileName, StringComparison.OrdinalIgnoreCase));
-
                     if (pageEmpty)
-                    {
                         ioService.Delete(pageFileName);
-                        if (tablePage != null)
-                        {
-                            tablePage.Remove();
-                            if (!tableFile.Pages().Any())
-                            {
-                                ioService.Delete(tableFile.Path);
-                                indexService.Remove(type);
-                            }
-                            else
-                            {
-                                ioService.Save(tableFile);
-                            }
-                        }
-                    }
-                    else if (tablePage != null)
-                    {
-                        XAttribute cntAttr = tablePage.Attribute("count");
-                        if (cntAttr != null && int.TryParse(cntAttr.Value, out int curCnt) && curCnt > 0)
-                        {
-                            cntAttr.Value = (curCnt - 1).ToString();
-                            ioService.Save(tableFile);
-                        }
-                    }
+                    RecordRowRemoved(type, tableFile, pageFileName, rawRow, pageEmpty ? 0 : null);
                 }
 
                 if (meta == null || meta.HasCascadeDeleteOrParentProperties)

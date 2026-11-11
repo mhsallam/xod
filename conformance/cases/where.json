@@ -6,8 +6,7 @@
       "sql": "SELECT Id FROM Customer WHERE Tier = 'Gold'",
       "columns": [{"name": "Id", "type": "INTEGER"}],
       "ordered": false,
-      "known": "ISS-056",
-      "note": "enum by name; Tier is indexed",
+      "note": "enum by name; Tier is indexed (ISS-056, fixed)",
       "rows": [
         [2],
         [5],
@@ -135,7 +134,7 @@
       "sql": "SELECT Id FROM Customer WHERE Id NOT IN (1, 2, 3) AND Tier = 'Basic'",
       "columns": [{"name": "Id", "type": "INTEGER"}],
       "ordered": false,
-      "known": "ISS-056",
+      "note": "an indexed enum inside AND (ISS-056, fixed)",
       "rows": [
         [6],
         [9],
@@ -389,8 +388,7 @@
       "sql": "SELECT Id FROM Event WHERE Fee = 0.000000001",
       "columns": [{"name": "Id", "type": "INTEGER"}],
       "ordered": false,
-      "known": "ISS-053",
-      "note": "Fee is indexed; the index rounds keys to 8 places",
+      "note": "Fee is indexed; its keys are exact past 8 places (ISS-053, fixed)",
       "rows": [
         [1]
       ]

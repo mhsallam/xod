@@ -17,11 +17,14 @@ namespace Xod.Services
             Type entityType = typeof(T);
             if (expression.Body is BinaryExpression binary &&
                 binary.NodeType == ExpressionType.Equal &&
-                TryExtractPropertyComparison(entityType, binary, out var prop, out _, out var constantValue) &&
-                (prop.IsIndexed || prop.IsPrimaryKey || prop.IsUnique) &&
-                constantValue != null)
+                TryResolveComparison(entityType, binary, out var prop, out _, out string normTarget))
             {
-                string normTarget = NormalizeIndexValue(prop.PropertyType, constantValue);
+                if (normTarget == null)
+                {
+                    candidateCodes = Array.Empty<string>(); // a value no row can equal
+                    isFullyCovered = true;
+                    return true;
+                }
                 string key = prop.CachedIndexKey ??= GetIndexKey(entityType, prop.PropertyName);
                 lock (syncLock)
                 {
@@ -98,33 +101,22 @@ namespace Xod.Services
                     return false;
                 }
 
-                if (TryExtractPropertyComparison(entityType, binary, out var prop, out var op, out var constantValue))
+                if (TryResolveComparison(entityType, binary, out var prop, out var op, out string normTarget))
                 {
-                    if (!prop.IsIndexed && !prop.IsPrimaryKey && !prop.IsUnique)
-                        return false;
-
-                    if (TryQueryIndexRange(entityType, prop, op, constantValue, out codes))
-                    {
-                        isFullyCovered = true;
-                        return true;
-                    }
+                    codes = normTarget == null
+                        ? new HashSet<string>(StringComparer.Ordinal) // no row can match
+                        : QueryIndexRange(entityType, prop, op, normTarget);
+                    isFullyCovered = true;
+                    return true;
                 }
             }
 
             return false;
         }
 
-        private bool TryQueryIndexRange(
-            Type entityType,
-            PropertyInfoItem prop,
-            ExpressionType op,
-            object value,
-            out HashSet<string> result)
+        private HashSet<string> QueryIndexRange(Type entityType, PropertyInfoItem prop, ExpressionType op, string normTarget)
         {
-            result = new HashSet<string>(StringComparer.Ordinal);
-            if (value == null) return false;
-
-            string normTarget = NormalizeIndexValue(prop.PropertyType, value);
+            var result = new HashSet<string>(StringComparer.Ordinal);
             string key = GetIndexKey(entityType, prop.PropertyName);
 
             lock (syncLock)
@@ -135,50 +127,32 @@ namespace Xod.Services
                     EnsurePropertyHydratedUnlocked(key);
 
                 if (!propertyIndexes.TryGetValue(key, out var tree))
-                    return true; // Hydrated index is empty -> 0 matching records
+                    return result; // Hydrated index is empty -> 0 matching records
 
-                switch (op)
+                if (op == ExpressionType.Equal)
                 {
-                    case ExpressionType.Equal:
-                        if (tree.TryGetValue(normTarget, out var exact))
-                            UnionBucketWithResult(result, exact);
-                        return true;
+                    if (tree.TryGetValue(normTarget, out var exact))
+                        UnionBucketWithResult(result, exact);
+                    return result;
+                }
 
-                    case ExpressionType.GreaterThan:
-                        foreach (var kvp in tree)
-                        {
-                            if (string.CompareOrdinal(kvp.Key, normTarget) > 0)
-                                UnionBucketWithResult(result, kvp.Value);
-                        }
-                        return true;
-
-                    case ExpressionType.GreaterThanOrEqual:
-                        foreach (var kvp in tree)
-                        {
-                            if (string.CompareOrdinal(kvp.Key, normTarget) >= 0)
-                                UnionBucketWithResult(result, kvp.Value);
-                        }
-                        return true;
-
-                    case ExpressionType.LessThan:
-                        foreach (var kvp in tree)
-                        {
-                            if (string.CompareOrdinal(kvp.Key, normTarget) < 0)
-                                UnionBucketWithResult(result, kvp.Value);
-                        }
-                        return true;
-
-                    case ExpressionType.LessThanOrEqual:
-                        foreach (var kvp in tree)
-                        {
-                            if (string.CompareOrdinal(kvp.Key, normTarget) <= 0)
-                                UnionBucketWithResult(result, kvp.Value);
-                        }
-                        return true;
+                // Keys of an ordered kind sort the way C# compares the values (IndexKeys).
+                foreach (var kvp in tree)
+                {
+                    int c = string.CompareOrdinal(kvp.Key, normTarget);
+                    bool match = op switch
+                    {
+                        ExpressionType.GreaterThan => c > 0,
+                        ExpressionType.GreaterThanOrEqual => c >= 0,
+                        ExpressionType.LessThan => c < 0,
+                        _ => c <= 0, // LessThanOrEqual, the one op left (TryResolveComparison)
+                    };
+                    if (match)
+                        UnionBucketWithResult(result, kvp.Value);
                 }
             }
 
-            return false;
+            return result;
         }
 
         private static void UnionBucketWithResult(HashSet<string> result, object bucket)
@@ -189,16 +163,27 @@ namespace Xod.Services
                 result.UnionWith(codeSet);
         }
 
-        private bool TryExtractPropertyComparison(
+        /// <summary>
+        /// Turns <c>member op constant</c> (either way round) on an indexed property into a key the index
+        /// answers exactly as C# would. False when it can't: the caller then filters every row.
+        /// <paramref name="normTarget"/> is null when no row can match: NaN, or a constant the property's
+        /// type can't hold, compared for equality.
+        ///
+        /// C# compares in the type of the binary expression and converts the member into it
+        /// (<c>(int)x.Tier == 2</c>, <c>(double)x.Ratio == 0.1</c>). The comparison moves onto the
+        /// property's own type only when every such conversion is exact, so the two mean the same thing;
+        /// the constant is then converted back exactly, or found to have no equal there.
+        /// </summary>
+        private bool TryResolveComparison(
             Type entityType,
             BinaryExpression binary,
             out PropertyInfoItem prop,
             out ExpressionType op,
-            out object value)
+            out string normTarget)
         {
             prop = null;
+            normTarget = null;
             op = binary.NodeType;
-            value = null;
 
             if (op != ExpressionType.Equal &&
                 op != ExpressionType.GreaterThan &&
@@ -208,40 +193,78 @@ namespace Xod.Services
             {
                 return false;
             }
+            if (binary.Method != null && !IsKeyedOperator(binary))
+                return false; // a user-defined operator: its meaning isn't the keys'
 
-            Expression left = UnwrapConvert(binary.Left);
-            Expression right = UnwrapConvert(binary.Right);
-
-            if (IsParameterMember(entityType, left, out string propName) && TryEvaluateConstant(right, out value))
+            Expression memberSide, constantSide;
+            string propName;
+            if (TryUnwrapExactConvert(binary.Left, out var member) && IsParameterMember(entityType, member, out propName))
             {
-                var meta = propertyService.GetMetadata(entityType);
-                if (meta != null)
-                    return meta.ReadPropertyMap.TryGetValue(propName, out prop);
-                prop = propertyService.Properties(entityType.FullName).FirstOrDefault(p => p.PropertyName == propName);
-                return prop != null;
+                memberSide = member;
+                constantSide = binary.Right;
             }
-
-            if (IsParameterMember(entityType, right, out propName) && TryEvaluateConstant(left, out value))
+            else if (TryUnwrapExactConvert(binary.Right, out member) && IsParameterMember(entityType, member, out propName))
             {
+                memberSide = member;
+                constantSide = binary.Left;
                 op = FlipOperator(op);
-                var meta = propertyService.GetMetadata(entityType);
-                if (meta != null)
-                    return meta.ReadPropertyMap.TryGetValue(propName, out prop);
-                prop = propertyService.Properties(entityType.FullName).FirstOrDefault(p => p.PropertyName == propName);
-                return prop != null;
+            }
+            else
+            {
+                return false;
             }
 
-            return false;
+            var meta = propertyService.GetMetadata(entityType);
+            if (meta != null)
+                meta.ReadPropertyMap.TryGetValue(propName, out prop);
+            else
+                prop = propertyService.Properties(entityType.FullName).FirstOrDefault(p => p.PropertyName == propName);
+            if (prop == null || (!prop.IsIndexed && !prop.IsPrimaryKey && !prop.IsUnique))
+                return false;
+
+            if (!TryEvaluateConstant(constantSide, out object value) || value == null)
+                return false; // a comparison with null is answered by the rows
+
+            Type propertyType = IndexKeys.Underlying(memberSide.Type);
+            if (op != ExpressionType.Equal && !IndexKeys.IsOrdered(propertyType))
+                return false;
+
+            if ((value is double d && double.IsNaN(d)) || (value is float f && float.IsNaN(f)))
+                return true; // NaN compares false with everything: normTarget stays null
+
+            if (!IndexKeys.TryConvertExact(value, propertyType, out object onProperty))
+                return op == ExpressionType.Equal; // the property holds no equal value; a range is left to the rows
+
+            normTarget = NormalizeIndexValue(propertyType, onProperty);
+            return true;
         }
 
-        private static Expression UnwrapConvert(Expression expr)
+        // decimal, DateTime, TimeSpan and the like compare through operator methods that mean what the
+        // keys mean (IndexKeys); any other method is the type's own business.
+        private static bool IsKeyedOperator(BinaryExpression binary)
+        {
+            Type declaring = binary.Method.DeclaringType;
+            return declaring == typeof(decimal) || declaring == typeof(DateTime) || declaring == typeof(DateTimeOffset) ||
+                   declaring == typeof(TimeSpan) || declaring == typeof(DateOnly) || declaring == typeof(TimeOnly) ||
+                   declaring == typeof(string) || declaring == typeof(Guid);
+        }
+
+        /// <summary>Strips conversions that change no value (IndexKeys.IsExactWidening). False when one
+        /// would: the expression is then not a plain comparison of the property.</summary>
+        private static bool TryUnwrapExactConvert(Expression expr, out Expression inner)
         {
             while (expr is UnaryExpression unary &&
                    (unary.NodeType == ExpressionType.Convert || unary.NodeType == ExpressionType.ConvertChecked))
             {
+                if (unary.Method != null || !IndexKeys.IsExactWidening(unary.Operand.Type, unary.Type))
+                {
+                    inner = null;
+                    return false;
+                }
                 expr = unary.Operand;
             }
-            return expr;
+            inner = expr;
+            return true;
         }
 
         private static bool IsParameterMember(Type entityType, Expression expr, out string propName)
@@ -259,15 +282,27 @@ namespace Xod.Services
             return false;
         }
 
+        /// <summary>The value of an expression that doesn't read the row, in the expression's own type.</summary>
         private static bool TryEvaluateConstant(Expression expr, out object value)
         {
             value = null;
-            expr = UnwrapConvert(expr);
 
             if (expr is ConstantExpression constant)
             {
                 value = constant.Value;
                 return true;
+            }
+
+            if (expr is UnaryExpression unary &&
+                (unary.NodeType == ExpressionType.Convert || unary.NodeType == ExpressionType.ConvertChecked) &&
+                unary.Method == null &&
+                TryEvaluateConstant(unary.Operand, out object operand))
+            {
+                if (operand == null)
+                    return true; // null, converted to a nullable type
+                if (IndexKeys.TryConvertExact(operand, unary.Type, out value))
+                    return true;
+                // A conversion that changes the value (rounding, truncation) is compiled below, so it is C#'s.
             }
 
             if (expr is MemberExpression memberExpr)
@@ -288,6 +323,9 @@ namespace Xod.Services
                 }
             }
 
+            if (ParameterFinder.Reads(expr))
+                return false;
+
             try
             {
                 var lambda = Expression.Lambda(expr);
@@ -298,6 +336,25 @@ namespace Xod.Services
             {
                 return false;
             }
+        }
+
+        private sealed class ParameterFinder : ExpressionVisitor
+        {
+            private bool found;
+
+            internal static bool Reads(Expression expr)
+            {
+                var finder = new ParameterFinder();
+                finder.Visit(expr);
+                return finder.found;
+            }
+
+            protected override Expression VisitParameter(ParameterExpression node)
+            {
+                found = true;
+                return node;
+            }
+
         }
 
         private static ExpressionType FlipOperator(ExpressionType op) => op switch

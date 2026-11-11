@@ -147,7 +147,7 @@ namespace Xod.Engines.Xml
                 this.ioService,
                 this.exceptionService)
             {
-                FindLastDelegate = t => Last(t)
+                HighestUsedDelegate = HighestAutonumberUsed
             };
 
             this.logService = new LogService(root);
