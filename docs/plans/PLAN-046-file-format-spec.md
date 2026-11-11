@@ -1,9 +1,9 @@
 # PLAN-046: The XOD file format (spec draft)
 
 - **Task ID**: `TASK-057` (roadmap step 1, second of three specs - `PLAN-044`)
-- **Status**: Draft (2026-11-11). Sections 2-9 describe the files XOD 2.0 writes today, from the code
-  and checked against real files; section 10 proposes the schema manifest from `PLAN-045` D1, with three
-  decisions for the owner (section 13). Nothing is built.
+- **Status**: Spec accepted (2026-11-11). Sections 2-9 describe the files XOD 2.0 writes today, from
+  the code and checked against real files; section 10 specifies the schema manifest from `PLAN-045` D1,
+  with E1-E3 decided as recommended (section 13). Nothing is built.
 - **Related**: [`PLAN-045`](PLAN-045-query-language-spec.md) (XOD SQL; D1 asks for the manifest),
   [`PLAN-044`](PLAN-044-roadmap-sql-analytics-rust-browser.md) (Rust core, browser),
   [`MIGRATION-GUIDE.md`](../MIGRATION-GUIDE.md) (the 2017 XOD 1.x files)
@@ -398,7 +398,7 @@ the file doesn't say whether the property is unique (the manifest does).
   can't open it must treat the database as in use. Without the option there is no lock and nothing
   coordinates two processes (ISS-042).
 
-## 10. The schema manifest (proposal, D1)
+## 10. The schema manifest (D1; E1-E3 decided)
 
 `PLAN-045` D1 chose a manifest written by the .NET library. Everything in sections 7.2, 7.5 and 8.3 that
 "needs the type" reads it from here.
@@ -523,7 +523,9 @@ self-references, and files written by 2.0 on Linux (the code has no platform bra
 
 ## 13. Decisions for the owner
 
-| | Decision | Recommended |
+Decided 2026-11-11: the owner accepted all three recommendations.
+
+| | Decision | Decided |
 | :--- | :--- | :--- |
 | **E1** | Where the manifest lives | inside the table file, as `<Schema>` (10.1) |
 | **E2** | When it is written | with the first write of a type in a context; reads never write (10.3) |
@@ -531,7 +533,7 @@ self-references, and files written by 2.0 on Linux (the code has no platform bra
 
 ## 14. Next
 
-1. The owner's decisions on E1-E3.
+1. ~~The owner's decisions on E1-E3~~ - all three recommendations accepted, 2026-11-11.
 2. The conformance set (step 1, third spec): the sample generator and the independent reader from
    section 12 become its first pieces, in the repository and the test gate, with the cases from
    section 11.
@@ -540,5 +542,5 @@ self-references, and files written by 2.0 on Linux (the code has no platform bra
 
 ## Verdict
 
-Draft. Sections 2-9 describe today's files and were checked against them. Section 10 is a proposal with
-nothing built. Six defects were found and are filed, none fixed.
+Spec accepted. Sections 2-9 describe today's files and were checked against them. Section 10 is
+decided (E1-E3) and not built. Six defects were found and are filed, none fixed.
