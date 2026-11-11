@@ -31,6 +31,14 @@ namespace Xod
     public class IndexDataTypeException : XodException
     {
         public IndexDataTypeException() : base("Wrong index datatype. Indices can only be a primitive, numeric, string, datetime, or guid datatype.") { }
+        public IndexDataTypeException(string message) : base(message) { }
+    }
+
+    /// <summary>[Crypto] is on a property that isn't a string. It protects a string only; 2.0 ignored it
+    /// elsewhere and stored the plain value, so it is refused instead.</summary>
+    public class CryptoDataTypeException : XodException
+    {
+        public CryptoDataTypeException(string message) : base(message) { }
     }
 
     /// <summary>A string holds a lone surrogate: UTF-16 that isn't text, which no storage format can carry

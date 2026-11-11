@@ -53,6 +53,7 @@ namespace Xod.Engines.Xml
                             itemsCacheService.ClearCurrentCache();
                             indexService.ClearAll();
                             autonumberService.Reset();
+                            propertyKeys.Reset();
                         }
                         finally
                         {

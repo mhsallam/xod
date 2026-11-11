@@ -56,6 +56,17 @@ type Xod.CryptoAttribute
   prop CryptoMethod Method { get; set; }
   prop Object TypeId { get; }
 
+type Xod.CryptoDataTypeException
+  ctor(String message)
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
 type Xod.CryptoMethod (sealed)
   field Int32 value__
   field CryptoMethod None
@@ -109,6 +120,7 @@ type Xod.DatabaseOptions
   prop Int32 LockRetryTimeoutMs { get; set; }
   prop Int32 TransactionTimeoutMs { get; set; }
   prop DurabilityMode Durability { get; set; }
+  prop String PropertyEncryptionKey { get; set; }
 
 type Xod.DatabaseStatistics
   ctor()
@@ -282,6 +294,7 @@ type Xod.IXodEngine (abstract)
 
 type Xod.IndexDataTypeException
   ctor()
+  ctor(String message)
   prop MethodBase TargetSite { get; }
   prop String Message { get; }
   prop IDictionary Data { get; }

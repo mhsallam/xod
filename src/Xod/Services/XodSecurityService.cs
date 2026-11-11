@@ -17,13 +17,28 @@ namespace Xod.Helpers
             this.Password = password;
         }
 
-        public void Secure(string password)
+        /// <summary>Throws unless <see cref="Secure"/> would accept this password (as the new password of
+        /// <see cref="ChangePassword"/>, with <paramref name="replacingCurrent"/>). The engine asks first, so
+        /// that what it changes before the files (the AES256 key) isn't changed for nothing.</summary>
+        internal void CheckCanSecure(string password, bool replacingCurrent = false)
         {
-            if (string.IsNullOrEmpty(password) || password.Length < 1 || password.Length > 256)
+            if (string.IsNullOrEmpty(password) || password.Length > 256)
                 throw new SecurityException("Password length should be between 1 and 256.");
 
-            if (!string.IsNullOrEmpty(this.Password))
+            if (!replacingCurrent && !string.IsNullOrEmpty(this.Password))
                 throw new SecurityException("The database is already protected with a password; to change it use ChangePassword.");
+        }
+
+        /// <summary>Throws unless <paramref name="password"/> is the database's current password.</summary>
+        internal void CheckCurrentPassword(string password)
+        {
+            if (string.IsNullOrEmpty(this.Password) || this.Password != CryptoHelper.GetSHA256HashData(password))
+                throw new SecurityException("Input password doesn't match current database password.");
+        }
+
+        public void Secure(string password)
+        {
+            CheckCanSecure(password);
 
             Changed?.Invoke(this, EventArgs.Empty);
 
@@ -43,8 +58,8 @@ namespace Xod.Helpers
 
         public void Loose(string password)
         {
+            CheckCurrentPassword(password);
             string hashedPassword = CryptoHelper.GetSHA256HashData(password);
-            if (!string.IsNullOrEmpty(this.Password) && this.Password == hashedPassword)
             {
                 Changed?.Invoke(this, EventArgs.Empty);
 
@@ -61,24 +76,14 @@ namespace Xod.Helpers
                 }
                 this.Password = null;
             }
-            else
-            {
-                throw new SecurityException("Input password doesn't match current database password.");
-            }
         }
 
         public void ChangePassword(string currentPassword, string newPassword)
         {
-            string hashedPassword = CryptoHelper.GetSHA256HashData(currentPassword);
-            if (!string.IsNullOrEmpty(this.Password) && this.Password == hashedPassword)
-            {
-                Loose(currentPassword);
-                Secure(newPassword);
-            }
-            else
-            {
-                throw new SecurityException("Input password doesn't match current database password.");
-            }
+            CheckCurrentPassword(currentPassword);
+            CheckCanSecure(newPassword, replacingCurrent: true);
+            Loose(currentPassword);
+            Secure(newPassword);
         }
 
         private static bool IsDatabaseFile(string file)

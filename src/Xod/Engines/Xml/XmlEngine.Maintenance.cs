@@ -101,9 +101,13 @@ namespace Xod.Engines.Xml
             try
             {
                 indexService.FlushDirtyIndexes();
+                securityService.CheckCurrentPassword(currentPassword);
+                securityService.CheckCanSecure(newPassword, replacingCurrent: true);
+                propertyKeys.PasswordChanging(password, Helpers.CryptoHelper.GetSHA256HashData(newPassword));
                 securityService.ChangePassword(currentPassword, newPassword);
                 password = securityService.Password;
                 ioService.Password = password;
+                propertyKeys.PasswordChanged();
                 ClearCache();
             }
             finally
@@ -118,9 +122,12 @@ namespace Xod.Engines.Xml
             try
             {
                 indexService.FlushDirtyIndexes();
+                securityService.CheckCurrentPassword(pwd);
+                propertyKeys.PasswordChanging(password, null);
                 securityService.Loose(pwd);
                 password = null;
                 ioService.Password = null;
+                propertyKeys.PasswordChanged();
                 ClearCache();
             }
             finally
@@ -135,9 +142,12 @@ namespace Xod.Engines.Xml
             try
             {
                 indexService.FlushDirtyIndexes();
+                securityService.CheckCanSecure(pwd);
+                propertyKeys.PasswordChanging(null, Helpers.CryptoHelper.GetSHA256HashData(pwd));
                 securityService.Secure(pwd);
                 password = securityService.Password;
                 ioService.Password = password;
+                propertyKeys.PasswordChanged();
                 ClearCache();
             }
             finally

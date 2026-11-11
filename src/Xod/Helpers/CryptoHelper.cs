@@ -7,7 +7,10 @@ namespace Xod.Helpers
     public static class CryptoHelper
     {
         private const string PropertyCipherPrefix = "enc:aes256:";
-        private static readonly byte[] DefaultPropertyKeySalt = Encoding.UTF8.GetBytes("XOD++::PropertyEncryptionSalt::v2");
+        // 2.0's property key: PBKDF2 over the database's hashed password, or over this constant without one
+        // (ISS-050). Kept to read values 2.0 wrote (PropertyKeyService).
+        internal static readonly byte[] LegacyPropertySalt = Encoding.UTF8.GetBytes("XOD++::PropertyEncryptionSalt::v2");
+        internal const string LegacyPropertyPassphrase = "XOD++DefaultPropertySecretKey";
 
         public static string GenerateKey()
         {
@@ -110,15 +113,19 @@ namespace Xod.Helpers
         }
 
         /// <summary>
-        /// Encrypts a string property value using authenticated AES-256-GCM.
+        /// Encrypts a string in XOD 2.0's property format, under a key derived from
+        /// <paramref name="passphrase"/>, or from a constant built into the library when it is null, which
+        /// anyone with XOD can decrypt (ISS-050). XOD no longer uses it: <c>[Crypto(AES256)]</c> properties are
+        /// encrypted with the database's own key (DatabaseOptions.PropertyEncryptionKey, PLAN-049).
         /// </summary>
+        [Obsolete("XOD 2.0's property format: with no passphrase it uses a key built into the library. [Crypto(AES256)] properties are encrypted by the database itself.")]
         public static string EncryptProperty(string plainText, string passphrase = null)
         {
             if (string.IsNullOrEmpty(plainText)) return plainText;
             if (plainText.StartsWith(PropertyCipherPrefix, StringComparison.Ordinal))
                 return plainText;
 
-            byte[] key = DeriveKey(passphrase ?? "XOD++DefaultPropertySecretKey", DefaultPropertyKeySalt);
+            byte[] key = DeriveKey(passphrase ?? LegacyPropertyPassphrase, LegacyPropertySalt);
             byte[] nonce = RandomNumberGenerator.GetBytes(AesGcm.NonceByteSizes.MaxSize); // 12 bytes
             byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
             byte[] cipherBytes = new byte[plainBytes.Length];
@@ -138,8 +145,10 @@ namespace Xod.Helpers
         }
 
         /// <summary>
-        /// Decrypts a string property value encrypted by <see cref="EncryptProperty"/>.
+        /// Decrypts a string in XOD 2.0's property format (see <see cref="EncryptProperty"/>). XOD reads
+        /// <c>[Crypto(AES256)]</c> properties itself, in both formats.
         /// </summary>
+        [Obsolete("XOD 2.0's property format. [Crypto(AES256)] properties are decrypted by the database itself.")]
         public static string DecryptProperty(string cipherText, string passphrase = null)
         {
             if (string.IsNullOrEmpty(cipherText) || !cipherText.StartsWith(PropertyCipherPrefix, StringComparison.Ordinal))
@@ -161,7 +170,7 @@ namespace Xod.Helpers
             Buffer.BlockCopy(payload, nonceSize, tag, 0, tagSize);
             Buffer.BlockCopy(payload, nonceSize + tagSize, cipherBytes, 0, cipherBytes.Length);
 
-            byte[] key = DeriveKey(passphrase ?? "XOD++DefaultPropertySecretKey", DefaultPropertyKeySalt);
+            byte[] key = DeriveKey(passphrase ?? LegacyPropertyPassphrase, LegacyPropertySalt);
             byte[] plainBytes = new byte[cipherBytes.Length];
 
             try

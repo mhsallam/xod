@@ -93,7 +93,7 @@ questions. Each finding was checked before acting on it:
 | ISS-052 | **Clean for deletes, with named debt**: ISS-059 (an update that changes an autonumber), concurrent contexts without `LockDatabase`, and a crash between a delete's page write and its mark write. |
 | ISS-055 | **Clean.** |
 | ISS-061 | **Clean for the table; named debt**: rows a failed row's children already inserted stay (ISS-062). |
-| ISS-050, ISS-058 | **Not fixed**: the owner's choice (section 8). |
+| ISS-050, ISS-058, ISS-063 | Fixed separately, in [`PLAN-049`](PLAN-049-property-encryption.md). |
 
 ## 7. Remaining debt
 
@@ -130,6 +130,7 @@ unencrypted index when there is no password. The choice is the owner's:
 - **For ISS-063**, either refuse `Indexed`/`UniqueKey` on a `[Crypto]` property, or key the stored form
   (equality only, and only while the key doesn't change).
 
-Recommended: (a) with (b), and refusing an index on a `[Crypto]` property. The site's security page also
+Recommended: (a) with (b), and refusing an index on a `[Crypto]` property. **Decided 2026-11-11: the
+owner accepted the recommendation; built in [`PLAN-049`](PLAN-049-property-encryption.md).** The site's security page also
 needs correcting (it says AES256 values are encrypted with no caveat); deploying that needs the owner's
 go.

@@ -50,7 +50,7 @@ namespace Xod.Conformance
             try
             {
                 using var db = new XodContext(Path.Combine(dir, "app.xod"), Repo.PasswordOf(fixture),
-                    new DatabaseOptions { StorageFormat = Repo.FormatOf(fixture) });
+                    new DatabaseOptions { StorageFormat = Repo.FormatOf(fixture), PropertyEncryptionKey = Repo.PasswordOf(fixture) == null ? Dataset.PropertyKey : null });
                 var source = new XodSource(db);
                 foreach (var c in Cases.All)
                 {

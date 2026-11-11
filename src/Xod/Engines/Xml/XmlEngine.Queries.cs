@@ -762,7 +762,7 @@ namespace Xod.Engines.Xml
 
             if (targetType == typeof(string) && prop.Encryption == CryptoMethod.AES256)
             {
-                return CryptoHelper.DecryptProperty(stringValue, password);
+                return propertyKeys.Decrypt(stringValue, prop.PropertyName);
             }
 
             return ValueHelper.ParseScalar(targetType, stringValue);

@@ -188,7 +188,8 @@ namespace Xod.Tests
         public void UniqueKey_And_Composite_PrimaryKey_Are_Enforced()
         {
             string dbPath = GetDbPath("constraints");
-            using var db = new XodContext(dbPath);
+            // UserAccount has an AES256 property, which needs a key to protect it (ISS-050).
+            using var db = new XodContext(dbPath, options: new DatabaseOptions { PropertyEncryptionKey = "test-key" });
 
             db.Insert(new UserAccount
             {
@@ -224,7 +225,8 @@ namespace Xod.Tests
         public void Property_Level_Hashing_And_Reversible_AES256_Work()
         {
             string dbPath = GetDbPath("prop_crypto");
-            using var db = new XodContext(dbPath);
+            // UserAccount has an AES256 property, which needs a key to protect it (ISS-050).
+            using var db = new XodContext(dbPath, options: new DatabaseOptions { PropertyEncryptionKey = "test-key" });
 
             db.Insert(new UserAccount
             {

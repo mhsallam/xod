@@ -24,6 +24,10 @@ namespace Xod.Conformance
 
         public const string Password = "conformance-password";
 
+        /// <summary>The application key AES256 values are protected with when there is no password
+        /// (DatabaseOptions.PropertyEncryptionKey). The 2.0 fixtures were written without one.</summary>
+        public const string PropertyKey = "conformance-property-key";
+
         public IEnumerable<T> All<T>() => typeof(T) switch
         {
             var t when t == typeof(Product) => Products.Cast<T>(),
@@ -154,11 +158,12 @@ namespace Xod.Conformance
             return d;
         }
 
-        /// <summary>Writes the dataset into an empty folder with the 2.0 library.</summary>
+        /// <summary>Writes the dataset into an empty folder with the library in the tree (the committed
+        /// fixtures were written by 2.0.1, without an application key).</summary>
         public static void Write(string folder, StorageFormat format, string password)
         {
             var d = Build();
-            var options = new DatabaseOptions { StorageFormat = format };
+            var options = new DatabaseOptions { StorageFormat = format, PropertyEncryptionKey = password == null ? PropertyKey : null };
             using var db = new XodContext(System.IO.Path.Combine(folder, "app.xod"), password, options);
             foreach (var p in d.Products) db.Insert(p);
             foreach (var c in d.Customers) db.Insert(c);

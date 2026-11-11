@@ -166,6 +166,16 @@ element ends.
 - `Format` is the encoding chosen when the database was created; `XodMigrator` rewrites it. It is
   advisory (section 3).
 - The library creates the file when it is missing. Readers check only that it decodes.
+- **Since the next release** it may hold the key of the database's `AES256` values (section 7.6):
+
+  ```xml
+  <Database Version="2.0" Format="Xml">
+    <PropertyKey protector="password" salt="base64">base64(nonce 12 | tag 16 | the 32-byte data key)</PropertyKey>
+    <LegacyPropertyKey>base64(nonce 12 | tag 16 | a 32-byte 2.0 key)</LegacyPropertyKey>
+  </Database>
+  ```
+
+  2.0 ignores both elements.
 
 ## 6. The table file
 
@@ -311,12 +321,35 @@ A local `DateTime` stores the offset of the machine that wrote it. The text alon
 - **Hashed** (`[Crypto]`, default SHA-256; also SHA-512, SHA-1, MD5): the lowercase hex digest of the
   UTF-8 value. A value that already is lowercase hex of the digest's length is stored unchanged, so
   updates don't hash twice. A plain value that happens to look like a digest is therefore stored as is.
-- **Encrypted** (`AES256`): `enc:aes256:` + base64(nonce 12 | tag 16 | ciphertext), AES-256-GCM, no
-  associated data.
-  - Key: `PBKDF2-HMAC-SHA256(passphrase, "XOD++::PropertyEncryptionSalt::v2", 100000, 32)`.
-  - The passphrase is the database's hashed password (section 3.2) or, **without a database password,
-    the built-in constant `XOD++DefaultPropertySecretKey`**. Anyone with XOD can decrypt such values
-    (ISS-050).
+- `[Crypto]` applies to a string wherever it is stored, element or attribute. 2.0 ignored it on an
+  attribute and stored the plaintext (ISS-064).
+- A `[Crypto]` property can't be indexed, unique or a key: its index would hold the plaintext (ISS-063).
+- **Encrypted** (`AES256`), as the next release writes it: `enc:aes256k:` + base64(nonce 12 | tag 16 |
+  ciphertext), AES-256-GCM under the database's **data key**, no associated data.
+  - The data key is 32 random bytes, made when the first value is written, stored in the database file
+    (section 5) as `PropertyKey`: AES-256-GCM (associated data the ASCII `XOD property key v1`) under
+    `PBKDF2-HMAC-SHA256(secret, salt, 100000, 32)`, `salt` 16 random bytes.
+  - `protector="application"`: the secret is the application's key (`DatabaseOptions.PropertyEncryptionKey`,
+    never stored). `protector="password"`: the database's hashed password (section 3.2). The library uses
+    the application key when the context has one.
+  - With neither there is no secret, and the write is refused (`SecurityException`).
+  - There may be several `PropertyKey` elements, each the same data key under a different protector; a
+    reader uses the first that opens. A password change adds the protection for the new password before
+    the files change and removes the old one after, so a change that fails part-way leaves the key
+    openable with whichever password opens the files. No value is rewritten.
+  - Removing the password while a password protects the key is refused unless an application key takes
+    over, or no value uses the key (it is then removed).
+- `[Crypto]` applies to a `string` property only; on any other type it is refused (2.0 ignored it there
+  and stored the plain value).
+- **Encrypted, as 2.0 wrote it**: `enc:aes256:` + the same layout, under
+  `PBKDF2-HMAC-SHA256(passphrase, "XOD++::PropertyEncryptionSalt::v2", 100000, 32)`, the passphrase being
+  the hashed password in effect when it was written or, **without a password, the built-in constant
+  `XOD++DefaultPropertySecretKey`**. Anyone with XOD can decrypt the latter (ISS-050); they stay readable,
+  and are rewritten in the new form only when their row is.
+  - When the password changes and such values exist, the outgoing password's key is kept in a
+    `LegacyPropertyKey`: AES-256-GCM under the data key, associated data the ASCII
+    `XOD legacy property key v1`.
+  - A reader tries the current password's key, then each `LegacyPropertyKey`, then the constant's.
 
 ## 8. The index
 
@@ -597,12 +630,12 @@ Decided 2026-11-11: the owner accepted all three recommendations.
    section 11.
 3. ~~Fixing ISS-051 to ISS-055~~ - fixed in the tree, 2026-11-11, with ISS-056, ISS-057 and ISS-061
    ([`PLAN-048`](PLAN-048-format-defect-fixes.md)); not released.
-4. ISS-050 (with ISS-058 and ISS-063): property encryption, the owner's choice
-   ([`PLAN-048`](PLAN-048-format-defect-fixes.md) section 8), and the site's security page.
+4. ~~ISS-050 (with ISS-058 and ISS-063)~~ - the owner chose a data key per database (2026-11-11); built in
+   [`PLAN-049`](PLAN-049-property-encryption.md), not released. The site's security page correction is
+   drafted, not deployed.
 
 ## Verdict
 
 Spec accepted. Sections 2-9 describe the files and were checked against them, as 2.0 writes them and
 as the tree writes them now (keys v2, the zone stamp, one XML character policy). Section 10 is decided
-(E1-E3) and not built. Of the six defects found, five are fixed in the tree (not released); ISS-050
-waits on the owner.
+(E1-E3) and not built. The six defects found are fixed in the tree (not released).

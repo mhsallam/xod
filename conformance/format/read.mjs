@@ -249,7 +249,7 @@ function readIndex(dir, file, unwrap) {
 }
 
 // ---- a whole database (sections 2, 5-7)
-export function readDatabase(dir, password, columnTypes = {}) {
+export function readDatabase(dir, password, columnTypes = {}, applicationKey = null) {
   const unwrap = unwrapper(password);
   const load = (file) => parseDoc(unwrap(fs.readFileSync(path.join(dir, file))));
   const child = (e, n) => e.children.find((c) => c.name === n);
@@ -281,8 +281,15 @@ export function readDatabase(dir, password, columnTypes = {}) {
     if (!target) throw new Error('a dangling reference: ' + code);
     return { table: target.table, row: tables[target.table].indexOf(target), keys };
   };
-  // AES-256 values carry a random nonce, so they differ between otherwise identical databases.
-  const scalar = (t) => (t != null && t.startsWith('enc:aes256:') ? 'enc:aes256:<ciphertext>' : t);
+  // AES-256 values carry a random nonce, so they differ between otherwise identical databases: the
+  // content holds a placeholder (for either form), and the decrypted values are returned apart.
+  const decrypt = propertyDecrypter(dbDoc.root, password, applicationKey);
+  const secrets = [];
+  const scalar = (t) => {
+    if (t == null || !t.startsWith('enc:aes256')) return t;
+    secrets.push(decrypt(t));
+    return 'enc:aes256:<ciphertext>';
+  };
   const value = (table, name, f) => {
     if (f.attrs.refType) {
       if (f.attrs.collType) return { [f.attrs.refType]: f.children.map((c) => ref(c.text, c.attrs)) };
@@ -324,17 +331,63 @@ export function readDatabase(dir, password, columnTypes = {}) {
       indexEntries += Object.keys(got).length;
     }
   }
-  return { database: { ...dbDoc.root.attrs }, content, indexEntries, indexProblems, indexVersions: [...indexVersions].sort() };
+  return { database: { ...dbDoc.root.attrs }, content, secrets: secrets.sort(), indexEntries, indexProblems, indexVersions: [...indexVersions].sort() };
+}
+
+// ---- [Crypto(AES256)] values (PLAN-046 section 7.6)
+// The database's data key: the Database document's PropertyKey, AES-GCM (AAD "XOD property key v1")
+// under PBKDF2-SHA256(secret, salt, 100000), the secret being the application's key or the password's
+// SHA-256 hex. Values "enc:aes256k:" are AES-GCM under the data key; 2.0's "enc:aes256:" under
+// PBKDF2(the password's SHA-256 hex, or a constant without one, the 2.0 salt), or a key the database
+// kept in a LegacyPropertyKey when its password changed.
+const LEGACY_SALT = Buffer.from('XOD++::PropertyEncryptionSalt::v2', 'utf8');
+const LEGACY_CONSTANT = 'XOD++DefaultPropertySecretKey';
+function gcmOpen(key, payload, aad) {
+  const d = crypto.createDecipheriv('aes-256-gcm', key, payload.subarray(0, 12), { authTagLength: 16 });
+  if (aad) d.setAAD(aad);
+  d.setAuthTag(payload.subarray(12, 28));
+  return Buffer.concat([d.update(payload.subarray(28)), d.final()]);
+}
+function propertyDecrypter(dbRoot, password, applicationKey) {
+  const passphrase = password ? crypto.createHash('sha256').update(password, 'utf8').digest('hex') : null;
+  const keyElm = dbRoot.children.find((c) => c.name === 'PropertyKey');
+  let dataKey = null;
+  if (keyElm) {
+    const secret = keyElm.attrs.protector === 'application' ? applicationKey : passphrase;
+    if (secret) {
+      const kek = crypto.pbkdf2Sync(Buffer.from(secret, 'utf8'), Buffer.from(keyElm.attrs.salt, 'base64'), 100000, 32, 'sha256');
+      dataKey = gcmOpen(kek, Buffer.from(keyElm.text, 'base64'), Buffer.from('XOD property key v1', 'ascii'));
+    }
+  }
+  const legacy = [passphrase, LEGACY_CONSTANT].filter(Boolean)
+    .map((p) => crypto.pbkdf2Sync(Buffer.from(p, 'utf8'), LEGACY_SALT, 100000, 32, 'sha256'));
+  if (dataKey) for (const e of dbRoot.children.filter((c) => c.name === 'LegacyPropertyKey'))
+    legacy.push(gcmOpen(dataKey, Buffer.from(e.text, 'base64'), Buffer.from('XOD legacy property key v1', 'ascii')));
+  return (t) => {
+    if (t.startsWith('enc:aes256k:')) {
+      if (!dataKey) throw new Error('an AES256 value and no key for it');
+      return gcmOpen(dataKey, Buffer.from(t.slice(12), 'base64')).toString('utf8');
+    }
+    const payload = Buffer.from(t.slice(11), 'base64');
+    for (const k of legacy) {
+      try { return gcmOpen(k, payload).toString('utf8'); } catch { /* the next key */ }
+    }
+    throw new Error('a 2.0 AES256 value no key opens');
+  };
 }
 
 // ---- command line
 // The committed fixtures (written by 2.0.1, so keys v1), and the same dataset as the library in the tree
 // writes it (--check-fresh <root>: keys v2, and nothing older).
+// The dataset's AES256 values (Dataset.cs), and the application key it is written with when there is no
+// password (Dataset.PropertyKey; the 2.0 fixtures were written without one, under 2.0's built-in key).
+const SECRETS = ['sk-billing-0001', 'sk-mail-0002'];
+const DATASET_KEY = 'conformance-property-key';
 const DATASET = (root) => [
-  { name: 'xml', dir: path.join(root, 'xml'), expect: 'content.json', types: 'dataset' },
-  { name: 'json', dir: path.join(root, 'json'), expect: 'content.json', types: 'dataset' },
-  { name: 'binary', dir: path.join(root, 'binary'), expect: 'content.json', types: 'dataset' },
-  { name: 'password', dir: path.join(root, 'password'), password: 'conformance-password', expect: 'content.json', types: 'dataset' },
+  { name: 'xml', dir: path.join(root, 'xml'), propertyKey: DATASET_KEY, expect: 'content.json', types: 'dataset', secrets: SECRETS },
+  { name: 'json', dir: path.join(root, 'json'), propertyKey: DATASET_KEY, expect: 'content.json', types: 'dataset', secrets: SECRETS },
+  { name: 'binary', dir: path.join(root, 'binary'), propertyKey: DATASET_KEY, expect: 'content.json', types: 'dataset', secrets: SECRETS },
+  { name: 'password', dir: path.join(root, 'password'), password: 'conformance-password', expect: 'content.json', types: 'dataset', secrets: SECRETS },
 ];
 const FIXTURES = [
   ...DATASET(path.join(repo, 'conformance', 'data')),
@@ -351,7 +404,9 @@ function main(args) {
     for (const fx of fresh ? DATASET(path.resolve(args[1])) : FIXTURES) {
       let line;
       try {
-        const r = readDatabase(fx.dir, fx.password, types[fx.types]);
+        const r = readDatabase(fx.dir, fx.password, types[fx.types], fx.propertyKey);
+        if (fx.secrets && JSON.stringify(r.secrets) !== JSON.stringify(fx.secrets))
+          r.indexProblems.push('AES256 values read as ' + JSON.stringify(r.secrets) + ', not ' + JSON.stringify(fx.secrets));
         if (fresh && r.indexVersions.join() !== '2') r.indexProblems.push('index keys v' + r.indexVersions.join(', v') + '; the library in the tree writes v2 only');
         const expectPath = path.join(here, fx.expect);
         if (args[0] === '--write' && fx.name !== 'json' && fx.name !== 'binary' && fx.name !== 'password') fs.writeFileSync(expectPath, stable(r.content));
@@ -367,8 +422,8 @@ function main(args) {
     }
     process.exit(failed ? 1 : 0);
   }
-  if (!args[0]) { console.error('usage: read.mjs <folder> [password] | --check | --write | --check-fresh <root>'); process.exit(2); }
-  const r = readDatabase(path.resolve(args[0]), args[1], types.dataset);
+  if (!args[0]) { console.error('usage: read.mjs <folder> [password] [application key] | --check | --write | --check-fresh <root>'); process.exit(2); }
+  const r = readDatabase(path.resolve(args[0]), args[1] || null, types.dataset, args[2] || null);
   console.log(stable(r));
 }
 

@@ -240,6 +240,20 @@ namespace Xod.Services
                             }
                         }
 
+                        // [Crypto] rules, checked once every key is known (the Id convention above included).
+                        foreach (var p in typeProps.Where(p => p.Encryption != CryptoMethod.None))
+                        {
+                            // It protects a string; elsewhere 2.0 ignored it and stored the plain value (ISS-064).
+                            if (p.PropertyType != typeof(string))
+                                throw new CryptoDataTypeException(
+                                    $"Property '{p.PropertyName}' of {type.Name} is [Crypto], which protects a string property only.");
+                            // An index keys the plaintext a [Crypto] property is meant to hide, and a rebuilt one
+                            // keys the stored form instead (ISS-063): no index, key or unique constraint.
+                            if (p.IsIndexed || p.IsPrimaryKey || p.IsUnique)
+                                throw new IndexDataTypeException(
+                                    $"Property '{p.PropertyName}' of {type.Name} is [Crypto], so it can't be indexed, unique or a key: its index would hold the plaintext.");
+                        }
+
                         // Mark scalar properties that serve as local ForeignKey or ParentKey columns
                         var relKeyNames = typeProps
                             .SelectMany(p => (p.ForeignKeys?.Select(fk => fk.LocalProperty) ?? Enumerable.Empty<string>())

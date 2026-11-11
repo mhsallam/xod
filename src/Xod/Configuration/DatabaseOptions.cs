@@ -22,5 +22,12 @@ namespace Xod
         public int LockRetryTimeoutMs { get; set; } = 0;
         public int TransactionTimeoutMs { get; set; } = 30000;
         public DurabilityMode Durability { get; set; } = DurabilityMode.Immediate;
+
+        /// <summary>
+        /// A secret the application keeps, which protects the key of <c>[Crypto(AES256)]</c> properties.
+        /// It is never stored. Without it, that key is protected by the database password; with neither,
+        /// an <c>AES256</c> value can't be written, since anyone with XOD could read it back.
+        /// </summary>
+        public string PropertyEncryptionKey { get; set; }
     }
 }

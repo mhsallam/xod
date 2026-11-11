@@ -131,7 +131,7 @@ does the same for defects a query can't show:
 | :--- | :--- | :--- |
 | ISS-053 indexed decimal rounding | case `where-033` | fixed; marker removed |
 | ISS-056 indexed enum lookup | cases `where-001`, `where-011` | fixed; markers removed |
-| ISS-050 constant AES key | `KnownDefectTests` | still open |
+| ISS-050 constant AES key | `KnownDefectTests` | fixed ([`PLAN-049`](PLAN-049-property-encryption.md)); an ordinary test, with ISS-058 tests over the committed fixtures |
 | ISS-051 control character in an XML page | `KnownDefectTests` | fixed; an ordinary test |
 | ISS-052 deleted Id reused | `KnownDefectTests` | fixed; an ordinary test |
 | ISS-054 indexed double overflow | `KnownDefectTests` | fixed; an ordinary test |
@@ -179,6 +179,9 @@ for the number `2`, but the index stores `Gold`.
 `.github/workflows/tests.yml`:
 - `dotnet test conformance/Xod.Conformance` on Windows and Linux, .NET 8 and 9;
 - `node conformance/format/read.mjs --check` on .NET 9 runners.
+- since [`PLAN-049`](PLAN-049-property-encryption.md): both checks decrypt every AES256 value (2.0's under
+  its keys, new ones under the database's key; `Dataset.PropertyKey` protects it when there is no
+  password) and compare them with the dataset's;
 - since [`PLAN-048`](PLAN-048-format-defect-fixes.md): `-- data` into a scratch folder, then
   `read.mjs --check-fresh`, so the files the tree writes today (keys v2) are read by the independent
   reader too.

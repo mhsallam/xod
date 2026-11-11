@@ -227,25 +227,7 @@ namespace Xod.Services
 
             lock (syncLock)
             {
-                string normalizedName = Path.GetFileName(file.Path);
-                if (cachedRawPages.TryGetValue(normalizedName, out var oldRawPage))
-                {
-                    cachedRawPages.Remove(normalizedName);
-                    oldRawPage?.ReleasePooledBuffer();
-                }
-                if (!cachedFiles.TryGetValue(normalizedName, out var item))
-                {
-                    CacheFile(normalizedName, file, file.Path, FileCacheStatus.Shared);
-                }
-                else
-                {
-                    long previous = item.CostBytes;
-                    item.File = file;
-                    item.LastCheckout = DateTime.UtcNow;
-                    item.Status = FileCacheStatus.Shared;
-                    item.CostBytes = EstimateCacheCost(file, file.Path);
-                    cachedFileBytes += item.CostBytes - previous;
-                }
+                CacheSavedUnlocked(file);
 
                 if (batchDepth > 0)
                 {
@@ -261,6 +243,80 @@ namespace Xod.Services
                 }
 
                 FlushFileToDisk(file);
+            }
+        }
+
+        /// <summary>
+        /// Writes the file now, outside any batch, buffer or transaction: for a record that must outlast
+        /// whatever is in progress (an AES256 data key: a stored key no value uses is harmless, values whose
+        /// key was never stored are lost). A rollback doesn't undo it. Like every write here, it replaces the
+        /// file by a rename and doesn't flush it to the device.
+        /// </summary>
+        internal void SaveNow(XFile file)
+        {
+            if (file?.Document == null)
+                return;
+
+            lock (syncLock)
+            {
+                CacheSavedUnlocked(file);
+                FlushFileToDiskCore(file);
+            }
+        }
+
+        /// <summary>The file as it is on disk now, unless this context holds unsaved changes to it (then
+        /// those). For a record another context may have changed since this one cached it.</summary>
+        internal XFile Reopen(string fileName, Type type)
+        {
+            string normalizedName = Path.GetFileName(fileName);
+            lock (syncLock)
+            {
+                if (cachedFiles.TryGetValue(normalizedName, out var item) &&
+                    !dirtyBatchFiles.Contains(item.File) && !dirtyBufferedFiles.Contains(item.File))
+                {
+                    cachedFiles.Remove(normalizedName);
+                    cachedFileBytes -= item.CostBytes;
+                }
+                return OpenFileOrCreate(normalizedName, type, openOnly: true);
+            }
+        }
+
+        /// <summary>Every page of the database as this context sees it: those on disk and those it holds
+        /// that aren't written yet (buffered, or in a batch or transaction).</summary>
+        internal IReadOnlyCollection<string> PageFileNames()
+        {
+            var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in Directory.GetFiles(root, "*.xpag"))
+                names.Add(Path.GetFileName(path));
+            lock (syncLock)
+            {
+                foreach (string name in cachedFiles.Keys.Concat(cachedRawPages.Keys))
+                    if (name.EndsWith(".xpag", StringComparison.OrdinalIgnoreCase))
+                        names.Add(name);
+            }
+            return names;
+        }
+
+        private void CacheSavedUnlocked(XFile file)
+        {
+            string normalizedName = Path.GetFileName(file.Path);
+            if (cachedRawPages.TryGetValue(normalizedName, out var oldRawPage))
+            {
+                cachedRawPages.Remove(normalizedName);
+                oldRawPage?.ReleasePooledBuffer();
+            }
+            if (!cachedFiles.TryGetValue(normalizedName, out var item))
+            {
+                CacheFile(normalizedName, file, file.Path, FileCacheStatus.Shared);
+            }
+            else
+            {
+                long previous = item.CostBytes;
+                item.File = file;
+                item.LastCheckout = DateTime.UtcNow;
+                item.Status = FileCacheStatus.Shared;
+                item.CostBytes = EstimateCacheCost(file, file.Path);
+                cachedFileBytes += item.CostBytes - previous;
             }
         }
 

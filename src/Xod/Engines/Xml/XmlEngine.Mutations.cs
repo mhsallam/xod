@@ -255,23 +255,25 @@ namespace Xod.Engines.Xml
 
                 string formattedValue = StoredValue.Text(value, prop.PropertyName);
 
+                // [Crypto] applies to a string wherever it is stored, element or attribute (ISS-064).
+                if (effectivePropType == typeof(string))
+                {
+                    formattedValue = prop.Encryption switch
+                    {
+                        CryptoMethod.MD5 or CryptoMethod.SHA1 or CryptoMethod.SHA256 or CryptoMethod.SHA512 =>
+                            CryptoHelper.HashProperty(formattedValue, prop.Encryption),
+                        CryptoMethod.AES256 => propertyKeys.Encrypt(formattedValue, prop.PropertyName),
+                        _ => formattedValue
+                    };
+                }
+
                 if (prop.ValuePosition == ValuePosition.Attribute)
                 {
                     xItem.SetAttributeValue(prop.PropertyName, formattedValue);
                 }
                 else if (effectivePropType == typeof(string))
                 {
-                    string strVal = value.ToString();
-                    strVal = prop.Encryption switch
-                    {
-                        CryptoMethod.MD5 or CryptoMethod.SHA1 or CryptoMethod.SHA256 or CryptoMethod.SHA512 =>
-                            CryptoHelper.HashProperty(strVal, prop.Encryption),
-                        CryptoMethod.AES256 => CryptoHelper.EncryptProperty(strVal, password),
-                        _ => strVal
-                    };
-
-                    propertyElement = new XElement(prop.PropertyName, XmlText.TextNode(strVal, preferCData: prop.IsMarkup));
-
+                    propertyElement = new XElement(prop.PropertyName, XmlText.TextNode(formattedValue, preferCData: prop.IsMarkup));
                     xItem.Add(propertyElement);
                 }
                 else

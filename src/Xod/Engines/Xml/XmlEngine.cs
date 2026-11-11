@@ -27,9 +27,10 @@ namespace Xod.Engines.Xml
 
         // Services
         private readonly IOService ioService;
-        private readonly IXodSecurityService securityService;
+        private readonly XodSecurityService securityService;
         private readonly PropertyService propertyService;
         private readonly AutonumberService autonumberService;
+        private readonly PropertyKeyService propertyKeys;
         private readonly ItemsCacheService itemsCacheService;
         private readonly IndexService indexService;
         private readonly LogService logService;
@@ -137,6 +138,8 @@ namespace Xod.Engines.Xml
                 exceptionService.Throw(new DatabaseFileException());
             else
                 this.path = xodFile.Path;
+
+            this.propertyKeys = new PropertyKeyService(ioService, databaseFile, this.options.PropertyEncryptionKey, () => this.password);
 
             this.itemsCacheService = new ItemsCacheService(path);
             this.indexService = new IndexService(this.propertyService, this.ioService);
