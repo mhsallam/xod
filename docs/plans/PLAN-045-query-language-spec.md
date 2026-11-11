@@ -1,8 +1,8 @@
 # PLAN-045: XOD SQL - the query language (spec draft)
 
 - **Task ID**: `TASK-057` (roadmap step 1, first of three specs - `PLAN-044`)
-- **Status**: Draft for the owner's review (2026-11-11). Nothing is built. Decisions marked **D1-D8**
-  are the owner's; each has a recommendation.
+- **Status**: Spec accepted (2026-11-11): the owner took the recommendation on every decision, D1-D8
+  (section 12). Nothing is built.
 - **Related**: [`PLAN-044`](PLAN-044-roadmap-sql-analytics-rust-browser.md) (why SQL, the order, the
   browser), the file-format spec and the conformance set (the other two step-1 specs, not written yet)
 
@@ -261,7 +261,9 @@ the conformance set, so every implementation reports the same failure for the sa
 
 ## 12. Decisions for the owner
 
-| | Decision | Recommendation |
+Decided 2026-11-11: the owner accepted all eight recommendations.
+
+| | Decision | Decided |
 | :--- | :--- | :--- |
 | **D1** | How a model-less engine learns column types | a schema manifest written by the .NET library into the files |
 | **D2** | Case of table and column names | case-insensitive, error on a clash |
@@ -274,7 +276,7 @@ the conformance set, so every implementation reports the same failure for the sa
 
 ## 13. Next
 
-1. The owner's decisions on D1-D8.
+1. ~~The owner's decisions on D1-D8~~ - all eight recommendations accepted, 2026-11-11.
 2. The file-format spec (pages, `.xtab`, `.xidx`, the journal, and the manifest from D1), exact enough
    for a second implementation to read today's files.
 3. The conformance set: the dataset and the first hundred cases, runnable against the C# library's
@@ -282,5 +284,5 @@ the conformance set, so every implementation reports the same failure for the sa
 
 ## Verdict
 
-Draft. Every statement about today's XOD is from the code (`ValueHelper`, `PropertyService`, the 1.2.5
+Spec accepted; nothing built. Every statement about today's XOD is from the code (`ValueHelper`, `PropertyService`, the 1.2.5
 fixture) as of 2026-11-11; everything else is a proposal.
