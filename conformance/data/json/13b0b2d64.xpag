@@ -1,0 +1,84 @@
+{
+  "$engine": "XOD\u002B\u002B JSON Storage v2.0",
+  "$root": {
+    "$name": "TablePage",
+    "$attrs": {
+      "Full": "False"
+    },
+    "$children": [
+      {
+        "$name": "Rows",
+        "$attrs": {
+          "dataType": "Xod.PageRow",
+          "collType": "generic",
+          "refType": "complex"
+        },
+        "$children": [
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "a3832a05e"
+            },
+            "$children": [
+              {
+                "$name": "Note",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "1"
+                  },
+                  {
+                    "$name": "Text",
+                    "$value": "restock kettles"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "faa4b1438"
+            },
+            "$children": [
+              {
+                "$name": "Note",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "2"
+                  },
+                  {
+                    "$name": "Text",
+                    "$value": "window display"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "d78b4dbf2"
+            },
+            "$children": [
+              {
+                "$name": "Note",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "3"
+                  },
+                  {
+                    "$name": "Text",
+                    "$value": "staff rota"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

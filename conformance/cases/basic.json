@@ -1,0 +1,136 @@
+{
+  "group": "basic",
+  "cases": [
+    {
+      "id": "basic-001",
+      "sql": "SELECT Id, Name FROM Customer",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "Name", "type": "TEXT"}],
+      "ordered": true,
+      "note": "no ORDER BY: stored order (D5)",
+      "rows": [
+        [1,"Nadia Karim"],
+        [2,"Omar Saleh"],
+        [3,"Lina Haddad"],
+        [4,"Yusuf Amin"],
+        [5,"Sara Nasser"],
+        [6,"Adam Fares"],
+        [7,"Huda Ali"],
+        [8,"Karim Zaid"],
+        [9,"Mona Rahman"],
+        [10,"Tariq Aziz"],
+        [11,"Rania Odeh"],
+        [12,"Zain Musa"]
+      ]
+    },
+    {
+      "id": "basic-002",
+      "sql": "SELECT Id, Sku FROM Product",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "Sku", "type": "TEXT"}],
+      "ordered": true,
+      "note": "stored order is insertion order, not Id order",
+      "rows": [
+        [7,"SKU-007"],
+        [3,"SKU-003"],
+        [12,"SKU-012"],
+        [1,"SKU-001"],
+        [15,"SKU-015"],
+        [9,"SKU-009"],
+        [4,"SKU-004"],
+        [11,"SKU-011"],
+        [2,"SKU-002"],
+        [14,"SKU-014"],
+        [6,"SKU-006"],
+        [10,"SKU-010"],
+        [5,"SKU-005"],
+        [13,"SKU-013"],
+        [8,"SKU-008"]
+      ]
+    },
+    {
+      "id": "basic-003",
+      "sql": "SELECT Name AS customer FROM Customer WHERE Id = 3",
+      "columns": [{"name": "customer", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["Lina Haddad"]
+      ]
+    },
+    {
+      "id": "basic-004",
+      "sql": "SELECT DISTINCT City FROM Customer",
+      "columns": [{"name": "City", "type": "TEXT"}],
+      "ordered": false,
+      "note": "NULL is one distinct value",
+      "rows": [
+        ["Jeddah"],
+        ["Dubai"],
+        ["Amman"],
+        ["Cairo"],
+        [null],
+        ["Riyadh"],
+        ["Doha"]
+      ]
+    },
+    {
+      "id": "basic-005",
+      "sql": "SELECT DISTINCT Status FROM \"Order\" ORDER BY Status",
+      "columns": [{"name": "Status", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["cancelled"],
+        ["open"],
+        ["paid"],
+        ["shipped"]
+      ]
+    },
+    {
+      "id": "basic-006",
+      "sql": "SELECT COUNT(*) AS n FROM OrderLine",
+      "columns": [{"name": "n", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        [30]
+      ]
+    },
+    {
+      "id": "basic-007",
+      "sql": "SELECT Id, Price * 2 AS twice FROM Product WHERE Id <= 3 ORDER BY Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "twice", "type": "DECIMAL"}],
+      "ordered": true,
+      "rows": [
+        [1,"5.0"],
+        [2,"10.0"],
+        [3,"16.98"]
+      ]
+    },
+    {
+      "id": "basic-008",
+      "sql": "SELECT Id, Quantity * UnitPrice AS amount FROM OrderLine WHERE OrderId = 1 ORDER BY Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "amount", "type": "DECIMAL"}],
+      "ordered": true,
+      "rows": [
+        [1,"40.0"],
+        [2,"70.47"]
+      ]
+    },
+    {
+      "id": "basic-009",
+      "sql": "SELECT 7 / 2 AS a, 7 / 2.0 AS b, 7 % 3 AS c FROM Customer WHERE Id = 1",
+      "columns": [{"name": "a", "type": "INTEGER"}, {"name": "b", "type": "DECIMAL"}, {"name": "c", "type": "INTEGER"}],
+      "ordered": true,
+      "note": "integer division as C# (section 8); 2.0 is an exact literal",
+      "rows": [
+        [3,"3.5",1]
+      ]
+    },
+    {
+      "id": "basic-010",
+      "sql": "SELECT Name || ' <' || Email || '>' AS contact FROM Customer WHERE Id = 2",
+      "columns": [{"name": "contact", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["Omar Saleh <omar2@example.com>"]
+      ]
+    }
+  ]
+}

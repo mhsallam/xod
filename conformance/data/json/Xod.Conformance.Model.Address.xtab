@@ -1,0 +1,34 @@
+{
+  "$engine": "XOD\u002B\u002B JSON Storage v2.0",
+  "$root": {
+    "$name": "Table",
+    "$children": [
+      {
+        "$name": "Pages",
+        "$attrs": {
+          "dataType": "Xod.TablePage",
+          "collType": "generic",
+          "refType": "complex"
+        },
+        "$children": [
+          {
+            "$name": "Page",
+            "$attrs": {
+              "file": "27f8a0f40.xpag",
+              "full": "false",
+              "count": "1"
+            }
+          }
+        ]
+      },
+      {
+        "$name": "Indexes",
+        "$attrs": {
+          "dataType": "Xod.PageIndex",
+          "collType": "generic",
+          "refType": "complex"
+        }
+      }
+    ]
+  }
+}

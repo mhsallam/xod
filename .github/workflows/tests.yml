@@ -36,6 +36,15 @@ jobs:
       - name: Test
         run: dotnet test tests/Xod.Tests/Xod.Tests.csproj -c Release --nologo -f net${{ matrix.framework }}
 
+      # The conformance set (PLAN-047): the library against the committed cases and fixtures.
+      - name: Conformance cases
+        run: dotnet test conformance/Xod.Conformance/Xod.Conformance.csproj -c Release --nologo -f net${{ matrix.framework }}
+
+      # The file-format half: an independent reader (Node, no packages) reads every fixture.
+      - name: Conformance file format
+        if: matrix.framework == '9.0'
+        run: node conformance/format/read.mjs --check
+
       # The stress harness writes the files the site publishes; these pin what those files must say.
       - name: Stress harness tests
         if: matrix.framework == '9.0'

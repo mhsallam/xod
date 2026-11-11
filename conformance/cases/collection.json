@@ -1,0 +1,87 @@
+{
+  "group": "collection",
+  "cases": [
+    {
+      "id": "collection-001",
+      "sql": "SELECT Id, Tags['segment'] AS segment FROM Customer ORDER BY Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "segment", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        [1,"trade"],
+        [2,"retail"],
+        [3,null],
+        [4,"retail"],
+        [5,"trade"],
+        [6,null],
+        [7,"trade"],
+        [8,"retail"],
+        [9,null],
+        [10,"retail"],
+        [11,"trade"],
+        [12,null]
+      ]
+    },
+    {
+      "id": "collection-002",
+      "sql": "SELECT Id FROM Customer WHERE Tags['source'] = 'web'",
+      "columns": [{"name": "Id", "type": "INTEGER"}],
+      "ordered": false,
+      "rows": [
+        [1],
+        [2],
+        [4],
+        [5]
+      ]
+    },
+    {
+      "id": "collection-003",
+      "sql": "SELECT Id FROM Customer WHERE 'vip' = ANY(Labels)",
+      "columns": [{"name": "Id", "type": "INTEGER"}],
+      "ordered": false,
+      "rows": [
+        [4],
+        [8],
+        [10]
+      ]
+    },
+    {
+      "id": "collection-004",
+      "sql": "SELECT Id, CARDINALITY(Labels) AS n FROM Customer ORDER BY Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "n", "type": "INTEGER"}],
+      "ordered": true,
+      "note": "CARDINALITY(NULL) is NULL",
+      "rows": [
+        [1,null],
+        [2,3],
+        [3,1],
+        [4,2],
+        [5,null],
+        [6,1],
+        [7,2],
+        [8,3],
+        [9,null],
+        [10,2],
+        [11,3],
+        [12,1]
+      ]
+    },
+    {
+      "id": "collection-005",
+      "sql": "SELECT Id, Labels FROM Customer WHERE Id = 2",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "Labels", "type": "ARRAY"}],
+      "ordered": true,
+      "rows": [
+        [2,["wholesale","late-payer","newsletter"]]
+      ]
+    },
+    {
+      "id": "collection-006",
+      "sql": "SELECT Id, Tags FROM Customer WHERE Id = 1",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "Tags", "type": "MAP"}],
+      "ordered": true,
+      "rows": [
+        [1,{"segment":"trade","source":"web"}]
+      ]
+    }
+  ]
+}

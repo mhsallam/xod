@@ -1,0 +1,207 @@
+{
+  "group": "function",
+  "cases": [
+    {
+      "id": "function-001",
+      "sql": "SELECT Name, LOWER(Name) AS lo, UPPER(Name) AS up, LENGTH(Name) AS len FROM Customer WHERE Id <= 3 ORDER BY Id",
+      "columns": [{"name": "Name", "type": "TEXT"}, {"name": "lo", "type": "TEXT"}, {"name": "up", "type": "TEXT"}, {"name": "len", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        ["Nadia Karim","nadia karim","NADIA KARIM",11],
+        ["Omar Saleh","omar saleh","OMAR SALEH",10],
+        ["Lina Haddad","lina haddad","LINA HADDAD",11]
+      ]
+    },
+    {
+      "id": "function-002",
+      "sql": "SELECT Sku, SUBSTRING(Sku, 5, 3) AS num FROM Product ORDER BY Id LIMIT 3",
+      "columns": [{"name": "Sku", "type": "TEXT"}, {"name": "num", "type": "TEXT"}],
+      "ordered": true,
+      "note": "SUBSTRING counts from 1",
+      "rows": [
+        ["SKU-001","001"],
+        ["SKU-002","002"],
+        ["SKU-003","003"]
+      ]
+    },
+    {
+      "id": "function-003",
+      "sql": "SELECT REPLACE(Email, '@example.com', '') AS handle FROM Customer ORDER BY Id LIMIT 3",
+      "columns": [{"name": "handle", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["nadia1"],
+        ["omar2"],
+        ["lina3"]
+      ]
+    },
+    {
+      "id": "function-004",
+      "sql": "SELECT Id, POSITION('a' IN Name) AS p FROM Customer WHERE Id <= 4 ORDER BY Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "p", "type": "INTEGER"}],
+      "ordered": true,
+      "note": "1-based; 0 when absent",
+      "rows": [
+        [1,2],
+        [2,3],
+        [3,4],
+        [4,0]
+      ]
+    },
+    {
+      "id": "function-005",
+      "sql": "SELECT TRIM('  padded ') AS t FROM Customer WHERE Id = 1",
+      "columns": [{"name": "t", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["padded"]
+      ]
+    },
+    {
+      "id": "function-006",
+      "sql": "SELECT Id, ROUND(Price / 3, 2) AS third FROM Product WHERE Id <= 4 ORDER BY Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "third", "type": "DECIMAL"}],
+      "ordered": true,
+      "rows": [
+        [1,"0.83"],
+        [2,"1.67"],
+        [3,"2.83"],
+        [4,"3.33"]
+      ]
+    },
+    {
+      "id": "function-007",
+      "sql": "SELECT Id, ABS(Seats) AS a, FLOOR(Score) AS f, CEIL(Score) AS c FROM Event WHERE Id <= 3 ORDER BY Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "a", "type": "INTEGER"}, {"name": "f", "type": "DOUBLE"}, {"name": "c", "type": "DOUBLE"}],
+      "ordered": true,
+      "rows": [
+        [1,1000,0,1],
+        [2,200,0,1],
+        [3,3000,0,1]
+      ]
+    },
+    {
+      "id": "function-008",
+      "sql": "SELECT Id, EXTRACT(YEAR FROM Placed) AS y, EXTRACT(MONTH FROM Placed) AS m FROM \"Order\" WHERE Id <= 3 ORDER BY Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "y", "type": "INTEGER"}, {"name": "m", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        [1,2026,2],
+        [2,2026,3],
+        [3,2026,4]
+      ]
+    },
+    {
+      "id": "function-009",
+      "sql": "SELECT Id, DATE_TRUNC('month', Joined) AS month_start FROM Customer WHERE Id <= 3 ORDER BY Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "month_start", "type": "TIMESTAMP"}],
+      "ordered": true,
+      "rows": [
+        [1,"2025-02-01T00:00:00.0000000Z"],
+        [2,"2025-03-01T00:00:00.0000000Z"],
+        [3,"2025-04-01T00:00:00.0000000Z"]
+      ]
+    },
+    {
+      "id": "function-010",
+      "sql": "SELECT Id, CASE WHEN Price >= 20 THEN 'high' WHEN Price >= 10 THEN 'mid' ELSE 'low' END AS band FROM Product ORDER BY Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "band", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        [1,"low"],
+        [2,"low"],
+        [3,"low"],
+        [4,"mid"],
+        [5,"mid"],
+        [6,"mid"],
+        [7,"mid"],
+        [8,"high"],
+        [9,"high"],
+        [10,"high"],
+        [11,"high"],
+        [12,"high"],
+        [13,"high"],
+        [14,"high"],
+        [15,"high"]
+      ]
+    },
+    {
+      "id": "function-011",
+      "sql": "SELECT CAST(Id AS TEXT) || '-' || Sku AS label FROM Product WHERE Id <= 2 ORDER BY Id",
+      "columns": [{"name": "label", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["1-SKU-001"],
+        ["2-SKU-002"]
+      ]
+    },
+    {
+      "id": "function-012",
+      "sql": "SELECT Name FROM Product WHERE Name LIKE 'T%' ORDER BY Name",
+      "columns": [{"name": "Name", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["Teapot"],
+        ["Toaster"],
+        ["Trowel"]
+      ]
+    },
+    {
+      "id": "function-013",
+      "sql": "SELECT Name FROM Product WHERE Name LIKE 't%' ORDER BY Name",
+      "columns": [{"name": "Name", "type": "TEXT"}],
+      "ordered": true,
+      "note": "LIKE is case-sensitive (D4)",
+      "rows": []
+    },
+    {
+      "id": "function-014",
+      "sql": "SELECT Name FROM Product WHERE Name ILIKE 't%' ORDER BY Name",
+      "columns": [{"name": "Name", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["Teapot"],
+        ["Toaster"],
+        ["Trowel"]
+      ]
+    },
+    {
+      "id": "function-015",
+      "sql": "SELECT Name FROM Product WHERE Name LIKE '_a%' ORDER BY Name",
+      "columns": [{"name": "Name", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["Lamp"],
+        ["Rake"]
+      ]
+    },
+    {
+      "id": "function-016",
+      "sql": "SELECT 'a_b' LIKE 'a!_b' ESCAPE '!' AS m1, 'axb' LIKE 'a!_b' ESCAPE '!' AS m2 FROM Customer WHERE Id = 1",
+      "columns": [{"name": "m1", "type": "BOOLEAN"}, {"name": "m2", "type": "BOOLEAN"}],
+      "ordered": true,
+      "rows": [
+        [true,false]
+      ]
+    },
+    {
+      "id": "function-017",
+      "sql": "SELECT Id FROM Customer WHERE VERIFY_HASH(PasswordHash, 'pw-5')",
+      "columns": [{"name": "Id", "type": "INTEGER"}],
+      "ordered": false,
+      "rows": [
+        [5]
+      ]
+    },
+    {
+      "id": "function-018",
+      "sql": "SELECT PasswordHash FROM Customer WHERE Id = 1",
+      "columns": [{"name": "PasswordHash", "type": "TEXT"}],
+      "ordered": true,
+      "note": "a hashed column reads as its hash",
+      "rows": [
+        ["86cc7dcbef5e93f7bc9dd37bf84e7c5e368b4d8315b9e7125ce8a140e2f5cff3"]
+      ]
+    }
+  ]
+}

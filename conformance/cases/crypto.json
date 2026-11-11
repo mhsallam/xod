@@ -1,0 +1,32 @@
+{
+  "group": "crypto",
+  "cases": [
+    {
+      "id": "crypto-001",
+      "sql": "SELECT Name, ApiKey FROM Integration ORDER BY Id",
+      "columns": [{"name": "Name", "type": "TEXT"}, {"name": "ApiKey", "type": "TEXT"}],
+      "ordered": true,
+      "requires": "password",
+      "note": "an encrypted column, opened with the password",
+      "rows": [
+        ["billing","sk-billing-0001"],
+        ["mail","sk-mail-0002"],
+        ["maps",null]
+      ]
+    },
+    {
+      "id": "crypto-002",
+      "sql": "SELECT Name, ApiKey FROM Integration ORDER BY Id",
+      "columns": [{"name": "Name", "type": "TEXT"}, {"name": "ApiKey", "type": "TEXT"}],
+      "ordered": true,
+      "requires": "no-password",
+      "csharp": false,
+      "note": "without the password an encrypted column reads as NULL with warning XQ008; the C# library instead decrypts with its built-in key (ISS-050)",
+      "rows": [
+        ["billing",null],
+        ["mail",null],
+        ["maps",null]
+      ]
+    }
+  ]
+}

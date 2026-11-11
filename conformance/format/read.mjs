@@ -1,0 +1,313 @@
+// An independent reader for XOD database files (PLAN-046), written from the spec, not from the library.
+// It is the file-format half of the conformance set (PLAN-047):
+//
+//   node conformance/format/read.mjs <folder> [password]   print a database's content as JSON
+//   node conformance/format/read.mjs --check               check every fixture against content*.json
+//   node conformance/format/read.mjs --write               rewrite content*.json (after a deliberate change)
+//
+// Node 18 or later, standard library only (node:crypto for AES-GCM and PBKDF2, node:zlib for Brotli).
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import zlib from 'node:zlib';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repo = path.resolve(here, '..', '..');
+const td = new TextDecoder('utf-8', { fatal: true });
+
+// ---- the encryption envelope (PLAN-046 section 3.2)
+const ENC = Buffer.from('XODENC2\0', 'latin1');
+function unwrapper(password) {
+  const passphrase = password ? crypto.createHash('sha256').update(password, 'utf8').digest('hex') : null;
+  const keys = new Map();
+  return (buf) => {
+    if (!(buf.length >= 8 && buf.subarray(0, 8).equals(ENC))) return buf;
+    if (!passphrase) throw new Error('an encrypted file and no password');
+    const salt = buf.subarray(8, 24), nonce = buf.subarray(24, 36), tag = buf.subarray(36, 52), ct = buf.subarray(52);
+    const id = salt.toString('hex');
+    if (!keys.has(id)) keys.set(id, crypto.pbkdf2Sync(Buffer.from(passphrase, 'utf8'), salt, 100000, 32, 'sha256'));
+    const d = crypto.createDecipheriv('aes-256-gcm', keys.get(id), nonce);
+    d.setAAD(ENC);
+    d.setAuthTag(tag);
+    return Buffer.concat([d.update(ct), d.final()]);
+  };
+}
+
+// ---- documents: three encodings, one tree {name, attrs, children, text, cdata} (sections 3-4)
+function detect(buf) {
+  if (buf.length >= 5 && buf.toString('latin1', 0, 4) === 'XODB') return 'binary';
+  for (const b of buf) {
+    if ([0xef, 0xbb, 0xbf, 0x20, 0x09, 0x0d, 0x0a].includes(b)) continue;
+    return b === 0x7b ? 'json' : 'xml';
+  }
+  return 'xml';
+}
+function parseDoc(buf) {
+  const f = detect(buf);
+  return { encoding: f, root: f === 'binary' ? parseBinary(buf) : f === 'json' ? parseJson(buf) : parseXml(td.decode(buf)) };
+}
+function readString(b, at) {
+  let len = 0, shift = 0, x, p = at;
+  do { x = b[p++]; len |= (x & 0x7f) << shift; shift += 7; } while (x & 0x80);
+  return [td.decode(b.subarray(p, p + len)), p + len];
+}
+function parseBinary(buf) {
+  if (buf[4] !== 2) throw new Error('XODB version ' + buf[4]);
+  const b = zlib.brotliDecompressSync(buf.subarray(5));
+  let p = 0;
+  const i32 = () => { const v = b.readInt32LE(p); p += 4; return v; };
+  const str = () => { const [s, np] = readString(b, p); p = np; return s; };
+  const el = () => {
+    const e = { name: str(), attrs: {}, children: [], text: null, cdata: false };
+    for (let n = i32(); n > 0; n--) { const k = str(); e.attrs[k] = str(); }
+    const count = i32();
+    if (count > 0) for (let i = 0; i < count; i++) e.children.push(el());
+    else {
+      const kind = b[p++];
+      if (kind === 1) e.text = str();
+      else if (kind === 2) { e.text = str(); e.cdata = true; }
+      else if (kind !== 0) throw new Error('binary: node kind ' + kind);
+    }
+    return e;
+  };
+  const root = b[p++] === 1 ? el() : null;
+  if (p !== b.length) throw new Error(`binary: ${b.length - p} bytes after the root element`);
+  return root;
+}
+function parseJson(buf) {
+  const j = JSON.parse(td.decode(buf));
+  const el = (o) => ({ name: o.$name, attrs: { ...(o.$attrs || {}) }, children: (o.$children || []).map(el), text: o.$value ?? null, cdata: !!o.$cdata });
+  return j.$root ? el(j.$root) : null;
+}
+const ENTITIES = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+function parseXml(s) {
+  // Deliberately not a conforming XML parser: today's files hold raw control characters and character
+  // references to them, and a raw CR must be kept, not normalised (PLAN-046 section 4.2).
+  let p = 0;
+  const ent = (t) => t.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|lt|gt|amp|quot|apos);/g, (_, e) =>
+    e[0] === '#' ? String.fromCodePoint(e[1] === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10)) : ENTITIES[e]);
+  if (s.charCodeAt(0) === 0xfeff) p = 1;
+  const ws = () => { while (p < s.length && /\s/.test(s[p])) p++; };
+  ws();
+  if (s.startsWith('<!DOCTYPE', p)) throw new Error('xml: a DTD');
+  if (s.startsWith('<?xml', p)) p = s.indexOf('?>', p) + 2;
+  ws();
+  function el() {
+    if (s[p] !== '<') throw new Error('xml: expected < at ' + p);
+    p++;
+    let m = /^[^\s/>]+/.exec(s.slice(p, p + 256));
+    const e = { name: m[0], attrs: {}, children: [], text: null, cdata: false };
+    p += m[0].length;
+    for (;;) {
+      ws();
+      if (s.startsWith('/>', p)) { p += 2; return e; }
+      if (s[p] === '>') { p++; break; }
+      m = /^([^\s=]+)\s*=\s*(["'])/.exec(s.slice(p, p + 512));
+      p += m[0].length;
+      const end = s.indexOf(m[2], p);
+      e.attrs[m[1]] = ent(s.slice(p, end));
+      p = end + 1;
+    }
+    let text = '';
+    for (;;) {
+      if (s.startsWith('</', p)) {
+        const end = s.indexOf('>', p);
+        if (s.slice(p + 2, end).trim() !== e.name) throw new Error('xml: mismatched end tag for ' + e.name);
+        p = end + 1;
+        break;
+      }
+      if (s.startsWith('<![CDATA[', p)) { const end = s.indexOf(']]>', p); text += s.slice(p + 9, end); e.cdata = true; p = end + 3; continue; }
+      if (s[p] === '<') { e.children.push(el()); continue; }
+      const next = s.indexOf('<', p);
+      text += ent(s.slice(p, next));
+      p = next;
+    }
+    // Whitespace beside child elements is padding (deleted rows); a leaf keeps its text.
+    if (e.children.length === 0 && (text.length > 0 || e.cdata)) e.text = text;
+    else if (text.trim() !== '') throw new Error('xml: text beside elements in ' + e.name);
+    return e;
+  }
+  return el();
+}
+
+// ---- normalised index keys (section 8.3); the type comes from column-types.json until the manifest exists
+function normKey(type, text) {
+  if (text == null) return null;
+  if (type === 'int' || type === 'decimal') {
+    // 10^18 + value, 19 integer digits, 8 decimals, rounded half away from zero.
+    const neg = text.startsWith('-');
+    const [ip, fp = ''] = (neg ? text.slice(1) : text).split('.');
+    let scaled = BigInt(ip + fp.slice(0, 8).padEnd(8, '0'));
+    if (fp.length > 8 && fp[8] >= '5') scaled += 1n;
+    if (neg) scaled = -scaled;
+    const shifted = 10n ** 26n + scaled;
+    const digits = shifted.toString().padStart(27, '0');
+    return digits.slice(0, 19) + '.' + digits.slice(19);
+  }
+  if (type === 'text' || type === 'enum' || type === 'uuid') return text;
+  throw new Error('no key rule for type ' + type);
+}
+
+function readIndex(dir, file, unwrap) {
+  const raw = unwrap(fs.readFileSync(path.join(dir, file)));
+  const H = 'XIDX2:<TableIndex>\n';
+  const idx = {};
+  const add = (prop, k, c) => ((idx[prop] ??= {})[k] ??= new Set()).add(c);
+  if (raw.toString('utf8', 0, H.length) !== H) {
+    const doc = parseDoc(raw).root; // the document form, used with a password (section 8.2)
+    if (doc.name !== 'TableIndex') throw new Error(file + ': neither XIDX2 nor a TableIndex document');
+    for (const pr of doc.children) {
+      idx[pr.attrs.name] = {};
+      for (const e of pr.children) for (const c of e.attrs.codes.split(',')) add(pr.attrs.name, e.attrs.key, c);
+    }
+    return { idx, form: 'document' };
+  }
+  let p = H.length;
+  const i32 = () => { const v = raw.readInt32LE(p); p += 4; return v; };
+  const str = () => { const [s, np] = readString(raw, p); p = np; return s; };
+  const marker = i32();
+  if (marker !== -3 && marker !== -2) throw new Error(file + ': an unframed snapshot (not produced by 2.0)');
+  for (let n = i32(); n > 0; n--) {
+    const prop = str(), entries = i32(), min = str(), max = str(), len = i32(), end = p + len;
+    idx[prop] ??= {};
+    let seen = 0, lo = null, hi = null;
+    while (p < end) {
+      const k = str();
+      for (let c = i32(); c > 0; c--) add(prop, k, str());
+      seen++;
+      if (lo === null || k < lo) lo = k;
+      if (hi === null || k > hi) hi = k;
+    }
+    if (seen !== entries || (entries > 0 && (lo !== min || hi !== max))) throw new Error(`${file}/${prop}: block header disagrees with its entries`);
+  }
+  let lastEnd = p;
+  while (p < raw.length) {
+    const op = raw[p++], prop = str(), k = str(), code = str();
+    if (op === 1) add(prop, k, code);
+    else if (op === 2) {
+      if (prop) idx[prop]?.[k]?.delete(code);
+      else for (const b of Object.values(idx)) for (const s of Object.values(b)) s.delete(code);
+    } else if (op === 3) lastEnd = p;
+    else throw new Error(file + ': log op ' + op);
+  }
+  if (marker === -3 && lastEnd !== raw.length) throw new Error(file + ': log not closed by an end-of-flush record');
+  for (const b of Object.values(idx)) for (const [k, s] of Object.entries(b)) if (s.size === 0) delete b[k];
+  return { idx, form: 'binary' };
+}
+
+// ---- a whole database (sections 2, 5-7)
+export function readDatabase(dir, password, columnTypes = {}) {
+  const unwrap = unwrapper(password);
+  const load = (file) => parseDoc(unwrap(fs.readFileSync(path.join(dir, file))));
+  const child = (e, n) => e.children.find((c) => c.name === n);
+  if (fs.existsSync(path.join(dir, 'transaction.xwal'))) throw new Error('a journal is present: recover first (section 9)');
+
+  const dbFile = fs.readdirSync(dir).find((f) => /\.xod[jb]?$/i.test(f));
+  const dbDoc = load(dbFile);
+  if (dbDoc.root.name !== 'Database') throw new Error('not a database file: ' + dbFile);
+
+  const tables = {}, rowsByCode = new Map();
+  for (const tf of fs.readdirSync(dir).filter((f) => f.endsWith('.xtab')).sort()) {
+    const table = tf.slice(0, -5);
+    const rows = [];
+    for (const page of child(load(tf).root, 'Pages').children) {
+      const pageCode = page.attrs.file.replace(/\.xpag$/, '');
+      for (const row of child(load(page.attrs.file).root, 'Rows').children) {
+        const entity = row.children[0];
+        const r = { table, code: `${pageCode}.${row.attrs.code}`, element: entity.name, attrs: entity.attrs, fields: {} };
+        for (const f of entity.children) r.fields[f.name] = f;
+        rows.push(r);
+        rowsByCode.set(r.code, r);
+      }
+    }
+    tables[table] = rows;
+  }
+
+  const ref = (code, keys) => {
+    const target = rowsByCode.get(code);
+    if (!target) throw new Error('a dangling reference: ' + code);
+    return { table: target.table, row: tables[target.table].indexOf(target), keys };
+  };
+  // AES-256 values carry a random nonce, so they differ between otherwise identical databases.
+  const scalar = (t) => (t != null && t.startsWith('enc:aes256:') ? 'enc:aes256:<ciphertext>' : t);
+  const value = (table, name, f) => {
+    if (f.attrs.refType) {
+      if (f.attrs.collType) return { [f.attrs.refType]: f.children.map((c) => ref(c.text, c.attrs)) };
+      const keys = Object.fromEntries(Object.entries(f.attrs).filter(([k]) => k !== 'refType' && k !== 'hostProp'));
+      return { [f.attrs.refType]: ref(f.text, keys), ...(f.attrs.hostProp ? { hostProp: f.attrs.hostProp } : {}) };
+    }
+    if (f.attrs.collType === 'dictionary') return { map: Object.fromEntries(f.children.map((c) => [c.attrs.key, c.text ?? ''])) };
+    if (f.attrs.collType) return { list: f.children.map((c) => c.text) };
+    return f.cdata ? { cdata: f.text } : canonical(columnTypes[table]?.[name], scalar(f.text));
+  };
+  // Booleans are case-insensitive (section 7.5): the fast writer stores true, the document writer True.
+  const canonical = (type, t) => (type === 'bool' && t != null ? t.toLowerCase() : t);
+  const content = {};
+  for (const [table, rows] of Object.entries(tables))
+    content[table] = rows.map((r) => ({
+      element: r.element,
+      attrs: Object.fromEntries(Object.entries(r.attrs).map(([k, t]) => [k, canonical(columnTypes[table]?.[k], t)])),
+      fields: Object.fromEntries(Object.entries(r.fields).map(([k, f]) => [k, value(table, k, f)])),
+    }));
+
+  // Every index must equal what the pages say.
+  const indexProblems = [];
+  let indexEntries = 0;
+  for (const xf of fs.readdirSync(dir).filter((f) => f.endsWith('.xidx')).sort()) {
+    const table = xf.slice(0, -5);
+    const { idx } = readIndex(dir, xf, unwrap);
+    for (const [prop, got] of Object.entries(idx)) {
+      const type = columnTypes[table]?.[prop];
+      if (!type) { indexProblems.push(`${table}.${prop}: no type in column-types.json`); continue; }
+      const want = {};
+      for (const r of tables[table] ?? []) {
+        const k = normKey(type, r.fields[prop]?.text ?? r.attrs[prop]);
+        if (k != null) (want[k] ??= new Set()).add(r.code);
+      }
+      const canon = (o) => JSON.stringify(Object.keys(o).sort().map((k) => [k, [...o[k]].sort()]));
+      if (canon(want) !== canon(got)) indexProblems.push(`${table}.${prop}: index ${canon(got)} but pages ${canon(want)}`);
+      indexEntries += Object.keys(got).length;
+    }
+  }
+  return { database: { ...dbDoc.root.attrs }, content, indexEntries, indexProblems };
+}
+
+// ---- command line
+const FIXTURES = [
+  { name: 'xml', dir: 'conformance/data/xml', expect: 'content.json', types: 'dataset' },
+  { name: 'json', dir: 'conformance/data/json', expect: 'content.json', types: 'dataset' },
+  { name: 'binary', dir: 'conformance/data/binary', expect: 'content.json', types: 'dataset' },
+  { name: 'password', dir: 'conformance/data/password', password: 'conformance-password', expect: 'content.json', types: 'dataset' },
+  { name: 'v1.2.5', dir: 'tests/Xod.Tests/fixtures/v1.2.5-xml', expect: 'content-v1.2.5.json', types: 'v1.2.5' },
+];
+const stable = (o) => JSON.stringify(o, null, 1) + '\n';
+
+function main(args) {
+  const types = JSON.parse(fs.readFileSync(path.join(here, 'column-types.json'), 'utf8'));
+  if (args[0] === '--check' || args[0] === '--write') {
+    let failed = 0;
+    for (const fx of FIXTURES) {
+      let line;
+      try {
+        const r = readDatabase(path.join(repo, fx.dir), fx.password, types[fx.types]);
+        const expectPath = path.join(here, fx.expect);
+        if (args[0] === '--write' && fx.name !== 'json' && fx.name !== 'binary' && fx.name !== 'password') fs.writeFileSync(expectPath, stable(r.content));
+        const same = fs.existsSync(expectPath) && fs.readFileSync(expectPath, 'utf8').replace(/\r\n/g, '\n') === stable(r.content);
+        const rows = Object.values(r.content).reduce((n, t) => n + t.length, 0);
+        if (!same || r.indexProblems.length) failed++;
+        line = `${same && !r.indexProblems.length ? 'ok  ' : 'FAIL'} ${fx.name}: ${rows} rows ${same ? 'match' : 'DIFFER FROM'} ${fx.expect}; ${r.indexEntries} index keys${r.indexProblems.length ? '\n     ' + r.indexProblems.join('\n     ') : ' match the pages'}`;
+      } catch (e) {
+        failed++;
+        line = `FAIL ${fx.name}: ${e.message}`;
+      }
+      console.log(line);
+    }
+    process.exit(failed ? 1 : 0);
+  }
+  if (!args[0]) { console.error('usage: read.mjs <folder> [password] | --check | --write'); process.exit(2); }
+  const r = readDatabase(path.resolve(args[0]), args[1], types.dataset);
+  console.log(stable(r));
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));

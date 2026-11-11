@@ -1,0 +1,1250 @@
+{
+  "$engine": "XOD\u002B\u002B JSON Storage v2.0",
+  "$root": {
+    "$name": "TablePage",
+    "$attrs": {
+      "Full": "False"
+    },
+    "$children": [
+      {
+        "$name": "Rows",
+        "$attrs": {
+          "dataType": "Xod.PageRow",
+          "collType": "generic",
+          "refType": "complex"
+        },
+        "$children": [
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "20cbe4785"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "True"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "1"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Nadia Karim"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "nadia1@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Silver"
+                  },
+                  {
+                    "$name": "City",
+                    "$value": "Jeddah"
+                  },
+                  {
+                    "$name": "Rating",
+                    "$value": "3"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "500.50"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-02-04T09:11:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "86cc7dcbef5e93f7bc9dd37bf84e7c5e368b4d8315b9e7125ce8a140e2f5cff3"
+                  },
+                  {
+                    "$name": "Tags",
+                    "$attrs": {
+                      "collType": "dictionary"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "segment"
+                        },
+                        "$value": "trade"
+                      },
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "source"
+                        },
+                        "$value": "web"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Address",
+                    "$attrs": {
+                      "refType": "complex"
+                    },
+                    "$value": "27f8a0f40.7e4b0823a"
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "1"
+                        },
+                        "$value": "0a6d8f514.9211279fd"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "dfb929b66"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "True"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "2"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Omar Saleh"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "omar2@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Gold"
+                  },
+                  {
+                    "$name": "City",
+                    "$value": "Dubai"
+                  },
+                  {
+                    "$name": "Rating",
+                    "$value": "5"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "1000.00"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-03-07T10:22:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "99a1640783e5b8a1e4f8812508e8a6af3b1354ca5ce3a61f0d957869e7e8dc2c"
+                  },
+                  {
+                    "$name": "Tags",
+                    "$attrs": {
+                      "collType": "dictionary"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "segment"
+                        },
+                        "$value": "retail"
+                      },
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "source"
+                        },
+                        "$value": "web"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Labels",
+                    "$attrs": {
+                      "dataType": "System.String",
+                      "collType": "generic"
+                    },
+                    "$children": [
+                      {
+                        "$name": "String",
+                        "$value": "wholesale"
+                      },
+                      {
+                        "$name": "String",
+                        "$value": "late-payer"
+                      },
+                      {
+                        "$name": "String",
+                        "$value": "newsletter"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "2"
+                        },
+                        "$value": "0a6d8f514.b23fd4331"
+                      },
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "3"
+                        },
+                        "$value": "0a6d8f514.7c83d65a9"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "dd3dd5c6d"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "True"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "3"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Lina Haddad"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "lina3@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Basic"
+                  },
+                  {
+                    "$name": "City",
+                    "$value": "Amman"
+                  },
+                  {
+                    "$name": "Rating",
+                    "$value": "2"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "1500.50"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-04-10T11:33:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "f48cfaa465609c5177fd90cccef0b4ceeb666883ac5e9a561162e13487904473"
+                  },
+                  {
+                    "$name": "Labels",
+                    "$attrs": {
+                      "dataType": "System.String",
+                      "collType": "generic"
+                    },
+                    "$children": [
+                      {
+                        "$name": "String",
+                        "$value": "late-payer"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Address",
+                    "$attrs": {
+                      "refType": "complex"
+                    },
+                    "$value": "27f8a0f40.497f7df47"
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "4"
+                        },
+                        "$value": "0a6d8f514.4a6609712"
+                      },
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "5"
+                        },
+                        "$value": "0a6d8f514.87644f1cf"
+                      },
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "6"
+                        },
+                        "$value": "0a6d8f514.243899763"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "07a598e27"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "True"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "4"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Yusuf Amin"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "yusuf4@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Silver"
+                  },
+                  {
+                    "$name": "City",
+                    "$value": "Cairo"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "0.00"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-05-13T12:44:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "fce6f062b5aa1bc1f3281d7a89ecfcb128af19164fcf65ec1a0d2da1a6dda547"
+                  },
+                  {
+                    "$name": "Tags",
+                    "$attrs": {
+                      "collType": "dictionary"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "segment"
+                        },
+                        "$value": "retail"
+                      },
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "source"
+                        },
+                        "$value": "web"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Labels",
+                    "$attrs": {
+                      "dataType": "System.String",
+                      "collType": "generic"
+                    },
+                    "$children": [
+                      {
+                        "$name": "String",
+                        "$value": "newsletter"
+                      },
+                      {
+                        "$name": "String",
+                        "$value": "vip"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Address",
+                    "$attrs": {
+                      "refType": "complex"
+                    },
+                    "$value": "27f8a0f40.9e9600211"
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "62a18b9db"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "True"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "5"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Sara Nasser"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "sara5@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Gold"
+                  },
+                  {
+                    "$name": "Rating",
+                    "$value": "1"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "500.50"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-06-16T13:55:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "b0b654f1312e984f6da0b63fb9475b501b81971ac3434f341b379c868238a5ea"
+                  },
+                  {
+                    "$name": "Tags",
+                    "$attrs": {
+                      "collType": "dictionary"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "segment"
+                        },
+                        "$value": "trade"
+                      },
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "source"
+                        },
+                        "$value": "web"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "7"
+                        },
+                        "$value": "0a6d8f514.398e33db5"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "b1f6ddb44"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "True"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "6"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Adam Fares"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "adam6@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Basic"
+                  },
+                  {
+                    "$name": "City",
+                    "$value": "Riyadh"
+                  },
+                  {
+                    "$name": "Rating",
+                    "$value": "3"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "1000.00"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-07-19T14:06:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "ac567d4e7aa96b6687db18e32df26be8cf69e91326b3edb276c6028635348244"
+                  },
+                  {
+                    "$name": "Labels",
+                    "$attrs": {
+                      "dataType": "System.String",
+                      "collType": "generic"
+                    },
+                    "$children": [
+                      {
+                        "$name": "String",
+                        "$value": "new"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Address",
+                    "$attrs": {
+                      "refType": "complex"
+                    },
+                    "$value": "27f8a0f40.652975f2e"
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "8"
+                        },
+                        "$value": "0a6d8f514.8a1b9c218"
+                      },
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "9"
+                        },
+                        "$value": "0a6d8f514.5876de480"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "33dee1035"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "False"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "7"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Huda Ali"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "huda7@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Silver"
+                  },
+                  {
+                    "$name": "City",
+                    "$value": "Jeddah"
+                  },
+                  {
+                    "$name": "Rating",
+                    "$value": "5"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "1500.50"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-08-22T15:17:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "ff45c04070774481d0412264a30925d6eb7a8589e987df0134bf02063385e3e8"
+                  },
+                  {
+                    "$name": "Tags",
+                    "$attrs": {
+                      "collType": "dictionary"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "segment"
+                        },
+                        "$value": "trade"
+                      },
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "source"
+                        },
+                        "$value": "store"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Labels",
+                    "$attrs": {
+                      "dataType": "System.String",
+                      "collType": "generic"
+                    },
+                    "$children": [
+                      {
+                        "$name": "String",
+                        "$value": "wholesale"
+                      },
+                      {
+                        "$name": "String",
+                        "$value": "late-payer"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Address",
+                    "$attrs": {
+                      "refType": "complex"
+                    },
+                    "$value": "27f8a0f40.e28f4931f"
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "10"
+                        },
+                        "$value": "0a6d8f514.1a5ec07f8"
+                      },
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "11"
+                        },
+                        "$value": "0a6d8f514.855c68ad2"
+                      },
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "12"
+                        },
+                        "$value": "0a6d8f514.7b6daac4b"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "5ed99d7ff"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "True"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "8"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Karim Zaid"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "karim8@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Gold"
+                  },
+                  {
+                    "$name": "City",
+                    "$value": "Dubai"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "0.00"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-09-25T16:28:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "a95c4a4c518c88c39350231779fd0384c65ce28da2c0f7ea18588ac52a2f429c"
+                  },
+                  {
+                    "$name": "Tags",
+                    "$attrs": {
+                      "collType": "dictionary"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "segment"
+                        },
+                        "$value": "retail"
+                      },
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "source"
+                        },
+                        "$value": "store"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Labels",
+                    "$attrs": {
+                      "dataType": "System.String",
+                      "collType": "generic"
+                    },
+                    "$children": [
+                      {
+                        "$name": "String",
+                        "$value": "late-payer"
+                      },
+                      {
+                        "$name": "String",
+                        "$value": "newsletter"
+                      },
+                      {
+                        "$name": "String",
+                        "$value": "vip"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "e7d835bd9"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "True"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "9"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Mona Rahman"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "mona9@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Basic"
+                  },
+                  {
+                    "$name": "City",
+                    "$value": "Amman"
+                  },
+                  {
+                    "$name": "Rating",
+                    "$value": "4"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "500.50"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-10-28T08:39:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "571b6701b2490be560063911e35f0006fe3d80d9d765d3ed071e0e8824307faa"
+                  },
+                  {
+                    "$name": "Address",
+                    "$attrs": {
+                      "refType": "complex"
+                    },
+                    "$value": "27f8a0f40.3f879ceb3"
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "13"
+                        },
+                        "$value": "0a6d8f514.187f7868e"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "fd428e03c"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "True"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "10"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Tariq Aziz"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "tariq10@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Silver"
+                  },
+                  {
+                    "$name": "Rating",
+                    "$value": "1"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "1000.00"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-11-03T09:50:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "b05e923ecca8deefb0921092f42abf0cd71bf217c142ee9b8276f32117246775"
+                  },
+                  {
+                    "$name": "Tags",
+                    "$attrs": {
+                      "collType": "dictionary"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "segment"
+                        },
+                        "$value": "retail"
+                      },
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "source"
+                        },
+                        "$value": "store"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Labels",
+                    "$attrs": {
+                      "dataType": "System.String",
+                      "collType": "generic"
+                    },
+                    "$children": [
+                      {
+                        "$name": "String",
+                        "$value": "vip"
+                      },
+                      {
+                        "$name": "String",
+                        "$value": "new"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Address",
+                    "$attrs": {
+                      "refType": "complex"
+                    },
+                    "$value": "27f8a0f40.ba48cba1e"
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "14"
+                        },
+                        "$value": "0a6d8f514.612673ef7"
+                      },
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "15"
+                        },
+                        "$value": "0a6d8f514.923385070"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "52e5dc35a"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "True"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "11"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Rania Odeh"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "rania11@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Gold"
+                  },
+                  {
+                    "$name": "City",
+                    "$value": "Doha"
+                  },
+                  {
+                    "$name": "Rating",
+                    "$value": "3"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "1500.50"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-12-06T10:01:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "9f20a215fbf4dbd760a101cb9709d23b8961f3da3d6104c99798846903ca647d"
+                  },
+                  {
+                    "$name": "Tags",
+                    "$attrs": {
+                      "collType": "dictionary"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "segment"
+                        },
+                        "$value": "trade"
+                      },
+                      {
+                        "$name": "Entry",
+                        "$attrs": {
+                          "key": "source"
+                        },
+                        "$value": "store"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Labels",
+                    "$attrs": {
+                      "dataType": "System.String",
+                      "collType": "generic"
+                    },
+                    "$children": [
+                      {
+                        "$name": "String",
+                        "$value": "new"
+                      },
+                      {
+                        "$name": "String",
+                        "$value": "wholesale"
+                      },
+                      {
+                        "$name": "String",
+                        "$value": "late-payer"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "16"
+                        },
+                        "$value": "0a6d8f514.cbb664734"
+                      },
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "17"
+                        },
+                        "$value": "0a6d8f514.60de1f5c2"
+                      },
+                      {
+                        "$name": "Order",
+                        "$attrs": {
+                          "Id": "18"
+                        },
+                        "$value": "0a6d8f514.a1020183b"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "540b643ef"
+            },
+            "$children": [
+              {
+                "$name": "Customer",
+                "$attrs": {
+                  "Active": "True"
+                },
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "12"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "Zain Musa"
+                  },
+                  {
+                    "$name": "Email",
+                    "$value": "zain12@example.com"
+                  },
+                  {
+                    "$name": "Tier",
+                    "$value": "Basic"
+                  },
+                  {
+                    "$name": "City",
+                    "$value": "Riyadh"
+                  },
+                  {
+                    "$name": "CreditLimit",
+                    "$value": "0.00"
+                  },
+                  {
+                    "$name": "Joined",
+                    "$value": "2025-01-09T11:12:00.0000000Z"
+                  },
+                  {
+                    "$name": "PasswordHash",
+                    "$value": "b3aa35229497d1a6b8579c4b83248dd16f2f002b20fa7133b91b4231017fbe77"
+                  },
+                  {
+                    "$name": "Labels",
+                    "$attrs": {
+                      "dataType": "System.String",
+                      "collType": "generic"
+                    },
+                    "$children": [
+                      {
+                        "$name": "String",
+                        "$value": "wholesale"
+                      }
+                    ]
+                  },
+                  {
+                    "$name": "Address",
+                    "$attrs": {
+                      "refType": "complex"
+                    },
+                    "$value": "27f8a0f40.4859eb6c9"
+                  },
+                  {
+                    "$name": "Orders",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.Order",
+                      "collType": "generic",
+                      "refType": "children"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

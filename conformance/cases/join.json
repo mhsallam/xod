@@ -1,0 +1,270 @@
+{
+  "group": "join",
+  "cases": [
+    {
+      "id": "join-001",
+      "sql": "SELECT c.Name, o.Id FROM Customer c JOIN \"Order\" o ON o.CustomerId = c.Id ORDER BY o.Id",
+      "columns": [{"name": "Name", "type": "TEXT"}, {"name": "Id", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        ["Nadia Karim",1],
+        ["Omar Saleh",2],
+        ["Omar Saleh",3],
+        ["Lina Haddad",4],
+        ["Lina Haddad",5],
+        ["Lina Haddad",6],
+        ["Sara Nasser",7],
+        ["Adam Fares",8],
+        ["Adam Fares",9],
+        ["Huda Ali",10],
+        ["Huda Ali",11],
+        ["Huda Ali",12],
+        ["Mona Rahman",13],
+        ["Tariq Aziz",14],
+        ["Tariq Aziz",15],
+        ["Rania Odeh",16],
+        ["Rania Odeh",17],
+        ["Rania Odeh",18]
+      ]
+    },
+    {
+      "id": "join-002",
+      "sql": "SELECT c.Id, o.Id AS order_id FROM Customer c LEFT JOIN \"Order\" o ON o.CustomerId = c.Id ORDER BY c.Id, order_id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "order_id", "type": "INTEGER"}],
+      "ordered": true,
+      "note": "customers without orders keep a row with NULL",
+      "rows": [
+        [1,1],
+        [2,2],
+        [2,3],
+        [3,4],
+        [3,5],
+        [3,6],
+        [4,null],
+        [5,7],
+        [6,8],
+        [6,9],
+        [7,10],
+        [7,11],
+        [7,12],
+        [8,null],
+        [9,13],
+        [10,14],
+        [10,15],
+        [11,16],
+        [11,17],
+        [11,18],
+        [12,null]
+      ]
+    },
+    {
+      "id": "join-003",
+      "sql": "SELECT c.Name, COUNT(o.Id) AS orders FROM Customer c LEFT JOIN \"Order\" o ON o.CustomerId = c.Id GROUP BY c.Name ORDER BY c.Name",
+      "columns": [{"name": "Name", "type": "TEXT"}, {"name": "orders", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        ["Adam Fares",2],
+        ["Huda Ali",3],
+        ["Karim Zaid",0],
+        ["Lina Haddad",3],
+        ["Mona Rahman",1],
+        ["Nadia Karim",1],
+        ["Omar Saleh",2],
+        ["Rania Odeh",3],
+        ["Sara Nasser",1],
+        ["Tariq Aziz",2],
+        ["Yusuf Amin",0],
+        ["Zain Musa",0]
+      ]
+    },
+    {
+      "id": "join-004",
+      "sql": "SELECT o.Id, o.Customer.Name AS customer FROM \"Order\" o WHERE o.Status = 'paid' ORDER BY o.Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "customer", "type": "TEXT"}],
+      "ordered": true,
+      "note": "a to-one path (section 6)",
+      "rows": [
+        [1,"Nadia Karim"],
+        [6,"Lina Haddad"],
+        [7,"Sara Nasser"],
+        [12,"Huda Ali"],
+        [13,"Mona Rahman"],
+        [18,"Rania Odeh"]
+      ]
+    },
+    {
+      "id": "join-005",
+      "sql": "SELECT l.Id, l.Order.Customer.Name AS customer, l.Product.Name AS product FROM OrderLine l WHERE l.Quantity = 4 ORDER BY l.Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "customer", "type": "TEXT"}, {"name": "product", "type": "TEXT"}],
+      "ordered": true,
+      "note": "a two-step path and a reference path",
+      "rows": [
+        [1,"Nadia Karim","Stapler"],
+        [5,"Omar Saleh","Toaster"],
+        [9,"Lina Haddad","Stapler"],
+        [13,"Adam Fares","Desk"],
+        [17,"Huda Ali","Blender"],
+        [21,"Mona Rahman","Desk"],
+        [25,"Rania Odeh","Stapler"],
+        [29,"Rania Odeh","Toaster"]
+      ]
+    },
+    {
+      "id": "join-006",
+      "sql": "SELECT c.Name, COUNT(o.Id) AS orders, SUM(l.Quantity) AS qty FROM Customer c LEFT JOIN c.Orders o LEFT JOIN o.Lines l GROUP BY c.Name ORDER BY c.Name",
+      "columns": [{"name": "Name", "type": "TEXT"}, {"name": "orders", "type": "INTEGER"}, {"name": "qty", "type": "INTEGER"}],
+      "ordered": true,
+      "note": "children joins; COUNT(o.Id) counts joined rows, as in SQL",
+      "rows": [
+        ["Adam Fares",4,10],
+        ["Huda Ali",5,10],
+        ["Karim Zaid",0,null],
+        ["Lina Haddad",4,7],
+        ["Mona Rahman",2,5],
+        ["Nadia Karim",2,7],
+        ["Omar Saleh",4,10],
+        ["Rania Odeh",6,17],
+        ["Sara Nasser",2,5],
+        ["Tariq Aziz",4,6],
+        ["Yusuf Amin",0,null],
+        ["Zain Musa",0,null]
+      ]
+    },
+    {
+      "id": "join-007",
+      "sql": "SELECT o.Id, COUNT(*) AS lines FROM \"Order\" o JOIN o.Lines l GROUP BY o.Id ORDER BY o.Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "lines", "type": "INTEGER"}],
+      "ordered": true,
+      "note": "an inner children join drops orders without lines",
+      "rows": [
+        [1,2],
+        [2,3],
+        [3,1],
+        [4,2],
+        [6,1],
+        [7,2],
+        [8,3],
+        [9,1],
+        [11,3],
+        [12,1],
+        [13,2],
+        [14,3],
+        [16,2],
+        [17,3],
+        [18,1]
+      ]
+    },
+    {
+      "id": "join-008",
+      "sql": "SELECT c.Name, (SELECT COUNT(*) FROM c.Orders) AS n FROM Customer c ORDER BY c.Id",
+      "columns": [{"name": "Name", "type": "TEXT"}, {"name": "n", "type": "INTEGER"}],
+      "ordered": true,
+      "note": "a collection as a subquery source; uses the loaded children",
+      "rows": [
+        ["Nadia Karim",1],
+        ["Omar Saleh",2],
+        ["Lina Haddad",3],
+        ["Yusuf Amin",0],
+        ["Sara Nasser",1],
+        ["Adam Fares",2],
+        ["Huda Ali",3],
+        ["Karim Zaid",0],
+        ["Mona Rahman",1],
+        ["Tariq Aziz",2],
+        ["Rania Odeh",3],
+        ["Zain Musa",0]
+      ]
+    },
+    {
+      "id": "join-009",
+      "sql": "SELECT Name FROM Customer c WHERE NOT EXISTS (SELECT 1 FROM \"Order\" o WHERE o.CustomerId = c.Id) ORDER BY Name",
+      "columns": [{"name": "Name", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["Karim Zaid"],
+        ["Yusuf Amin"],
+        ["Zain Musa"]
+      ]
+    },
+    {
+      "id": "join-010",
+      "sql": "SELECT Name FROM Product WHERE Id IN (SELECT ProductId FROM OrderLine WHERE Quantity >= 4) ORDER BY Name",
+      "columns": [{"name": "Name", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["Blender"],
+        ["Desk"],
+        ["Stapler"],
+        ["Toaster"]
+      ]
+    },
+    {
+      "id": "join-011",
+      "sql": "SELECT Sku FROM Product WHERE Id NOT IN (SELECT ProductId FROM OrderLine) ORDER BY Sku",
+      "columns": [{"name": "Sku", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["SKU-001"],
+        ["SKU-006"],
+        ["SKU-011"]
+      ]
+    },
+    {
+      "id": "join-012",
+      "sql": "SELECT Id FROM Product WHERE Price > (SELECT AVG(Price) FROM Product) ORDER BY Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        [9],
+        [10],
+        [11],
+        [12],
+        [13],
+        [14],
+        [15]
+      ]
+    },
+    {
+      "id": "join-013",
+      "sql": "SELECT t.Status, t.n FROM (SELECT Status, COUNT(*) AS n FROM \"Order\" GROUP BY Status) AS t WHERE t.n >= 3 ORDER BY t.Status",
+      "columns": [{"name": "Status", "type": "TEXT"}, {"name": "n", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        ["cancelled",6],
+        ["open",3],
+        ["paid",6],
+        ["shipped",3]
+      ]
+    },
+    {
+      "id": "join-014",
+      "sql": "SELECT COUNT(*) AS n FROM Customer CROSS JOIN \"Xod.Conformance.Model.Shop.Note\"",
+      "columns": [{"name": "n", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        [36]
+      ]
+    },
+    {
+      "id": "join-015",
+      "sql": "SELECT c.Id, c.Address.Country AS country FROM Customer c ORDER BY c.Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "country", "type": "TEXT"}],
+      "ordered": true,
+      "note": "a path into an owned (complex) object; missing gives NULL",
+      "rows": [
+        [1,"AE"],
+        [2,null],
+        [3,"AE"],
+        [4,"SA"],
+        [5,null],
+        [6,"SA"],
+        [7,"AE"],
+        [8,null],
+        [9,"AE"],
+        [10,"SA"],
+        [11,null],
+        [12,"SA"]
+      ]
+    }
+  ]
+}

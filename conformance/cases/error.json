@@ -1,0 +1,58 @@
+{
+  "group": "error",
+  "cases": [
+    {
+      "id": "error-001",
+      "sql": "SELEC Id FROM Customer",
+      "error": "XQ001"
+    },
+    {
+      "id": "error-002",
+      "sql": "SELECT Id FROM Customer WHERE Name = 'x' AND",
+      "error": "XQ001"
+    },
+    {
+      "id": "error-003",
+      "sql": "SELECT Id FROM Order",
+      "error": "XQ001",
+      "note": "Order is reserved; quote it"
+    },
+    {
+      "id": "error-004",
+      "sql": "SELECT Id FROM Nope",
+      "error": "XQ002"
+    },
+    {
+      "id": "error-005",
+      "sql": "SELECT Text FROM Note",
+      "error": "XQ003",
+      "note": "two tables are named Note"
+    },
+    {
+      "id": "error-006",
+      "sql": "SELECT Nope FROM Customer",
+      "error": "XQ004"
+    },
+    {
+      "id": "error-007",
+      "sql": "SELECT o.Buyer.Name FROM \"Order\" o",
+      "error": "XQ004"
+    },
+    {
+      "id": "error-008",
+      "sql": "SELECT Name + 1 AS x FROM Customer",
+      "error": "XQ005"
+    },
+    {
+      "id": "error-009",
+      "sql": "SELECT Tier, Name FROM Customer GROUP BY Tier",
+      "error": "XQ006"
+    },
+    {
+      "id": "error-010",
+      "sql": "SELECT Big - 1 AS b FROM Event WHERE Id = 4",
+      "error": "XQ007",
+      "note": "long.MinValue - 1"
+    }
+  ]
+}

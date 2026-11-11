@@ -1,0 +1,2715 @@
+{
+ "Xod.Conformance.Model.Address": [
+  {
+   "element": "Address",
+   "attrs": {},
+   "fields": {
+    "City": "Dubai",
+    "Country": "AE"
+   }
+  },
+  {
+   "element": "Address",
+   "attrs": {},
+   "fields": {
+    "City": "Cairo",
+    "Country": "AE"
+   }
+  },
+  {
+   "element": "Address",
+   "attrs": {},
+   "fields": {
+    "City": "Doha",
+    "Country": "SA"
+   }
+  },
+  {
+   "element": "Address",
+   "attrs": {},
+   "fields": {
+    "City": "Jeddah",
+    "Country": "SA"
+   }
+  },
+  {
+   "element": "Address",
+   "attrs": {},
+   "fields": {
+    "City": "Dubai",
+    "Country": "AE"
+   }
+  },
+  {
+   "element": "Address",
+   "attrs": {},
+   "fields": {
+    "City": "Cairo",
+    "Country": "AE"
+   }
+  },
+  {
+   "element": "Address",
+   "attrs": {},
+   "fields": {
+    "City": "Doha",
+    "Country": "SA"
+   }
+  },
+  {
+   "element": "Address",
+   "attrs": {},
+   "fields": {
+    "City": "Jeddah",
+    "Country": "SA"
+   }
+  }
+ ],
+ "Xod.Conformance.Model.Archive.Note": [
+  {
+   "element": "Note",
+   "attrs": {},
+   "fields": {
+    "Id": "1",
+    "Text": "2019 audit",
+    "Year": "2019"
+   }
+  },
+  {
+   "element": "Note",
+   "attrs": {},
+   "fields": {
+    "Id": "2",
+    "Text": "2021 move",
+    "Year": "2021"
+   }
+  }
+ ],
+ "Xod.Conformance.Model.Customer": [
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "true"
+   },
+   "fields": {
+    "Id": "1",
+    "Name": "Nadia Karim",
+    "Email": "nadia1@example.com",
+    "Tier": "Silver",
+    "City": "Jeddah",
+    "Rating": "3",
+    "CreditLimit": "500.50",
+    "Joined": "2025-02-04T09:11:00.0000000Z",
+    "PasswordHash": "86cc7dcbef5e93f7bc9dd37bf84e7c5e368b4d8315b9e7125ce8a140e2f5cff3",
+    "Tags": {
+     "map": {
+      "segment": "trade",
+      "source": "web"
+     }
+    },
+    "Address": {
+     "complex": {
+      "table": "Xod.Conformance.Model.Address",
+      "row": 0,
+      "keys": {}
+     }
+    },
+    "Orders": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 0,
+       "keys": {
+        "Id": "1"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "true"
+   },
+   "fields": {
+    "Id": "2",
+    "Name": "Omar Saleh",
+    "Email": "omar2@example.com",
+    "Tier": "Gold",
+    "City": "Dubai",
+    "Rating": "5",
+    "CreditLimit": "1000.00",
+    "Joined": "2025-03-07T10:22:00.0000000Z",
+    "PasswordHash": "99a1640783e5b8a1e4f8812508e8a6af3b1354ca5ce3a61f0d957869e7e8dc2c",
+    "Tags": {
+     "map": {
+      "segment": "retail",
+      "source": "web"
+     }
+    },
+    "Labels": {
+     "list": [
+      "wholesale",
+      "late-payer",
+      "newsletter"
+     ]
+    },
+    "Orders": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 1,
+       "keys": {
+        "Id": "2"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 2,
+       "keys": {
+        "Id": "3"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "true"
+   },
+   "fields": {
+    "Id": "3",
+    "Name": "Lina Haddad",
+    "Email": "lina3@example.com",
+    "Tier": "Basic",
+    "City": "Amman",
+    "Rating": "2",
+    "CreditLimit": "1500.50",
+    "Joined": "2025-04-10T11:33:00.0000000Z",
+    "PasswordHash": "f48cfaa465609c5177fd90cccef0b4ceeb666883ac5e9a561162e13487904473",
+    "Labels": {
+     "list": [
+      "late-payer"
+     ]
+    },
+    "Address": {
+     "complex": {
+      "table": "Xod.Conformance.Model.Address",
+      "row": 1,
+      "keys": {}
+     }
+    },
+    "Orders": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 3,
+       "keys": {
+        "Id": "4"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 4,
+       "keys": {
+        "Id": "5"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 5,
+       "keys": {
+        "Id": "6"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "true"
+   },
+   "fields": {
+    "Id": "4",
+    "Name": "Yusuf Amin",
+    "Email": "yusuf4@example.com",
+    "Tier": "Silver",
+    "City": "Cairo",
+    "CreditLimit": "0.00",
+    "Joined": "2025-05-13T12:44:00.0000000Z",
+    "PasswordHash": "fce6f062b5aa1bc1f3281d7a89ecfcb128af19164fcf65ec1a0d2da1a6dda547",
+    "Tags": {
+     "map": {
+      "segment": "retail",
+      "source": "web"
+     }
+    },
+    "Labels": {
+     "list": [
+      "newsletter",
+      "vip"
+     ]
+    },
+    "Address": {
+     "complex": {
+      "table": "Xod.Conformance.Model.Address",
+      "row": 2,
+      "keys": {}
+     }
+    },
+    "Orders": {
+     "children": []
+    }
+   }
+  },
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "true"
+   },
+   "fields": {
+    "Id": "5",
+    "Name": "Sara Nasser",
+    "Email": "sara5@example.com",
+    "Tier": "Gold",
+    "Rating": "1",
+    "CreditLimit": "500.50",
+    "Joined": "2025-06-16T13:55:00.0000000Z",
+    "PasswordHash": "b0b654f1312e984f6da0b63fb9475b501b81971ac3434f341b379c868238a5ea",
+    "Tags": {
+     "map": {
+      "segment": "trade",
+      "source": "web"
+     }
+    },
+    "Orders": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 6,
+       "keys": {
+        "Id": "7"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "true"
+   },
+   "fields": {
+    "Id": "6",
+    "Name": "Adam Fares",
+    "Email": "adam6@example.com",
+    "Tier": "Basic",
+    "City": "Riyadh",
+    "Rating": "3",
+    "CreditLimit": "1000.00",
+    "Joined": "2025-07-19T14:06:00.0000000Z",
+    "PasswordHash": "ac567d4e7aa96b6687db18e32df26be8cf69e91326b3edb276c6028635348244",
+    "Labels": {
+     "list": [
+      "new"
+     ]
+    },
+    "Address": {
+     "complex": {
+      "table": "Xod.Conformance.Model.Address",
+      "row": 3,
+      "keys": {}
+     }
+    },
+    "Orders": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 7,
+       "keys": {
+        "Id": "8"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 8,
+       "keys": {
+        "Id": "9"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "false"
+   },
+   "fields": {
+    "Id": "7",
+    "Name": "Huda Ali",
+    "Email": "huda7@example.com",
+    "Tier": "Silver",
+    "City": "Jeddah",
+    "Rating": "5",
+    "CreditLimit": "1500.50",
+    "Joined": "2025-08-22T15:17:00.0000000Z",
+    "PasswordHash": "ff45c04070774481d0412264a30925d6eb7a8589e987df0134bf02063385e3e8",
+    "Tags": {
+     "map": {
+      "segment": "trade",
+      "source": "store"
+     }
+    },
+    "Labels": {
+     "list": [
+      "wholesale",
+      "late-payer"
+     ]
+    },
+    "Address": {
+     "complex": {
+      "table": "Xod.Conformance.Model.Address",
+      "row": 4,
+      "keys": {}
+     }
+    },
+    "Orders": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 9,
+       "keys": {
+        "Id": "10"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 10,
+       "keys": {
+        "Id": "11"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 11,
+       "keys": {
+        "Id": "12"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "true"
+   },
+   "fields": {
+    "Id": "8",
+    "Name": "Karim Zaid",
+    "Email": "karim8@example.com",
+    "Tier": "Gold",
+    "City": "Dubai",
+    "CreditLimit": "0.00",
+    "Joined": "2025-09-25T16:28:00.0000000Z",
+    "PasswordHash": "a95c4a4c518c88c39350231779fd0384c65ce28da2c0f7ea18588ac52a2f429c",
+    "Tags": {
+     "map": {
+      "segment": "retail",
+      "source": "store"
+     }
+    },
+    "Labels": {
+     "list": [
+      "late-payer",
+      "newsletter",
+      "vip"
+     ]
+    },
+    "Orders": {
+     "children": []
+    }
+   }
+  },
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "true"
+   },
+   "fields": {
+    "Id": "9",
+    "Name": "Mona Rahman",
+    "Email": "mona9@example.com",
+    "Tier": "Basic",
+    "City": "Amman",
+    "Rating": "4",
+    "CreditLimit": "500.50",
+    "Joined": "2025-10-28T08:39:00.0000000Z",
+    "PasswordHash": "571b6701b2490be560063911e35f0006fe3d80d9d765d3ed071e0e8824307faa",
+    "Address": {
+     "complex": {
+      "table": "Xod.Conformance.Model.Address",
+      "row": 5,
+      "keys": {}
+     }
+    },
+    "Orders": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 12,
+       "keys": {
+        "Id": "13"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "true"
+   },
+   "fields": {
+    "Id": "10",
+    "Name": "Tariq Aziz",
+    "Email": "tariq10@example.com",
+    "Tier": "Silver",
+    "Rating": "1",
+    "CreditLimit": "1000.00",
+    "Joined": "2025-11-03T09:50:00.0000000Z",
+    "PasswordHash": "b05e923ecca8deefb0921092f42abf0cd71bf217c142ee9b8276f32117246775",
+    "Tags": {
+     "map": {
+      "segment": "retail",
+      "source": "store"
+     }
+    },
+    "Labels": {
+     "list": [
+      "vip",
+      "new"
+     ]
+    },
+    "Address": {
+     "complex": {
+      "table": "Xod.Conformance.Model.Address",
+      "row": 6,
+      "keys": {}
+     }
+    },
+    "Orders": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 13,
+       "keys": {
+        "Id": "14"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 14,
+       "keys": {
+        "Id": "15"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "true"
+   },
+   "fields": {
+    "Id": "11",
+    "Name": "Rania Odeh",
+    "Email": "rania11@example.com",
+    "Tier": "Gold",
+    "City": "Doha",
+    "Rating": "3",
+    "CreditLimit": "1500.50",
+    "Joined": "2025-12-06T10:01:00.0000000Z",
+    "PasswordHash": "9f20a215fbf4dbd760a101cb9709d23b8961f3da3d6104c99798846903ca647d",
+    "Tags": {
+     "map": {
+      "segment": "trade",
+      "source": "store"
+     }
+    },
+    "Labels": {
+     "list": [
+      "new",
+      "wholesale",
+      "late-payer"
+     ]
+    },
+    "Orders": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 15,
+       "keys": {
+        "Id": "16"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 16,
+       "keys": {
+        "Id": "17"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.Order",
+       "row": 17,
+       "keys": {
+        "Id": "18"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Customer",
+   "attrs": {
+    "Active": "true"
+   },
+   "fields": {
+    "Id": "12",
+    "Name": "Zain Musa",
+    "Email": "zain12@example.com",
+    "Tier": "Basic",
+    "City": "Riyadh",
+    "CreditLimit": "0.00",
+    "Joined": "2025-01-09T11:12:00.0000000Z",
+    "PasswordHash": "b3aa35229497d1a6b8579c4b83248dd16f2f002b20fa7133b91b4231017fbe77",
+    "Labels": {
+     "list": [
+      "wholesale"
+     ]
+    },
+    "Address": {
+     "complex": {
+      "table": "Xod.Conformance.Model.Address",
+      "row": 7,
+      "keys": {}
+     }
+    },
+    "Orders": {
+     "children": []
+    }
+   }
+  }
+ ],
+ "Xod.Conformance.Model.Event": [
+  {
+   "element": "Event",
+   "attrs": {},
+   "fields": {
+    "Id": "1",
+    "Title": "Launch",
+    "Priority": "25",
+    "Seats": "1000",
+    "Big": "1000000007",
+    "Huge": "10000000000",
+    "Ratio": "0.25",
+    "Score": "0.125",
+    "Price": "3.75",
+    "Code": "A",
+    "Perms": "Read",
+    "Ref": "8f14e45f-ceea-467f-a0e6-a3d1f2c4b001",
+    "StartsUtc": "2026-11-01T09:30:15.1234567Z",
+    "Floating": "2026-12-01T18:00:00.0000000",
+    "At": "2026-11-11T12:01:00.0000000+03:00",
+    "Day": "2026-02-02",
+    "Opens": "07:05:00.0000000",
+    "Length": "00:45:00",
+    "MaybeInt": "1",
+    "MaybeWhen": "2027-01-01T00:00:00.0000000Z",
+    "MaybeFlag": "false",
+    "Html": {
+     "cdata": "<p>Event <b>1</b> &amp; more</p>"
+    },
+    "Fee": "0.000000001"
+   }
+  },
+  {
+   "element": "Event",
+   "attrs": {},
+   "fields": {
+    "Id": "2",
+    "Title": "Workshop",
+    "Priority": "50",
+    "Seats": "-200",
+    "Big": "2000000014",
+    "Huge": "20000000000",
+    "Ratio": "0.1",
+    "Score": "0.25",
+    "Price": "7.50",
+    "Code": "B",
+    "Perms": "Write",
+    "Ref": "8f14e45f-ceea-467f-a0e6-a3d1f2c4b002",
+    "StartsUtc": "2026-11-02T09:30:15.2469134Z",
+    "Floating": "2026-12-02T18:00:00.0000000",
+    "At": "2026-11-11T12:02:00.0000000-05:00",
+    "Day": "2026-03-04",
+    "Opens": "08:10:00.0000000",
+    "Length": "01:30:00",
+    "MaybeInt": "4",
+    "MaybeFlag": "true",
+    "Html": {
+     "cdata": "<p>Event <b>2</b> &amp; more</p>"
+    },
+    "Fee": "0.000000002"
+   }
+  },
+  {
+   "element": "Event",
+   "attrs": {},
+   "fields": {
+    "Id": "3",
+    "Title": "Webinar",
+    "Priority": "75",
+    "Seats": "3000",
+    "Big": "9007199254740993",
+    "Huge": "30000000000",
+    "Ratio": "0.75",
+    "Score": "0.375",
+    "Price": "11.25",
+    "Code": "C",
+    "Perms": "Read, Write",
+    "Ref": "8f14e45f-ceea-467f-a0e6-a3d1f2c4b003",
+    "StartsUtc": "2026-11-03T09:30:15.3703701Z",
+    "Floating": "2026-12-03T18:00:00.0000000",
+    "At": "2026-11-11T12:03:00.0000000+05:30",
+    "Day": "2026-04-06",
+    "Opens": "09:15:00.0000000",
+    "Length": "02:15:00",
+    "MaybeWhen": "2027-03-01T00:00:00.0000000Z",
+    "Html": {
+     "cdata": "<p>Event <b>3</b> &amp; more</p>"
+    },
+    "Fee": "4.5"
+   }
+  },
+  {
+   "element": "Event",
+   "attrs": {},
+   "fields": {
+    "Id": "4",
+    "Title": "Meetup",
+    "Priority": "100",
+    "Seats": "-400",
+    "Big": "-9223372036854775808",
+    "Huge": "40000000000",
+    "Ratio": "1",
+    "Score": "0.5",
+    "Price": "15.00",
+    "Code": "D",
+    "Perms": "Admin",
+    "Ref": "8f14e45f-ceea-467f-a0e6-a3d1f2c4b004",
+    "StartsUtc": "2026-11-04T09:30:15.4938268Z",
+    "Floating": "2026-12-04T18:00:00.0000000",
+    "At": "2026-11-11T12:04:00.0000000+00:00",
+    "Day": "2026-05-08",
+    "Opens": "10:20:00.0000000",
+    "Length": "03:00:00",
+    "MaybeInt": "16",
+    "MaybeFlag": "true",
+    "Fee": "6.0"
+   }
+  },
+  {
+   "element": "Event",
+   "attrs": {},
+   "fields": {
+    "Id": "5",
+    "Title": "Hackathon",
+    "Priority": "125",
+    "Seats": "5000",
+    "Big": "5000000035",
+    "Huge": "18446744073709551615",
+    "Ratio": "1.25",
+    "Score": "0.625",
+    "Price": "18.75",
+    "Code": "E",
+    "Perms": "Read, Admin",
+    "Ref": "8f14e45f-ceea-467f-a0e6-a3d1f2c4b005",
+    "StartsUtc": "2026-11-05T09:30:15.6172835Z",
+    "Floating": "2026-12-05T18:00:00.0000000",
+    "At": "2026-11-11T12:05:00.0000000+03:00",
+    "Day": "2026-06-10",
+    "Opens": "11:25:00.0000000",
+    "Length": "03:45:00",
+    "MaybeInt": "25",
+    "MaybeWhen": "2027-05-01T00:00:00.0000000Z",
+    "MaybeFlag": "false",
+    "Html": {
+     "cdata": "<p>Event <b>5</b> &amp; more</p>"
+    },
+    "Fee": "7.5"
+   }
+  },
+  {
+   "element": "Event",
+   "attrs": {},
+   "fields": {
+    "Id": "6",
+    "Title": "Gala",
+    "Priority": "150",
+    "Seats": "-600",
+    "Big": "6000000042",
+    "Huge": "60000000000",
+    "Ratio": "1.5",
+    "Score": "1E+30",
+    "Price": "22.50",
+    "Code": "F",
+    "Perms": "Write, Admin",
+    "Ref": "8f14e45f-ceea-467f-a0e6-a3d1f2c4b006",
+    "StartsUtc": "2026-11-06T09:30:15.7407402Z",
+    "Floating": "2026-12-06T18:00:00.0000000",
+    "At": "2026-11-11T12:06:00.0000000-05:00",
+    "Day": "2026-07-12",
+    "Opens": "12:30:00.0000000",
+    "Length": "04:30:00",
+    "Html": {
+     "cdata": "<p>Event <b>6</b> &amp; more</p>"
+    },
+    "Fee": "9.0"
+   }
+  },
+  {
+   "element": "Event",
+   "attrs": {},
+   "fields": {
+    "Id": "7",
+    "Title": "Fair",
+    "Priority": "175",
+    "Seats": "7000",
+    "Big": "7000000049",
+    "Huge": "70000000000",
+    "Ratio": "1.75",
+    "Score": "-0.5",
+    "Price": "26.25",
+    "Code": "G",
+    "Perms": "Read, Write, Admin",
+    "Ref": "8f14e45f-ceea-467f-a0e6-a3d1f2c4b007",
+    "StartsUtc": "2026-11-07T09:30:15.8641969Z",
+    "Floating": "2026-12-07T18:00:00.0000000",
+    "At": "2026-11-11T12:07:00.0000000+05:30",
+    "Day": "2026-08-14",
+    "Opens": "13:35:00.0000000",
+    "Length": "05:15:00",
+    "MaybeInt": "49",
+    "MaybeWhen": "2027-07-01T00:00:00.0000000Z",
+    "MaybeFlag": "false",
+    "Html": {
+     "cdata": "<p>Event <b>7</b> &amp; more</p>"
+    },
+    "Fee": "10.5"
+   }
+  },
+  {
+   "element": "Event",
+   "attrs": {},
+   "fields": {
+    "Id": "8",
+    "Title": "Expo",
+    "Priority": "200",
+    "Seats": "-800",
+    "Big": "8000000056",
+    "Huge": "80000000000",
+    "Ratio": "2",
+    "Score": "1",
+    "Price": "12.50",
+    "Code": "H",
+    "Perms": "None",
+    "Ref": "8f14e45f-ceea-467f-a0e6-a3d1f2c4b008",
+    "StartsUtc": "2026-11-08T09:30:15.9876536Z",
+    "Floating": "2026-12-08T18:00:00.0000000",
+    "At": "2026-11-11T12:08:00.0000000+00:00",
+    "Day": "2026-09-16",
+    "Opens": "14:40:00.0000000",
+    "Length": "06:00:00",
+    "MaybeInt": "64",
+    "MaybeFlag": "true",
+    "Fee": "12.0"
+   }
+  },
+  {
+   "element": "Event",
+   "attrs": {},
+   "fields": {
+    "Id": "9",
+    "Title": "Summit",
+    "Priority": "225",
+    "Seats": "9000",
+    "Big": "9000000063",
+    "Huge": "90000000000",
+    "Ratio": "2.25",
+    "Score": "1.125",
+    "Price": "33.75",
+    "Code": "I",
+    "Perms": "Read",
+    "Ref": "8f14e45f-ceea-467f-a0e6-a3d1f2c4b009",
+    "StartsUtc": "2026-11-09T09:30:16.1111103Z",
+    "Floating": "2026-12-09T18:00:00.0000000",
+    "At": "2026-11-11T12:09:00.0000000+03:00",
+    "Day": "2026-10-18",
+    "Opens": "15:45:00.0000000",
+    "Length": "1.02:03:04",
+    "MaybeWhen": "2027-09-01T00:00:00.0000000Z",
+    "Html": {
+     "cdata": "<p>Event <b>9</b> &amp; more</p>"
+    },
+    "Fee": "13.5"
+   }
+  },
+  {
+   "element": "Event",
+   "attrs": {},
+   "fields": {
+    "Id": "10",
+    "Title": "Retreat",
+    "Priority": "250",
+    "Seats": "-1000",
+    "Big": "10000000070",
+    "Huge": "100000000000",
+    "Ratio": "2.5",
+    "Score": "1.25",
+    "Price": "37.50",
+    "Code": "J",
+    "Perms": "Write",
+    "Ref": "8f14e45f-ceea-467f-a0e6-a3d1f2c4b010",
+    "StartsUtc": "2026-11-10T09:30:16.2345670Z",
+    "Floating": "2026-12-10T18:00:00.0000000",
+    "At": "2026-11-11T12:10:00.0000000-05:00",
+    "Day": "2026-11-20",
+    "Opens": "16:50:00.0000000",
+    "Length": "07:30:00",
+    "MaybeInt": "100",
+    "MaybeFlag": "true",
+    "Html": {
+     "cdata": "<p>Event <b>10</b> &amp; more</p>"
+    },
+    "Fee": "15.0"
+   }
+  }
+ ],
+ "Xod.Conformance.Model.Integration": [
+  {
+   "element": "Integration",
+   "attrs": {},
+   "fields": {
+    "Id": "1",
+    "Name": "billing",
+    "ApiKey": "enc:aes256:<ciphertext>"
+   }
+  },
+  {
+   "element": "Integration",
+   "attrs": {},
+   "fields": {
+    "Id": "2",
+    "Name": "mail",
+    "ApiKey": "enc:aes256:<ciphertext>"
+   }
+  },
+  {
+   "element": "Integration",
+   "attrs": {},
+   "fields": {
+    "Id": "3",
+    "Name": "maps"
+   }
+  }
+ ],
+ "Xod.Conformance.Model.Order": [
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "1",
+    "CustomerId": "1",
+    "Status": "paid",
+    "Placed": "2026-02-06",
+    "Discount": "0.05",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 0,
+      "keys": {
+       "Id": "1"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 0,
+       "keys": {
+        "Id": "1"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 1,
+       "keys": {
+        "Id": "2"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "2",
+    "CustomerId": "2",
+    "Status": "shipped",
+    "Placed": "2026-03-11",
+    "Discount": "0.10",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 1,
+      "keys": {
+       "Id": "2"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 2,
+       "keys": {
+        "Id": "3"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 3,
+       "keys": {
+        "Id": "4"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 4,
+       "keys": {
+        "Id": "5"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "3",
+    "CustomerId": "2",
+    "Status": "cancelled",
+    "Placed": "2026-04-16",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 1,
+      "keys": {
+       "Id": "2"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 5,
+       "keys": {
+        "Id": "6"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "4",
+    "CustomerId": "3",
+    "Status": "cancelled",
+    "Placed": "2026-05-21",
+    "Discount": "0.00",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 2,
+      "keys": {
+       "Id": "3"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 6,
+       "keys": {
+        "Id": "7"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 7,
+       "keys": {
+        "Id": "8"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "5",
+    "CustomerId": "3",
+    "Status": "open",
+    "Placed": "2026-06-26",
+    "Discount": "0.05",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 2,
+      "keys": {
+       "Id": "3"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": []
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "6",
+    "CustomerId": "3",
+    "Status": "paid",
+    "Placed": "2026-07-04",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 2,
+      "keys": {
+       "Id": "3"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 8,
+       "keys": {
+        "Id": "9"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "7",
+    "CustomerId": "5",
+    "Status": "paid",
+    "Placed": "2026-08-09",
+    "Discount": "0.15",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 4,
+      "keys": {
+       "Id": "5"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 9,
+       "keys": {
+        "Id": "10"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 10,
+       "keys": {
+        "Id": "11"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "8",
+    "CustomerId": "6",
+    "Status": "shipped",
+    "Placed": "2026-09-14",
+    "Discount": "0.00",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 5,
+      "keys": {
+       "Id": "6"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 11,
+       "keys": {
+        "Id": "12"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 12,
+       "keys": {
+        "Id": "13"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 13,
+       "keys": {
+        "Id": "14"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "9",
+    "CustomerId": "6",
+    "Status": "cancelled",
+    "Placed": "2026-01-19",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 5,
+      "keys": {
+       "Id": "6"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 14,
+       "keys": {
+        "Id": "15"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "10",
+    "CustomerId": "7",
+    "Status": "cancelled",
+    "Placed": "2026-02-24",
+    "Discount": "0.10",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 6,
+      "keys": {
+       "Id": "7"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": []
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "11",
+    "CustomerId": "7",
+    "Status": "open",
+    "Placed": "2026-03-02",
+    "Discount": "0.15",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 6,
+      "keys": {
+       "Id": "7"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 15,
+       "keys": {
+        "Id": "16"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 16,
+       "keys": {
+        "Id": "17"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 17,
+       "keys": {
+        "Id": "18"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "12",
+    "CustomerId": "7",
+    "Status": "paid",
+    "Placed": "2026-04-07",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 6,
+      "keys": {
+       "Id": "7"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 18,
+       "keys": {
+        "Id": "19"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "13",
+    "CustomerId": "9",
+    "Status": "paid",
+    "Placed": "2026-05-12",
+    "Discount": "0.05",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 8,
+      "keys": {
+       "Id": "9"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 19,
+       "keys": {
+        "Id": "20"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 20,
+       "keys": {
+        "Id": "21"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "14",
+    "CustomerId": "10",
+    "Status": "shipped",
+    "Placed": "2026-06-17",
+    "Discount": "0.10",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 9,
+      "keys": {
+       "Id": "10"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 21,
+       "keys": {
+        "Id": "22"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 22,
+       "keys": {
+        "Id": "23"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 23,
+       "keys": {
+        "Id": "24"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "15",
+    "CustomerId": "10",
+    "Status": "cancelled",
+    "Placed": "2026-07-22",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 9,
+      "keys": {
+       "Id": "10"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": []
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "16",
+    "CustomerId": "11",
+    "Status": "cancelled",
+    "Placed": "2026-08-27",
+    "Discount": "0.00",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 10,
+      "keys": {
+       "Id": "11"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 24,
+       "keys": {
+        "Id": "25"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 25,
+       "keys": {
+        "Id": "26"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "17",
+    "CustomerId": "11",
+    "Status": "open",
+    "Placed": "2026-09-05",
+    "Discount": "0.05",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 10,
+      "keys": {
+       "Id": "11"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 26,
+       "keys": {
+        "Id": "27"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 27,
+       "keys": {
+        "Id": "28"
+       }
+      },
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 28,
+       "keys": {
+        "Id": "29"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "element": "Order",
+   "attrs": {},
+   "fields": {
+    "Id": "18",
+    "CustomerId": "11",
+    "Status": "paid",
+    "Placed": "2026-01-10",
+    "Customer": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Customer",
+      "row": 10,
+      "keys": {
+       "Id": "11"
+      }
+     },
+     "hostProp": "Orders"
+    },
+    "Lines": {
+     "children": [
+      {
+       "table": "Xod.Conformance.Model.OrderLine",
+       "row": 29,
+       "keys": {
+        "Id": "30"
+       }
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "Xod.Conformance.Model.OrderLine": [
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "1",
+    "OrderId": "1",
+    "ProductId": "4",
+    "Quantity": "4",
+    "UnitPrice": "10.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 0,
+      "keys": {
+       "Id": "1"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 6,
+      "keys": {
+       "Id": "4"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "2",
+    "OrderId": "1",
+    "ProductId": "9",
+    "Quantity": "3",
+    "UnitPrice": "23.49",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 0,
+      "keys": {
+       "Id": "1"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 5,
+      "keys": {
+       "Id": "9"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "3",
+    "OrderId": "2",
+    "ProductId": "7",
+    "Quantity": "2",
+    "UnitPrice": "17.5",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 1,
+      "keys": {
+       "Id": "2"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 0,
+      "keys": {
+       "Id": "7"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "4",
+    "OrderId": "2",
+    "ProductId": "12",
+    "Quantity": "1",
+    "UnitPrice": "30.99",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 1,
+      "keys": {
+       "Id": "2"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 2,
+      "keys": {
+       "Id": "12"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "5",
+    "OrderId": "2",
+    "ProductId": "2",
+    "Quantity": "4",
+    "UnitPrice": "5.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 1,
+      "keys": {
+       "Id": "2"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 8,
+      "keys": {
+       "Id": "2"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "6",
+    "OrderId": "3",
+    "ProductId": "10",
+    "Quantity": "3",
+    "UnitPrice": "25.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 2,
+      "keys": {
+       "Id": "3"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 11,
+      "keys": {
+       "Id": "10"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "7",
+    "OrderId": "4",
+    "ProductId": "13",
+    "Quantity": "2",
+    "UnitPrice": "32.5",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 3,
+      "keys": {
+       "Id": "4"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 13,
+      "keys": {
+       "Id": "13"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "8",
+    "OrderId": "4",
+    "ProductId": "3",
+    "Quantity": "1",
+    "UnitPrice": "8.49",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 3,
+      "keys": {
+       "Id": "4"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 1,
+      "keys": {
+       "Id": "3"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "9",
+    "OrderId": "6",
+    "ProductId": "4",
+    "Quantity": "4",
+    "UnitPrice": "10.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 5,
+      "keys": {
+       "Id": "6"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 6,
+      "keys": {
+       "Id": "4"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "10",
+    "OrderId": "7",
+    "ProductId": "7",
+    "Quantity": "3",
+    "UnitPrice": "17.5",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 6,
+      "keys": {
+       "Id": "7"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 0,
+      "keys": {
+       "Id": "7"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "11",
+    "OrderId": "7",
+    "ProductId": "12",
+    "Quantity": "2",
+    "UnitPrice": "30.99",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 6,
+      "keys": {
+       "Id": "7"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 2,
+      "keys": {
+       "Id": "12"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "12",
+    "OrderId": "8",
+    "ProductId": "10",
+    "Quantity": "1",
+    "UnitPrice": "25.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 7,
+      "keys": {
+       "Id": "8"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 11,
+      "keys": {
+       "Id": "10"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "13",
+    "OrderId": "8",
+    "ProductId": "15",
+    "Quantity": "4",
+    "UnitPrice": "38.49",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 7,
+      "keys": {
+       "Id": "8"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 4,
+      "keys": {
+       "Id": "15"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "14",
+    "OrderId": "8",
+    "ProductId": "5",
+    "Quantity": "3",
+    "UnitPrice": "12.5",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 7,
+      "keys": {
+       "Id": "8"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 12,
+      "keys": {
+       "Id": "5"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "15",
+    "OrderId": "9",
+    "ProductId": "13",
+    "Quantity": "2",
+    "UnitPrice": "32.5",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 8,
+      "keys": {
+       "Id": "9"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 13,
+      "keys": {
+       "Id": "13"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "16",
+    "OrderId": "11",
+    "ProductId": "4",
+    "Quantity": "1",
+    "UnitPrice": "10.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 10,
+      "keys": {
+       "Id": "11"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 6,
+      "keys": {
+       "Id": "4"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "17",
+    "OrderId": "11",
+    "ProductId": "9",
+    "Quantity": "4",
+    "UnitPrice": "23.49",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 10,
+      "keys": {
+       "Id": "11"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 5,
+      "keys": {
+       "Id": "9"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "18",
+    "OrderId": "11",
+    "ProductId": "14",
+    "Quantity": "3",
+    "UnitPrice": "35.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 10,
+      "keys": {
+       "Id": "11"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 9,
+      "keys": {
+       "Id": "14"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "19",
+    "OrderId": "12",
+    "ProductId": "7",
+    "Quantity": "2",
+    "UnitPrice": "17.5",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 11,
+      "keys": {
+       "Id": "12"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 0,
+      "keys": {
+       "Id": "7"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "20",
+    "OrderId": "13",
+    "ProductId": "10",
+    "Quantity": "1",
+    "UnitPrice": "25.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 12,
+      "keys": {
+       "Id": "13"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 11,
+      "keys": {
+       "Id": "10"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "21",
+    "OrderId": "13",
+    "ProductId": "15",
+    "Quantity": "4",
+    "UnitPrice": "38.49",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 12,
+      "keys": {
+       "Id": "13"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 4,
+      "keys": {
+       "Id": "15"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "22",
+    "OrderId": "14",
+    "ProductId": "13",
+    "Quantity": "3",
+    "UnitPrice": "32.5",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 13,
+      "keys": {
+       "Id": "14"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 13,
+      "keys": {
+       "Id": "13"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "23",
+    "OrderId": "14",
+    "ProductId": "3",
+    "Quantity": "2",
+    "UnitPrice": "8.49",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 13,
+      "keys": {
+       "Id": "14"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 1,
+      "keys": {
+       "Id": "3"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "24",
+    "OrderId": "14",
+    "ProductId": "8",
+    "Quantity": "1",
+    "UnitPrice": "20.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 13,
+      "keys": {
+       "Id": "14"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 14,
+      "keys": {
+       "Id": "8"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "25",
+    "OrderId": "16",
+    "ProductId": "4",
+    "Quantity": "4",
+    "UnitPrice": "10.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 15,
+      "keys": {
+       "Id": "16"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 6,
+      "keys": {
+       "Id": "4"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "26",
+    "OrderId": "16",
+    "ProductId": "9",
+    "Quantity": "3",
+    "UnitPrice": "23.49",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 15,
+      "keys": {
+       "Id": "16"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 5,
+      "keys": {
+       "Id": "9"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "27",
+    "OrderId": "17",
+    "ProductId": "7",
+    "Quantity": "2",
+    "UnitPrice": "17.5",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 16,
+      "keys": {
+       "Id": "17"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 0,
+      "keys": {
+       "Id": "7"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "28",
+    "OrderId": "17",
+    "ProductId": "12",
+    "Quantity": "1",
+    "UnitPrice": "30.99",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 16,
+      "keys": {
+       "Id": "17"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 2,
+      "keys": {
+       "Id": "12"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "29",
+    "OrderId": "17",
+    "ProductId": "2",
+    "Quantity": "4",
+    "UnitPrice": "5.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 16,
+      "keys": {
+       "Id": "17"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 8,
+      "keys": {
+       "Id": "2"
+      }
+     }
+    }
+   }
+  },
+  {
+   "element": "OrderLine",
+   "attrs": {},
+   "fields": {
+    "Id": "30",
+    "OrderId": "18",
+    "ProductId": "10",
+    "Quantity": "3",
+    "UnitPrice": "25.0",
+    "Order": {
+     "parent": {
+      "table": "Xod.Conformance.Model.Order",
+      "row": 17,
+      "keys": {
+       "Id": "18"
+      }
+     },
+     "hostProp": "Lines"
+    },
+    "Product": {
+     "reference": {
+      "table": "Xod.Conformance.Model.Product",
+      "row": 11,
+      "keys": {
+       "Id": "10"
+      }
+     }
+    }
+   }
+  }
+ ],
+ "Xod.Conformance.Model.Product": [
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "7",
+    "Sku": "SKU-007",
+    "Name": "Notebook",
+    "Category": "toys",
+    "Price": "17.5",
+    "Weight": "1.75",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "3",
+    "Sku": "SKU-003",
+    "Name": "Trowel",
+    "Category": "toys",
+    "Price": "8.49",
+    "Weight": "0.75",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "12",
+    "Sku": "SKU-012",
+    "Name": "Puzzle",
+    "Category": "kitchen",
+    "Price": "30.99",
+    "Weight": "3",
+    "Discontinued": "true"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "1",
+    "Sku": "SKU-001",
+    "Name": "Kettle",
+    "Category": "garden",
+    "Price": "2.5",
+    "Weight": "0.25",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "15",
+    "Sku": "SKU-015",
+    "Name": "Desk",
+    "Category": "toys",
+    "Price": "38.49",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "9",
+    "Sku": "SKU-009",
+    "Name": "Blender",
+    "Category": "garden",
+    "Price": "23.49",
+    "Weight": "2.25",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "4",
+    "Sku": "SKU-004",
+    "Name": "Stapler",
+    "Category": "kitchen",
+    "Price": "10.0",
+    "Weight": "1",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "11",
+    "Sku": "SKU-011",
+    "Name": "Lamp",
+    "Category": "toys",
+    "Price": "27.5",
+    "Weight": "2.75",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "2",
+    "Sku": "SKU-002",
+    "Name": "Toaster",
+    "Category": "office",
+    "Price": "5.0",
+    "Weight": "0.5",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "14",
+    "Sku": "SKU-014",
+    "Name": "Shears",
+    "Category": "office",
+    "Price": "35.0",
+    "Weight": "3.5",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "6",
+    "Sku": "SKU-006",
+    "Name": "Rake",
+    "Category": "office",
+    "Price": "15.99",
+    "Weight": "1.5",
+    "Discontinued": "true"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "10",
+    "Sku": "SKU-010",
+    "Name": "Hose",
+    "Category": "office",
+    "Price": "25.0",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "5",
+    "Sku": "SKU-005",
+    "Name": "Teapot",
+    "Category": "garden",
+    "Price": "12.5",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "13",
+    "Sku": "SKU-013",
+    "Name": "Mug",
+    "Price": "32.5",
+    "Weight": "3.25",
+    "Discontinued": "false"
+   }
+  },
+  {
+   "element": "Product",
+   "attrs": {},
+   "fields": {
+    "Id": "8",
+    "Sku": "SKU-008",
+    "Name": "Kite",
+    "Category": "kitchen",
+    "Price": "20.0",
+    "Weight": "2",
+    "Discontinued": "false"
+   }
+  }
+ ],
+ "Xod.Conformance.Model.Shop.Note": [
+  {
+   "element": "Note",
+   "attrs": {},
+   "fields": {
+    "Id": "1",
+    "Text": "restock kettles"
+   }
+  },
+  {
+   "element": "Note",
+   "attrs": {},
+   "fields": {
+    "Id": "2",
+    "Text": "window display"
+   }
+  },
+  {
+   "element": "Note",
+   "attrs": {},
+   "fields": {
+    "Id": "3",
+    "Text": "staff rota"
+   }
+  }
+ ]
+}

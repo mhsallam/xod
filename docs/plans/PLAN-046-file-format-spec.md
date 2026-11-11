@@ -534,8 +534,8 @@ Decided 2026-11-11: the owner accepted all three recommendations.
 ## 14. Next
 
 1. ~~The owner's decisions on E1-E3~~ - all three recommendations accepted, 2026-11-11.
-2. The conformance set (step 1, third spec): the sample generator and the independent reader from
-   section 12 become its first pieces, in the repository and the test gate, with the cases from
+2. ~~The conformance set~~ - built in [`PLAN-047`](PLAN-047-conformance-set.md) (2026-11-11): the sample
+   generator and the independent reader are in `conformance/` and the CI gate, with the cases from
    section 11.
 3. Fixing ISS-050 to ISS-055 is separate work, in the order the owner picks. ISS-051 and ISS-050 come
    first: one loses a page of data on read, the other is a wrong public claim.

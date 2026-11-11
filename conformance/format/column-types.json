@@ -1,0 +1,53 @@
+{
+  "_comment": "The type of each column whose key or text form depends on its type: indexed properties (PLAN-046 section 8.3) and booleans, which the two writers spell differently (section 7.5, ISS-055). A stand-in for the schema manifest (section 10) until the library writes one.",
+  "dataset": {
+    "Xod.Conformance.Model.Customer": {
+      "Id": "int",
+      "Email": "text",
+      "Tier": "enum",
+      "Active": "bool"
+    },
+    "Xod.Conformance.Model.Order": {
+      "Id": "int",
+      "Status": "text"
+    },
+    "Xod.Conformance.Model.OrderLine": {
+      "Id": "int"
+    },
+    "Xod.Conformance.Model.Product": {
+      "Id": "int",
+      "Sku": "text",
+      "Category": "text",
+      "Discontinued": "bool"
+    },
+    "Xod.Conformance.Model.Event": {
+      "Id": "int",
+      "Fee": "decimal",
+      "MaybeFlag": "bool"
+    },
+    "Xod.Conformance.Model.Integration": {
+      "Id": "int"
+    },
+    "Xod.Conformance.Model.Shop.Note": {
+      "Id": "int"
+    },
+    "Xod.Conformance.Model.Archive.Note": {
+      "Id": "int"
+    }
+  },
+  "v1.2.5": {
+    "FixtureCustomer": {
+      "Id": "int"
+    },
+    "FixtureOrder": {
+      "Id": "int"
+    },
+    "FixtureLine": {
+      "Id": "int"
+    },
+    "FixtureProduct": {
+      "Id": "int",
+      "Sku": "text"
+    }
+  }
+}

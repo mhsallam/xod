@@ -1,0 +1,2 @@
+# The fixtures are files XOD wrote; their bytes are the test. Never convert line endings in them.
+data/** -text

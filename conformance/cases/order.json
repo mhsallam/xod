@@ -1,0 +1,151 @@
+{
+  "group": "order",
+  "cases": [
+    {
+      "id": "order-001",
+      "sql": "SELECT Id, Name FROM Product ORDER BY Name",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "Name", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        [9,"Blender"],
+        [15,"Desk"],
+        [10,"Hose"],
+        [1,"Kettle"],
+        [8,"Kite"],
+        [11,"Lamp"],
+        [13,"Mug"],
+        [7,"Notebook"],
+        [12,"Puzzle"],
+        [6,"Rake"],
+        [14,"Shears"],
+        [4,"Stapler"],
+        [5,"Teapot"],
+        [2,"Toaster"],
+        [3,"Trowel"]
+      ]
+    },
+    {
+      "id": "order-002",
+      "sql": "SELECT Id, Price FROM Product ORDER BY Price DESC, Id LIMIT 5",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "Price", "type": "DECIMAL"}],
+      "ordered": true,
+      "rows": [
+        [15,"38.49"],
+        [14,"35.0"],
+        [13,"32.5"],
+        [12,"30.99"],
+        [11,"27.5"]
+      ]
+    },
+    {
+      "id": "order-003",
+      "sql": "SELECT Id FROM Product ORDER BY Id LIMIT 4 OFFSET 4",
+      "columns": [{"name": "Id", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        [5],
+        [6],
+        [7],
+        [8]
+      ]
+    },
+    {
+      "id": "order-004",
+      "sql": "SELECT Id FROM Product LIMIT 3",
+      "columns": [{"name": "Id", "type": "INTEGER"}],
+      "ordered": true,
+      "note": "stored order (D5)",
+      "rows": [
+        [7],
+        [3],
+        [12]
+      ]
+    },
+    {
+      "id": "order-005",
+      "sql": "SELECT Id FROM Product LIMIT 3 OFFSET 13",
+      "columns": [{"name": "Id", "type": "INTEGER"}],
+      "ordered": true,
+      "note": "fewer rows than the limit remain",
+      "rows": [
+        [13],
+        [8]
+      ]
+    },
+    {
+      "id": "order-006",
+      "sql": "SELECT Id, Category FROM Product ORDER BY Category, Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "Category", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        [1,"garden"],
+        [5,"garden"],
+        [9,"garden"],
+        [4,"kitchen"],
+        [8,"kitchen"],
+        [12,"kitchen"],
+        [2,"office"],
+        [6,"office"],
+        [10,"office"],
+        [14,"office"],
+        [3,"toys"],
+        [7,"toys"],
+        [11,"toys"],
+        [15,"toys"],
+        [13,null]
+      ]
+    },
+    {
+      "id": "order-007",
+      "sql": "SELECT Name FROM Customer ORDER BY City DESC, Name",
+      "columns": [{"name": "Name", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        ["Sara Nasser"],
+        ["Tariq Aziz"],
+        ["Adam Fares"],
+        ["Zain Musa"],
+        ["Huda Ali"],
+        ["Nadia Karim"],
+        ["Karim Zaid"],
+        ["Omar Saleh"],
+        ["Rania Odeh"],
+        ["Yusuf Amin"],
+        ["Lina Haddad"],
+        ["Mona Rahman"]
+      ]
+    },
+    {
+      "id": "order-008",
+      "sql": "SELECT Id, Title FROM Event ORDER BY StartsUtc DESC LIMIT 3",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "Title", "type": "TEXT"}],
+      "ordered": true,
+      "rows": [
+        [10,"Retreat"],
+        [9,"Summit"],
+        [8,"Expo"]
+      ]
+    },
+    {
+      "id": "order-009",
+      "sql": "SELECT Id, Tier FROM Customer ORDER BY Tier, Id",
+      "columns": [{"name": "Id", "type": "INTEGER"}, {"name": "Tier", "type": "TEXT"}],
+      "ordered": true,
+      "note": "enums order by name in v1",
+      "rows": [
+        [3,"Basic"],
+        [6,"Basic"],
+        [9,"Basic"],
+        [12,"Basic"],
+        [2,"Gold"],
+        [5,"Gold"],
+        [8,"Gold"],
+        [11,"Gold"],
+        [1,"Silver"],
+        [4,"Silver"],
+        [7,"Silver"],
+        [10,"Silver"]
+      ]
+    }
+  ]
+}

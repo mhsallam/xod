@@ -1,0 +1,92 @@
+{
+  "$engine": "XOD\u002B\u002B JSON Storage v2.0",
+  "$root": {
+    "$name": "TablePage",
+    "$attrs": {
+      "Full": "False"
+    },
+    "$children": [
+      {
+        "$name": "Rows",
+        "$attrs": {
+          "dataType": "Xod.PageRow",
+          "collType": "generic",
+          "refType": "complex"
+        },
+        "$children": [
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "8847a900d"
+            },
+            "$children": [
+              {
+                "$name": "Integration",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "1"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "billing"
+                  },
+                  {
+                    "$name": "ApiKey",
+                    "$value": "enc:aes256:Loz1rlPzJdK1FZ7LBRQq1pLgrJ\u002B8hH/un/lRXGxb4LhwgbTFAmoD6NNfPg=="
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "1496114e6"
+            },
+            "$children": [
+              {
+                "$name": "Integration",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "2"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "mail"
+                  },
+                  {
+                    "$name": "ApiKey",
+                    "$value": "enc:aes256:56tMNxP0avwQLwCjedyDLp8VshyPDEvYm/6XPuIhjXAaO7dTpS2XGA=="
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "886d0b98a"
+            },
+            "$children": [
+              {
+                "$name": "Integration",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "3"
+                  },
+                  {
+                    "$name": "Name",
+                    "$value": "maps"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

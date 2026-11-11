@@ -1,0 +1,1137 @@
+{
+  "$engine": "XOD\u002B\u002B JSON Storage v2.0",
+  "$root": {
+    "$name": "TablePage",
+    "$attrs": {
+      "Full": "False"
+    },
+    "$children": [
+      {
+        "$name": "Rows",
+        "$attrs": {
+          "dataType": "Xod.PageRow",
+          "collType": "generic",
+          "refType": "complex"
+        },
+        "$children": [
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "9211279fd"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "1"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "1"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "paid"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-02-06"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.05"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "1"
+                    },
+                    "$value": "ccaaad3ab.20cbe4785"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "1"
+                        },
+                        "$value": "f1e1e21c8.3c063a4a2"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "2"
+                        },
+                        "$value": "f1e1e21c8.48748188c"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "b23fd4331"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "2"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "2"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "shipped"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-03-11"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.10"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "2"
+                    },
+                    "$value": "ccaaad3ab.dfb929b66"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "3"
+                        },
+                        "$value": "f1e1e21c8.e3e97c61b"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "4"
+                        },
+                        "$value": "f1e1e21c8.9a9cd3af4"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "5"
+                        },
+                        "$value": "f1e1e21c8.0d527bdde"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "7c83d65a9"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "3"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "2"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "cancelled"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-04-16"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "2"
+                    },
+                    "$value": "ccaaad3ab.dfb929b66"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "6"
+                        },
+                        "$value": "f1e1e21c8.a0f06e883"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "4a6609712"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "4"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "3"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "cancelled"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-05-21"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.00"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "3"
+                    },
+                    "$value": "ccaaad3ab.dd3dd5c6d"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "7"
+                        },
+                        "$value": "f1e1e21c8.5108a0bfb"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "8"
+                        },
+                        "$value": "f1e1e21c8.ecd618ed5"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "87644f1cf"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "5"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "3"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "open"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-06-26"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.05"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "3"
+                    },
+                    "$value": "ccaaad3ab.dd3dd5c6d"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "243899763"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "6"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "3"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "paid"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-07-04"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "3"
+                    },
+                    "$value": "ccaaad3ab.dd3dd5c6d"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "9"
+                        },
+                        "$value": "f1e1e21c8.ff4a31b4d"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "398e33db5"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "7"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "5"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "paid"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-08-09"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.15"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "5"
+                    },
+                    "$value": "ccaaad3ab.62a18b9db"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "10"
+                        },
+                        "$value": "f1e1e21c8.c5bc9a0af"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "11"
+                        },
+                        "$value": "f1e1e21c8.50ed32489"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "8a1b9c218"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "8"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "6"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "shipped"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-09-14"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.00"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "6"
+                    },
+                    "$value": "ccaaad3ab.b1f6ddb44"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "12"
+                        },
+                        "$value": "f1e1e21c8.12d2346f1"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "13"
+                        },
+                        "$value": "f1e1e21c8.fe02dfdbc"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "14"
+                        },
+                        "$value": "f1e1e21c8.a730471a6"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "5876de480"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "9"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "6"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "cancelled"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-01-19"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "6"
+                    },
+                    "$value": "ccaaad3ab.b1f6ddb44"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "15"
+                        },
+                        "$value": "f1e1e21c8.c4876686a"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "1a5ec07f8"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "10"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "7"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "cancelled"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-02-24"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.10"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "7"
+                    },
+                    "$value": "ccaaad3ab.33dee1035"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "855c68ad2"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "11"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "7"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "open"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-03-02"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.15"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "7"
+                    },
+                    "$value": "ccaaad3ab.33dee1035"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "16"
+                        },
+                        "$value": "f1e1e21c8.84a5242ad"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "17"
+                        },
+                        "$value": "f1e1e21c8.10f29b587"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "18"
+                        },
+                        "$value": "f1e1e21c8.a40303961"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "7b6daac4b"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "12"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "7"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "paid"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-04-07"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "7"
+                    },
+                    "$value": "ccaaad3ab.33dee1035"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "19"
+                        },
+                        "$value": "f1e1e21c8.461436416"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "187f7868e"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "13"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "9"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "paid"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-05-12"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.05"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "9"
+                    },
+                    "$value": "ccaaad3ab.e7d835bd9"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "20"
+                        },
+                        "$value": "f1e1e21c8.9cbe9f968"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "21"
+                        },
+                        "$value": "f1e1e21c8.21e137d42"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "612673ef7"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "14"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "10"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "shipped"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-06-17"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.10"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "10"
+                    },
+                    "$value": "ccaaad3ab.fd428e03c"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "22"
+                        },
+                        "$value": "f1e1e21c8.9514ea1e1"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "23"
+                        },
+                        "$value": "f1e1e21c8.0852725cb"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "24"
+                        },
+                        "$value": "f1e1e21c8.09031ec86"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "923385070"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "15"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "10"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "cancelled"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-07-22"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "10"
+                    },
+                    "$value": "ccaaad3ab.fd428e03c"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "cbb664734"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "16"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "11"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "cancelled"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-08-27"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.00"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "11"
+                    },
+                    "$value": "ccaaad3ab.52e5dc35a"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "25"
+                        },
+                        "$value": "f1e1e21c8.c8a910ffe"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "26"
+                        },
+                        "$value": "f1e1e21c8.d78fb72e8"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "60de1f5c2"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "17"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "11"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "open"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-09-05"
+                  },
+                  {
+                    "$name": "Discount",
+                    "$value": "0.05"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "11"
+                    },
+                    "$value": "ccaaad3ab.52e5dc35a"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "27"
+                        },
+                        "$value": "f1e1e21c8.b42db69ac"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "28"
+                        },
+                        "$value": "f1e1e21c8.8ba622177"
+                      },
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "29"
+                        },
+                        "$value": "f1e1e21c8.1a70b9451"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "$name": "Row",
+            "$attrs": {
+              "code": "a1020183b"
+            },
+            "$children": [
+              {
+                "$name": "Order",
+                "$children": [
+                  {
+                    "$name": "Id",
+                    "$value": "18"
+                  },
+                  {
+                    "$name": "CustomerId",
+                    "$value": "11"
+                  },
+                  {
+                    "$name": "Status",
+                    "$value": "paid"
+                  },
+                  {
+                    "$name": "Placed",
+                    "$value": "2026-01-10"
+                  },
+                  {
+                    "$name": "Customer",
+                    "$attrs": {
+                      "refType": "parent",
+                      "hostProp": "Orders",
+                      "Id": "11"
+                    },
+                    "$value": "ccaaad3ab.52e5dc35a"
+                  },
+                  {
+                    "$name": "Lines",
+                    "$attrs": {
+                      "dataType": "Xod.Conformance.Model.OrderLine",
+                      "collType": "generic",
+                      "refType": "children"
+                    },
+                    "$children": [
+                      {
+                        "$name": "OrderLine",
+                        "$attrs": {
+                          "Id": "30"
+                        },
+                        "$value": "f1e1e21c8.75fcb8b15"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

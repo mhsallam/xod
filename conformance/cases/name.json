@@ -1,0 +1,47 @@
+{
+  "group": "name",
+  "cases": [
+    {
+      "id": "name-001",
+      "sql": "SELECT Text FROM \"Xod.Conformance.Model.Shop.Note\" ORDER BY Id",
+      "columns": [{"name": "Text", "type": "TEXT"}],
+      "ordered": true,
+      "note": "a full name, quoted",
+      "rows": [
+        ["restock kettles"],
+        ["window display"],
+        ["staff rota"]
+      ]
+    },
+    {
+      "id": "name-002",
+      "sql": "SELECT Text, Year FROM \"Xod.Conformance.Model.Archive.Note\" ORDER BY Id",
+      "columns": [{"name": "Text", "type": "TEXT"}, {"name": "Year", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        ["2019 audit",2019],
+        ["2021 move",2021]
+      ]
+    },
+    {
+      "id": "name-003",
+      "sql": "select name from customer where id = 1",
+      "columns": [{"name": "Name", "type": "TEXT"}],
+      "ordered": true,
+      "note": "names are case-insensitive (D2); the column keeps its own name",
+      "rows": [
+        ["Nadia Karim"]
+      ]
+    },
+    {
+      "id": "name-004",
+      "sql": "SELECT [Name] FROM [Customer] WHERE [Id] = 1",
+      "columns": [{"name": "Name", "type": "TEXT"}],
+      "ordered": true,
+      "note": "[...] quoting (D6)",
+      "rows": [
+        ["Nadia Karim"]
+      ]
+    }
+  ]
+}

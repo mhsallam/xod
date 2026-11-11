@@ -1,0 +1,10 @@
+{
+  "$engine": "XOD\u002B\u002B JSON Storage v2.0",
+  "$root": {
+    "$name": "Database",
+    "$attrs": {
+      "Version": "2.0",
+      "Format": "Json"
+    }
+  }
+}

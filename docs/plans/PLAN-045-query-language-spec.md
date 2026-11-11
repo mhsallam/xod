@@ -4,7 +4,7 @@
 - **Status**: Spec accepted (2026-11-11): the owner took the recommendation on every decision, D1-D8
   (section 12). Nothing is built.
 - **Related**: [`PLAN-044`](PLAN-044-roadmap-sql-analytics-rust-browser.md) (why SQL, the order, the
-  browser), [`PLAN-046`](PLAN-046-file-format-spec.md) (the file-format spec, accepted) and the conformance set (not written yet)
+  browser), [`PLAN-046`](PLAN-046-file-format-spec.md) (the file-format spec, accepted) and [`PLAN-047`](PLAN-047-conformance-set.md) (the conformance set)
 
 ## 1. What this is
 
@@ -281,7 +281,8 @@ Decided 2026-11-11: the owner accepted all eight recommendations.
    for a second implementation to read today's files: drafted in [`PLAN-046`](PLAN-046-file-format-spec.md)
    (2026-11-11) and accepted with E1-E3 the same day.
 3. The conformance set: the dataset and the first hundred cases, runnable against the C# library's
-   lambda API today for the parts it can already answer, so the cases are checked before any SQL exists.
+   lambda API today for the parts it can already answer, so the cases are checked before any SQL exists:
+   built in [`PLAN-047`](PLAN-047-conformance-set.md) (2026-11-11), 139 cases.
 
 ## Verdict
 

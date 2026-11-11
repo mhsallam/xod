@@ -1,0 +1,145 @@
+{
+  "group": "aggregate",
+  "cases": [
+    {
+      "id": "aggregate-001",
+      "sql": "SELECT COUNT(*) AS n FROM Customer WHERE Active = TRUE",
+      "columns": [{"name": "n", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        [11]
+      ]
+    },
+    {
+      "id": "aggregate-002",
+      "sql": "SELECT Tier, COUNT(*) AS n FROM Customer GROUP BY Tier ORDER BY Tier",
+      "columns": [{"name": "Tier", "type": "TEXT"}, {"name": "n", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        ["Basic",4],
+        ["Gold",4],
+        ["Silver",4]
+      ]
+    },
+    {
+      "id": "aggregate-003",
+      "sql": "SELECT Status, COUNT(*) AS n, SUM(Discount) AS discounts FROM \"Order\" GROUP BY Status ORDER BY Status",
+      "columns": [{"name": "Status", "type": "TEXT"}, {"name": "n", "type": "INTEGER"}, {"name": "discounts", "type": "DECIMAL"}],
+      "ordered": true,
+      "note": "SUM skips NULLs",
+      "rows": [
+        ["cancelled",6,"0.10"],
+        ["open",3,"0.25"],
+        ["paid",6,"0.25"],
+        ["shipped",3,"0.20"]
+      ]
+    },
+    {
+      "id": "aggregate-004",
+      "sql": "SELECT OrderId, SUM(Quantity) AS qty FROM OrderLine GROUP BY OrderId HAVING SUM(Quantity) > 4 ORDER BY OrderId",
+      "columns": [{"name": "OrderId", "type": "INTEGER"}, {"name": "qty", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        [1,7],
+        [2,7],
+        [7,5],
+        [8,8],
+        [11,8],
+        [13,5],
+        [14,6],
+        [16,7],
+        [17,7]
+      ]
+    },
+    {
+      "id": "aggregate-005",
+      "sql": "SELECT AVG(Quantity) AS avg_qty FROM OrderLine",
+      "columns": [{"name": "avg_qty", "type": "DOUBLE"}],
+      "ordered": true,
+      "note": "AVG of INTEGER is DOUBLE",
+      "rows": [
+        [2.566666666666667]
+      ]
+    },
+    {
+      "id": "aggregate-006",
+      "sql": "SELECT AVG(Price) AS avg_price FROM Product",
+      "columns": [{"name": "avg_price", "type": "DECIMAL"}],
+      "ordered": true,
+      "note": "AVG of DECIMAL stays DECIMAL",
+      "rows": [
+        ["20.33"]
+      ]
+    },
+    {
+      "id": "aggregate-007",
+      "sql": "SELECT MIN(Joined) AS earliest, MAX(Joined) AS latest FROM Customer",
+      "columns": [{"name": "earliest", "type": "TIMESTAMP"}, {"name": "latest", "type": "TIMESTAMP"}],
+      "ordered": true,
+      "rows": [
+        ["2025-01-09T11:12:00.0000000Z","2025-12-06T10:01:00.0000000Z"]
+      ]
+    },
+    {
+      "id": "aggregate-008",
+      "sql": "SELECT COUNT(DISTINCT City) AS cities FROM Customer",
+      "columns": [{"name": "cities", "type": "INTEGER"}],
+      "ordered": true,
+      "rows": [
+        [6]
+      ]
+    },
+    {
+      "id": "aggregate-009",
+      "sql": "SELECT Category, COUNT(*) AS n, MAX(Price) AS max_price FROM Product GROUP BY Category ORDER BY Category",
+      "columns": [{"name": "Category", "type": "TEXT"}, {"name": "n", "type": "INTEGER"}, {"name": "max_price", "type": "DECIMAL"}],
+      "ordered": true,
+      "note": "NULL is a group",
+      "rows": [
+        ["garden",3,"23.49"],
+        ["kitchen",3,"30.99"],
+        ["office",4,"35.0"],
+        ["toys",4,"38.49"],
+        [null,1,"32.5"]
+      ]
+    },
+    {
+      "id": "aggregate-010",
+      "sql": "SELECT SUM(Big) AS total FROM Event",
+      "columns": [{"name": "total", "type": "INTEGER"}],
+      "ordered": true,
+      "note": "an INTEGER beyond 2^53 is a JSON string",
+      "rows": [
+        ["-9214364789600034479"]
+      ]
+    },
+    {
+      "id": "aggregate-011",
+      "sql": "SELECT MAX(Huge) AS m FROM Event",
+      "columns": [{"name": "m", "type": "DECIMAL"}],
+      "ordered": true,
+      "rows": [
+        ["18446744073709551615"]
+      ]
+    },
+    {
+      "id": "aggregate-012",
+      "sql": "SELECT SUM(Quantity * UnitPrice) AS revenue FROM OrderLine",
+      "columns": [{"name": "revenue", "type": "DECIMAL"}],
+      "ordered": true,
+      "rows": [
+        ["1609.75"]
+      ]
+    },
+    {
+      "id": "aggregate-013",
+      "sql": "SELECT AVG(Quantity) AS a, COUNT(*) AS n FROM OrderLine WHERE Quantity > 100",
+      "columns": [{"name": "a", "type": "DOUBLE"}, {"name": "n", "type": "INTEGER"}],
+      "ordered": true,
+      "note": "aggregates of no rows: AVG is NULL, COUNT is 0",
+      "rows": [
+        [null,0]
+      ]
+    }
+  ]
+}
