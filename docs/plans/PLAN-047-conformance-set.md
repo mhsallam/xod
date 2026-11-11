@@ -3,7 +3,7 @@
 - **Task ID**: `TASK-057` (roadmap step 1, third of three specs - `PLAN-044`)
 - **Status**: First version built (2026-11-11), in [`conformance/`](../../conformance/README.md): 139 cases,
   four fixtures, the C# runner, and the independent file reader. It is in the CI gate. It found one new
-  defect (ISS-056). Three choices for the owner (section 9).
+  defect (ISS-056). G1-G3 decided as recommended (2026-11-11, section 9).
 - **Related**: [`PLAN-045`](PLAN-045-query-language-spec.md) (XOD SQL; section 11 outlined this set),
   [`PLAN-046`](PLAN-046-file-format-spec.md) (the file format; section 14 asked for this set)
 
@@ -196,19 +196,19 @@ The CI steps haven't run yet: nothing is pushed.
 
 ## 9. Decisions for the owner
 
-These cases pin three answers `PLAN-045` didn't state:
+These cases pin three answers `PLAN-045` didn't state. Decided 2026-11-11: the owner accepted all three,
+and they are now in `PLAN-045` section 8.
 
-| | Choice | Pinned as | Why |
+| | Choice | Decided | Why |
 | :--- | :--- | :--- | :--- |
 | **G1** | `ROUND(x, n)` at a tie | half away from zero (`ROUND(2.5) = 3`) | what PostgreSQL and SQL Server do; C#'s default is banker's rounding |
 | **G2** | a `float` (float32) column in SQL | read as float32, then widened: `0.1f` is `0.10000000149011612` and `Ratio = 0.1` matches nothing | what C# returns; parsing `"0.1"` straight to DOUBLE would give answers C# can't match |
 | **G3** | a UTC `DateTime` in results | keeps its `Z` (`2025-02-04T09:11:00.0000000Z`) | the stored instant is unambiguous; dropping `Z` would make UTC and unspecified values look alike |
 
-Once decided they go into `PLAN-045` section 8.
 
 ## 10. Next
 
-1. The owner's decisions on G1-G3.
+1. ~~The owner's decisions on G1-G3~~ - all three accepted, 2026-11-11.
 2. Step 1 is then complete: language, file format and conformance set. `PLAN-044` step 2 (measure a
    Rust core against the C# one) and step 3 (build SQL in C#) can start; each is judged by this set.
 3. Fixes for ISS-050 to ISS-056, in the owner's order. Each fix turns its known marker into an ordinary

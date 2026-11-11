@@ -224,6 +224,9 @@ has been in a release and the conformance set covers them. Writes in the browser
 | Reserved words | the SQL-92 list plus `ILIKE`, `LIMIT`, `OFFSET`; quote with `"..."` | `Order`, `User`, `Group` are common class names |
 | Identifier quotes | `"Name"`; `[Name]` also accepted (**D6**) | `[...]` is what .NET developers know from SQL Server |
 | Parameters | `@name` and `?` | `@name` reads well from C#; `?` is what BI tools send |
+| `ROUND(x, n)` at a tie | half away from zero: `ROUND(2.5) = 3` (**G1**, `PLAN-047`) | as PostgreSQL and SQL Server; C#'s default is banker's rounding |
+| A `float` (float32) column | read as float32, then widened: `0.1f` is `0.10000000149011612`, so `= 0.1` matches nothing (**G2**) | the value C# holds; parsing the text straight to `DOUBLE` would give answers C# can't match |
+| A UTC `DateTime` in results | keeps its `Z`: `2025-02-04T09:11:00.0000000Z` (**G3**) | the stored instant stays unambiguous; UTC and unspecified values stay distinct |
 
 ## 9. Errors
 
