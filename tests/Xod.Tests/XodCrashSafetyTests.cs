@@ -51,7 +51,7 @@ namespace Xod.Tests
             try { if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true); } catch { }
         }
 
-        private static string RepoRoot()
+        internal static string RepoRoot()
         {
             var dir = new DirectoryInfo(AppContext.BaseDirectory);
             while (dir != null)
@@ -68,7 +68,7 @@ namespace Xod.Tests
             throw new DirectoryNotFoundException("repository root not found above " + AppContext.BaseDirectory);
         }
 
-        private static string WriterDll()
+        internal static string WriterDll()
         {
             string root = RepoRoot();
             var candidates = Directory.Exists(Path.Combine(root, "tests", "Xod.CrashWriter", "bin"))
@@ -104,7 +104,30 @@ namespace Xod.Tests
             return process!;
         }
 
-        private (int ExitCode, string Output) RunWriter(string mode, string dir, int? crashAfterRows = null)
+        private (int ExitCode, string Output) RunWriter(string mode, string dir, int? crashAfterRows = null) =>
+            RunWriterProcess(mode, dir, crashAfterRows.HasValue ? ("XOD_CRASH_AFTER_ROWS", crashAfterRows.Value.ToString()) : default);
+
+        /// <summary>Starts the crash writer with its standard input open (for XOD_PAUSE_AT_STEP).</summary>
+        internal static Process StartWriterProcess(string mode, string dir, (string Name, string Value) fault)
+        {
+            var psi = new ProcessStartInfo("dotnet")
+            {
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add(WriterDll());
+            psi.ArgumentList.Add(mode);
+            psi.ArgumentList.Add(dir);
+            psi.Environment[fault.Name] = fault.Value;
+            return Process.Start(psi)!;
+        }
+
+        /// <summary>Runs the crash writer to completion (or its crash); <paramref name="crash"/> names the fault
+        /// injection variable to set, if any.</summary>
+        internal static (int ExitCode, string Output) RunWriterProcess(string mode, string dir, (string Name, string Value) crash = default)
         {
             var psi = new ProcessStartInfo("dotnet")
             {
@@ -117,8 +140,8 @@ namespace Xod.Tests
             psi.ArgumentList.Add(mode);
             psi.ArgumentList.Add(dir);
 
-            if (crashAfterRows.HasValue)
-                psi.Environment["XOD_CRASH_AFTER_ROWS"] = crashAfterRows.Value.ToString();
+            if (crash.Name != null)
+                psi.Environment[crash.Name] = crash.Value;
 
             using var process = Process.Start(psi)!;
             string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();

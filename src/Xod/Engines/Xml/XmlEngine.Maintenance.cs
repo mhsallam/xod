@@ -12,8 +12,7 @@ namespace Xod.Engines.Xml
             rwLock.EnterReadLock();
             try
             {
-                ioService.FlushBufferedFiles();
-                indexService.FlushDirtyIndexes();
+                FlushToDisk();
                 var stats = new DatabaseStatistics
                 {
                     DatabasePath = path,
@@ -95,60 +94,60 @@ namespace Xod.Engines.Xml
             }
         }
 
-        public void ChangePassword(string currentPassword, string newPassword)
-        {
-            rwLock.EnterWriteLock();
-            try
+        public void ChangePassword(string currentPassword, string newPassword) => SwitchPassword(
+            () =>
             {
-                indexService.FlushDirtyIndexes();
                 securityService.CheckCurrentPassword(currentPassword);
                 securityService.CheckCanSecure(newPassword, replacingCurrent: true);
-                propertyKeys.PasswordChanging(password, Helpers.CryptoHelper.GetSHA256HashData(newPassword));
-                securityService.ChangePassword(currentPassword, newPassword);
-                password = securityService.Password;
-                ioService.Password = password;
-                propertyKeys.PasswordChanged();
-                ClearCache();
-            }
-            finally
-            {
-                rwLock.ExitWriteLock();
-            }
-        }
+            },
+            Helpers.CryptoHelper.GetSHA256HashData(newPassword),
+            () => securityService.ChangePassword(currentPassword, newPassword));
 
-        public void Loose(string pwd)
+        public void Loose(string pwd) => SwitchPassword(
+            () => securityService.CheckCurrentPassword(pwd),
+            null,
+            () => securityService.Loose(pwd));
+
+        public void Secure(string pwd) => SwitchPassword(
+            () => securityService.CheckCanSecure(pwd),
+            Helpers.CryptoHelper.GetSHA256HashData(pwd),
+            () => securityService.Secure(pwd));
+
+        // Setting, changing and removing the password: the checks, the AES256 key, then the files (all or
+        // nothing, XodSecurityService), then this context follows the password the files are under.
+        private void SwitchPassword(Action check, string newPassword, Action switchFiles)
         {
             rwLock.EnterWriteLock();
             try
             {
-                indexService.FlushDirtyIndexes();
-                securityService.CheckCurrentPassword(pwd);
-                propertyKeys.PasswordChanging(password, null);
-                securityService.Loose(pwd);
-                password = null;
-                ioService.Password = null;
-                propertyKeys.PasswordChanged();
-                ClearCache();
-            }
-            finally
-            {
-                rwLock.ExitWriteLock();
-            }
-        }
+                // A rollback would restore files as they were before the switch, under the old password.
+                if (activeTransaction != null && activeTransaction.IsActive)
+                    throw new TransactionException("A database password can't be set, changed or removed inside a transaction.");
 
-        public void Secure(string pwd)
-        {
-            rwLock.EnterWriteLock();
-            try
-            {
-                indexService.FlushDirtyIndexes();
-                securityService.CheckCanSecure(pwd);
-                propertyKeys.PasswordChanging(null, Helpers.CryptoHelper.GetSHA256HashData(pwd));
-                securityService.Secure(pwd);
-                password = securityService.Password;
-                ioService.Password = password;
+                // A change this context made earlier that couldn't replace every file: finished before anything
+                // below reads the files, or this one is refused.
+                securityService.FinishPendingSwitch();
+                check();
+                // Everything this context holds goes to disk first: the switch rewrites the files on disk, and
+                // nothing may be written over them afterwards that the switch didn't see.
+                FlushToDisk();
+                propertyKeys.PasswordChanging(password, newPassword);
+                try
+                {
+                    switchFiles();
+                }
+                finally
+                {
+                    // The files' password is the security service's: the old one if the switch failed before
+                    // its commit, the new one from the commit on (even when a file is replaced only at the next open).
+                    password = securityService.Password;
+                    ioService.Password = password;
+                    ClearCache();
+                }
+                // Only after a finished switch: removes the key's protection by the old password. A switch that
+                // failed leaves at most a protection by the password it tried (inside the database file, under
+                // the password that still opens it); the next finished change removes that too.
                 propertyKeys.PasswordChanged();
-                ClearCache();
             }
             finally
             {
@@ -182,13 +181,25 @@ namespace Xod.Engines.Xml
             rwLock.EnterWriteLock();
             try
             {
-                ioService.FlushBufferedFiles();
-                indexService.FlushDirtyIndexes();
+                FlushToDisk();
             }
             finally
             {
                 rwLock.ExitWriteLock();
             }
+        }
+
+        /// <summary>
+        /// Writes everything this context holds to disk: buffered files, then the indexes. Under a password the
+        /// index service saves an index through the buffered files, so those are flushed again after it; without
+        /// one it writes the index file itself. Pages go first: the index is a cache of them, and the open trusts
+        /// an index no older than its pages (ISS-043).
+        /// </summary>
+        private void FlushToDisk()
+        {
+            ioService.FlushBufferedFiles();
+            indexService.FlushDirtyIndexes();
+            ioService.FlushBufferedFiles();
         }
 
         public void ClearCache()
@@ -197,10 +208,7 @@ namespace Xod.Engines.Xml
             try
             {
                 if (activeTransaction == null || !activeTransaction.IsActive)
-                {
-                    ioService.FlushBufferedFiles();
-                    indexService.FlushDirtyIndexes();
-                }
+                    FlushToDisk();
                 ioService.ClearCurrentCache();
                 itemsCacheService.ClearCurrentCache();
                 indexService.ClearAll();
@@ -217,10 +225,7 @@ namespace Xod.Engines.Xml
             try
             {
                 if (activeTransaction == null || !activeTransaction.IsActive)
-                {
-                    ioService.FlushBufferedFiles();
-                    indexService.FlushDirtyIndexes();
-                }
+                    FlushToDisk();
                 ioService.ClearAllCache();
                 itemsCacheService.ClearAllCache();
                 indexService.ClearAll();

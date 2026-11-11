@@ -83,7 +83,12 @@ namespace Xod.Engines.Xml
             {
                 if (Directory.Exists(resolvedRoot))
                 {
-                    string[] files = Directory.GetFiles(resolvedRoot, "*.xod*", SearchOption.TopDirectoryOnly);
+                    // The database file by its own extensions, not "*.xod*", which also matches what a write or a
+                    // password change leaves beside it ("pw.xod.tmp", "pw.xod.xpwnew", "pw.xod.lock").
+                    string[] files = Directory.GetFiles(resolvedRoot)
+                        .Where(DatabaseFiles.IsDatabaseFile)
+                        .OrderBy(f => f, StringComparer.Ordinal)
+                        .ToArray();
                     if (files.Length > 0 && string.IsNullOrEmpty(resolvedPath))
                         resolvedPath = files[0];
                 }
@@ -120,7 +125,14 @@ namespace Xod.Engines.Xml
                 this.options.LockDatabase,
                 this.options.LockRetryTimeoutMs,
                 this.options.Durability == DurabilityMode.Buffered);
-            this.ioService.BeforeFileMutate = f => activeTransaction?.CaptureBeforeMutate(f);
+            // Every file mutation passes here. A password switch this context committed but couldn't finish is
+            // finished first (or the write refused): the next open would put the staged copy, from before this
+            // write, over it.
+            this.ioService.BeforeFileMutate = f =>
+            {
+                securityService.FinishPendingSwitch();
+                activeTransaction?.CaptureBeforeMutate(f);
+            };
             this.ioService.HasActiveTransaction = () => activeTransaction != null && activeTransaction.IsActive;
             this.ioService.ItemWriterDelegate = t =>
             {
@@ -310,8 +322,8 @@ namespace Xod.Engines.Xml
                 }
                 else
                 {
-                    ioService?.FlushBufferedFiles();
-                    indexService?.FlushDirtyIndexes();
+                    if (ioService != null && indexService != null)
+                        FlushToDisk();
                     indexService?.FoldLargeLogs();
                 }
             }

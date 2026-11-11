@@ -54,6 +54,9 @@ namespace Xod.Services
         private byte[] dataKey;
         private List<byte[]> legacyKeys;
 
+        /// <param name="ioService">The file owner: the database file is read and written through it.</param>
+        /// <param name="databaseFileName">The database file, which holds the key's protections.</param>
+        /// <param name="applicationKey"><c>DatabaseOptions.PropertyEncryptionKey</c>, or null.</param>
         /// <param name="password">The database password as the engine holds it (its SHA-256 hex), read when
         /// needed, since <c>Secure</c> and <c>ChangePassword</c> change it.</param>
         internal PropertyKeyService(IOService ioService, string databaseFileName, string applicationKey, Func<string> password)

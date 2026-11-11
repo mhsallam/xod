@@ -39,12 +39,7 @@ namespace Xod
 
             var targetSerializer = StorageSerializerFactory.Get(targetFormat);
             var files = Directory.GetFiles(sourceDir)
-                .Where(f => f.EndsWith(".xod", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".xodj", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".xodb", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".xtab", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".xpag", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".xidx", StringComparison.OrdinalIgnoreCase))
+                .Where(Helpers.DatabaseFiles.IsOfDatabase)
                 .ToList();
 
             int convertedCount = 0;

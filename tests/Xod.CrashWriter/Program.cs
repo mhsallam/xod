@@ -36,7 +36,7 @@ public static class Program
     {
         if (args.Length < 2)
         {
-            Console.Error.WriteLine("usage: Xod.CrashWriter <setup|burst> <directory>");
+            Console.Error.WriteLine("usage: Xod.CrashWriter <setup|onebatch|burst|count|pwsetup|pwchange|pwchange-twice|pwchange-then-write|bufferedflush|pwchange-buffered> <directory>");
             return 2;
         }
 
@@ -69,6 +69,77 @@ public static class Program
             db.InsertRange(BuildBatch(batch));
             db.Flush();
             Console.WriteLine("COMMITTED");
+            return 0;
+        }
+
+        // Password changes (ISS-065): a database under the password "first", then a change to "second"
+        // that XOD_CRASH_AT_STEP stops at an exact step.
+        if (mode == "pwsetup")
+        {
+            using var seed = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
+            seed.InsertRange(BuildBatch(0));
+            seed.Flush();
+            Console.WriteLine("SETUP");
+            return 0;
+        }
+
+        if (mode == "pwchange")
+        {
+            using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
+            if (!Change(db, "first", "second"))
+                return 3;
+            Console.WriteLine("CHANGED");
+            return 0;
+        }
+
+        // A change that couldn't finish (XOD_FAIL_AT_STEP), then a second change in the same context.
+        if (mode == "pwchange-twice")
+        {
+            using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
+            Change(db, "first", "second");
+            db.ChangePassword("second", "third");
+            Console.WriteLine("CHANGED");
+            return 0;
+        }
+
+        // A change that couldn't finish, then writes in the same context.
+        if (mode == "pwchange-then-write")
+        {
+            using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
+            Change(db, "first", "second");
+            try
+            {
+                db.InsertRange(BuildBatch(1));
+                db.Flush();
+                Console.WriteLine("WROTE");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("REFUSED " + e.GetType().Name + ": " + e.Message);
+            }
+            return 0;
+        }
+
+        // Buffered durability under a password: a batch, Flush, and the process dies at once.
+        if (mode == "bufferedflush")
+        {
+            options.Durability = DurabilityMode.Buffered;
+            using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
+            db.InsertRange(BuildBatch(1));
+            db.Flush();
+            Console.WriteLine("FLUSHED");
+            Console.Out.Flush();
+            Environment.FailFast("killed after Flush");
+        }
+
+        // Buffered durability: a batch not yet flushed, then a password change (XOD_CRASH_AT_STEP stops it).
+        if (mode == "pwchange-buffered")
+        {
+            options.Durability = DurabilityMode.Buffered;
+            using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
+            db.InsertRange(BuildBatch(1));
+            db.ChangePassword("first", "second");
+            Console.WriteLine("CHANGED");
             return 0;
         }
 
@@ -105,6 +176,21 @@ public static class Program
 
         Console.Error.WriteLine($"unknown mode {mode}");
         return 2;
+    }
+
+    // A password change; one the library reports as made but not finished prints PENDING.
+    private static bool Change(XodContext db, string from, string to)
+    {
+        try
+        {
+            db.ChangePassword(from, to);
+            return true;
+        }
+        catch (XodException e)
+        {
+            Console.WriteLine("PENDING " + e.Message);
+            return false;
+        }
     }
 
     private static List<CrashCustomer> BuildBatch(int batch)

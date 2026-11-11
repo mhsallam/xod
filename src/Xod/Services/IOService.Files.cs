@@ -15,6 +15,10 @@ namespace Xod.Services
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
                 return;
 
+            // Outside the catch below: a password change that can't be finished must stop the open, not leave
+            // files under two passwords.
+            XodSecurityService.RecoverSwitch(root);
+
             try
             {
                 foreach (var tmpFile in Directory.GetFiles(root, "*.tmp"))

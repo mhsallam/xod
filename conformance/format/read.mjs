@@ -254,6 +254,7 @@ export function readDatabase(dir, password, columnTypes = {}, applicationKey = n
   const load = (file) => parseDoc(unwrap(fs.readFileSync(path.join(dir, file))));
   const child = (e, n) => e.children.find((c) => c.name === n);
   if (fs.existsSync(path.join(dir, 'transaction.xwal'))) throw new Error('a journal is present: recover first (section 9)');
+  if (fs.readdirSync(dir).some((f) => f.endsWith('.xpwlog'))) throw new Error('a password change record is present: recover first (section 9)');
 
   const dbFile = fs.readdirSync(dir).find((f) => /\.xod[jb]?$/i.test(f));
   const dbDoc = load(dbFile);

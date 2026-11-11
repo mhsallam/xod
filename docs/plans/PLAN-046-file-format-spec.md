@@ -34,13 +34,17 @@ model, a Rust core, the browser) to read the files XOD 2.0 writes, and to know w
 | `<Table>.xidx` | table | the index: a derived cache, may be missing or deleted at any time | 8 |
 | `transaction.xwal` | commit in progress | the undo journal; present only during a commit or after a crash | 9 |
 | `<file>.tmp` | write in progress | an atomic write cut short | 9 |
+| `<file>.xpwnew` | password change in progress | a file under the new password, beside the one it replaces | 9 |
+| `<name>.xod.xpwlog` | password change in progress | the commit record of a password change | 9 |
 | `<name>.xod.lock` | open database | held open when `DatabaseOptions.LockDatabase` is on | 9 |
 
 - **`<Table>`** is the class's `Type.FullName` (`MyApp.Shop.Customer.xtab`). Rows name the class by its
   short name (section 7).
 - **`<code>`** is nine lowercase hex digits (`e2d552584`), from `ValueHelper.PickCode`.
 - **The database file:** the path given to `XodContext` when it ends in `.xod`/`.xodj`/`.xodb`;
-  otherwise the first `*.xod*` in the folder, or `data.xod` for a new database. The extension only picks
+  otherwise the first file in the folder with one of those extensions, in ordinal order of names (before
+  2026-11-12: the first match of `*.xod*`, which could be a `.tmp` or `.xpwnew` beside it), or `data.xod`
+  for a new database. The extension only picks
   the default encoding for new files; it doesn't describe the files.
 - Readers must ignore files they don't know.
 
@@ -456,6 +460,30 @@ in (`zone`, section 8.1), so a database opened in another zone rebuilds its inde
 
 ## 9. Durability files
 
+- **Password changes** (`Secure`, `ChangePassword`, `Loose`; ISS-065, PLAN-050) are all or nothing across
+  a process crash. The library:
+  1. refuses while a `transaction.xwal` or a `.tmp` is present (the next open puts those back under the
+     password they were written with);
+  2. creates the record `<database file>.xpwlog` holding only its first line, and keeps it open with no
+     sharing until the change ends;
+  3. writes every database file (section 2's first four rows) under the new password, or in plain, to
+     `<file>.xpwnew`, flushing each to the device;
+  4. rewrites the record as the commit (UTF-8 lines: `XOD password change v1`, one file name per line,
+     `commit`) and flushes it;
+  5. renames each `.xpwnew` over its file, closes the record and deletes it.
+
+  A record whose first line isn't the header or whose last line isn't `commit` is not a commit. A
+  `.xpwnew` is in plain only when the change removes the password; the record holds only file names. If a
+  rename fails after the commit, the change stands: the library finishes it before its next write, or at
+  the next open. Renames and the record's deletion aren't flushed to the device (no write of the library
+  is), so this holds for a process crash, not a power cut.
+
+  **Recovery**, at open, first of all (before the `.tmp` step): a record that can't be opened for reading
+  is a change in progress, and the open fails. For a committed record, rename each named file's `.xpwnew`
+  that still exists over the file; then delete the record (one that isn't committed is deleted as it is);
+  then delete every `.xpwnew` left. If a rename fails the open fails, and the record stays for the next
+  open. **A reader that finds a record** must recover first (if it may write) or read each named file's
+  `.xpwnew` in its place when the record is committed; without a record, `.xpwnew` files are ignored.
 - **Atomic writes.** A file is written to `<file>.tmp`, then renamed over the original. When the library
   opens a database, a leftover `.tmp` is deleted if its target exists or it is empty, and renamed into
   place otherwise.

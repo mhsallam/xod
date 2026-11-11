@@ -32,8 +32,8 @@
   needs afterwards, **keeping the current ones** (`PasswordChanging`); then the files change password;
   then the protections by a password that is no longer the database's are removed (`PasswordChanged`).
   A change that fails before any file switches leaves the key openable with the password that still
-  opens the files. (One that fails after some files switched leaves files that neither password opens:
-  `ISS-065`, as in 2.0, not fixed here.)
+  opens the files. (A change that failed after some files switched left files that neither password opens:
+  `ISS-065`, fixed since by [`PLAN-050`](PLAN-050-password-change.md): the files switch all at once.)
   Refusals change nothing.
   - Whether values exist (2.0's or new) is read from the pages only when it decides something: before
     keeping a 2.0 key for a database that has no data key, and before removing the password from a
@@ -119,16 +119,15 @@ chose refusing; the alternative is noted for a later release.
 | Issue | Verdict |
 | :--- | :--- |
 | ISS-050 | **Clean for new values, with named debt**: 2.0's values written without a password stay under the public constant until rewritten. |
-| ISS-058 | **Clean, with named debt**: the key survives every password change, including one that fails before the files switch; a crash between the files' switch and the removal of the old protection leaves that protection until the next change. A change that fails after some files switched locks the whole database (`ISS-065`, open, pre-existing): no key can help there. |
+| ISS-058 | **Clean, with named debt**: the key survives every password change, including one that fails before the files switch; a crash between the files' switch and the removal of the old protection leaves that protection until the next change. A change that failed after some files switched locked the whole database (`ISS-065`, pre-existing; fixed since by `PLAN-050`). |
 | ISS-063 | **Clean by prohibition** (the owner's choice): no index on a `[Crypto]` property. |
 | ISS-064 | **Clean**: applied on attributes; refused on non-string types. |
 
 ## 7. Remaining debt
 
-- **Password changes aren't atomic** (as in 2.0; `ISS-065`, open): a failure or crash part-way leaves files
-  under two passwords, and the database then opens with neither. The fix is a rewrite into new files switched
-  in one step, or a journal; it touches the file envelope, not the property key, so it is not part of this
-  task. The key is ready for it: protected by both passwords until `PasswordChanged`.
+- **Password changes weren't atomic** (as in 2.0; `ISS-065`): fixed since by `PLAN-050` (staged files, a
+  commit record, renames). The key is protected by both passwords until `PasswordChanged`, which runs only
+  after a finished switch.
 - **Two contexts making the first key at the same moment** without `DatabaseOptions.LockDatabase`: the
   last write of the database file wins and the other's values can't be read. (A context opened earlier
   now reads the key another made.)

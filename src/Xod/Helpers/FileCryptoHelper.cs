@@ -100,27 +100,6 @@ namespace Xod.Helpers
             }
         }
 
-        internal static void EncryptFile(string inputFile, string outputFile, string key)
-        {
-            byte[] plainBytes = File.ReadAllBytes(inputFile);
-            byte[] encrypted = EncryptBytes(plainBytes, key);
-            File.WriteAllBytes(outputFile, encrypted);
-        }
-
-        internal static void EncryptContent(string content, string outputFile, string key)
-        {
-            byte[] plainBytes = Encoding.UTF8.GetBytes(content);
-            byte[] encrypted = EncryptBytes(plainBytes, key);
-            File.WriteAllBytes(outputFile, encrypted);
-        }
-
-        internal static void DecryptFile(string inputFile, string outputFile, string key)
-        {
-            byte[] encrypted = File.ReadAllBytes(inputFile);
-            byte[] plainBytes = DecryptBytes(encrypted, key);
-            File.WriteAllBytes(outputFile, plainBytes);
-        }
-
         internal static string DecryptContent(string inputFile, string key)
         {
             byte[] encrypted = File.ReadAllBytes(inputFile);
