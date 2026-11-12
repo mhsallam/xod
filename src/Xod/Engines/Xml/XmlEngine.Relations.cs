@@ -10,32 +10,46 @@ namespace Xod.Engines.Xml
 {
     public partial class XmlEngine
     {
-        private XElement RemoveFromParent(Type childType, string childCode, PropertyInfoItem parentChildrenProp, object parent)
+        private void RemoveFromParent(Type childType, string childCode, PropertyInfoItem parentChildrenProp, object parent)
         {
-            XElement item = null;
             if (parent != null)
-            {
-                XRow oldParentXRow = GetRow(parentChildrenProp.PropertyType, parent);
-                if (oldParentXRow?.Row != null)
-                {
-                    var parentChildrenProps = propertyService.Properties(parentChildrenProp.PropertyType.FullName)
-                        .Where(s => s.CollectionItemType == childType && s.ReferenceType == PropertyReferenceType.Children);
+                RemoveChildEntry(GetRow(parentChildrenProp.PropertyType, parent), parentChildrenProp.PropertyType, childType, childCode);
+        }
 
-                    foreach (var pcp in parentChildrenProps)
-                    {
-                        var oldParentChildren = oldParentXRow.Row.Element(parentChildrenProp.PropertyType.Name)?.Element(pcp.PropertyName);
-                        var parentItemRef = oldParentChildren?.Elements().FirstOrDefault(s => s.Value == childCode);
-                        if (parentItemRef != null)
-                        {
-                            item = parentItemRef;
-                            parentItemRef.Remove();
-                            ioService.Save(oldParentXRow.Page);
-                            break;
-                        }
-                    }
+        /// <summary>
+        /// Removes the entry naming <paramref name="childCode"/> from the parent row's lists of
+        /// <paramref name="childType"/>, and saves the parent's page: the one place an entry leaves a parent's list.
+        /// True when the row held one.
+        /// </summary>
+        private bool RemoveChildEntry(XRow parentRow, Type parentType, Type childType, string childCode)
+        {
+            XElement parentEntity = parentRow?.Row?.Element(parentType.Name);
+            if (parentEntity == null)
+                return false;
+
+            foreach (var pcp in propertyService.Properties(parentType.FullName)
+                .Where(s => s.CollectionItemType == childType && s.ReferenceType == PropertyReferenceType.Children))
+            {
+                XElement entry = parentEntity.Element(pcp.PropertyName)?.Elements().FirstOrDefault(s => s.Value == childCode);
+                if (entry != null)
+                {
+                    entry.Remove();
+                    ioService.Save(parentRow.Page);
+                    return true;
                 }
             }
-            return item;
+            return false;
+        }
+
+        /// <summary>The row an item code (<c>page.row</c>) names, or null when there is none.</summary>
+        private XRow RowByItemCode(Type type, string itemCode)
+        {
+            int dot = itemCode?.IndexOf('.') ?? -1;
+            if (dot <= 0 || dot >= itemCode.Length - 1)
+                return null;
+            XFile pageFile = ioService.OpenFileOrCreate<TablePage>(itemCode.Substring(0, dot) + ".xpag", openOnly: true);
+            XElement row = pageFile?.GetRowByCode(itemCode.Substring(dot + 1));
+            return row == null ? null : new XRow { Page = pageFile, Row = row };
         }
 
         private bool RecursionError(ReadWriteTrack track, ReadWriteTrack parent)
@@ -266,11 +280,7 @@ namespace Xod.Engines.Xml
                                 if (localProp != null)
                                 {
                                     localProp.SetValue(item, remoteValue);
-                                    var xLocalValue = xItem.Descendants(localProp.Name).FirstOrDefault();
-                                    if (xLocalValue != null)
-                                        xLocalValue.Value = ValueHelper.FormatScalar(remoteValue);
-                                    else
-                                        xItem.Add(new XElement(localProp.Name, ValueHelper.FormatScalar(remoteValue)));
+                                    RewriteKeyProperty(type, item, xItem, localProp.Name);
                                 }
                             }
                         }
@@ -303,7 +313,7 @@ namespace Xod.Engines.Xml
                             {
                                 var remoteParentKeyValue = remoteParentKeyProp.Property.GetValue(childParentItem);
                                 localParentKeyProp.Property.SetValue(item, remoteParentKeyValue);
-                                WriteProperty(type, item, xItem, localParentKeyProp, true);
+                                RewriteKeyProperty(type, item, xItem, localParentKeyProp.PropertyName);
                             }
                         }
                     }
@@ -357,6 +367,16 @@ namespace Xod.Engines.Xml
                                 foreach (var childPrimProp in childPrimProps)
                                     xChild.Add(new XAttribute(childPrimProp.Key, childPrimProp.Value));
                                 childrenElement.Add(xChild);
+                                statementLog?.Linked.Add((effectivePropType, writeTrack.Parent.Code, type, writeTrack.Code));
+                                parentChanged = true;
+                            }
+                            else if (xChild.Value != writeTrack.Code)
+                            {
+                                // An entry with this child's key names another row: a child deleted before its unlink
+                                // took it out of the list (2.0 and earlier left such entries). A key names one row, so
+                                // the entry is this child's now; left as it was, it hid the child from its parent
+                                // (review of TASK-063).
+                                xChild.Value = writeTrack.Code;
                                 parentChanged = true;
                             }
 

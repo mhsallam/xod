@@ -769,6 +769,31 @@ namespace Xod.Engines.Xml
                 prop.SetValue(item, val);
         }
 
+        /// <summary>
+        /// What a read gives a scalar property from a stored row's entity element (ISS-060), for a caller that
+        /// needs the value rather than an item: <c>nil="true"</c> is null; an empty text is an empty string where the
+        /// property has that form, and otherwise counts as left out; a value left out is what a read gives without
+        /// it (StoredValue.ReadBackOfMissing). The rule <see cref="SetFromStoredScalar"/> applies to an item.
+        /// </summary>
+        private object StoredScalar(PropertyInfoItem prop, XElement entity)
+        {
+            string text;
+            if (prop.ValuePosition == ValuePosition.Attribute)
+            {
+                text = entity?.Attribute(prop.PropertyName)?.Value;
+            }
+            else
+            {
+                XElement e = entity?.Element(prop.PropertyName);
+                if (e != null && StoredValue.IsNil(e))
+                    return null;
+                text = e?.Value;
+            }
+            if (text == null || (text.Length == 0 && !StoredValue.HasEmptyForm(prop)))
+                return StoredValue.ReadBackOfMissing(prop);
+            return ReadValue(prop, prop.PropertyType, text);
+        }
+
         private object ReadValue(PropertyInfoItem prop, Type targetType, string stringValue)
         {
             if (!ValueHelper.IsScalarType(targetType))

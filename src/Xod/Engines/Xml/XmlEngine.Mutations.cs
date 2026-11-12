@@ -24,26 +24,41 @@ namespace Xod.Engines.Xml
         // A mitigation, not all or nothing (ISS-090): it removes created rows only, while the process runs. What a
         // failed statement changed in rows that were there before (an update's replaced row, children it dropped)
         // isn't put back (ISS-089), and a crash leaves the created rows (they were written as they were created).
-        private List<(Type Type, string Code)> statementCreates;
+        // What the statement under way has done that its undo takes back (null outside a statement): the rows it
+        // created, each noted once its path is chosen and before anything is written for it, and the entries it
+        // added to existing parents' lists (a child inserted on its own), noted as they are added. Noting before the
+        // write means a row or entry the statement got part way through is taken back too (review of TASK-063: a
+        // parent kept listing a child whose insert failed, and a row whose own page write failed stayed in the
+        // cached page, to be saved by the next write).
+        private sealed class StatementLog
+        {
+            internal readonly List<(Type Type, string Code)> Created = new();
+            internal readonly List<(Type ParentType, string ParentCode, Type ChildType, string ChildCode)> Linked = new();
+        }
+
+        private StatementLog statementLog;
 
         private bool BeginStatement()
         {
-            if (statementCreates != null || globalWriteDepth == 0)
+            if (statementLog != null || globalWriteDepth == 0)
                 return false;
-            statementCreates = new List<(Type, string)>();
+            statementLog = new StatementLog();
             return true;
         }
 
         private void EndStatement(bool owner)
         {
             if (owner)
-                statementCreates = null;
+                statementLog = null;
         }
 
         /// <summary>
         /// Removes the rows a failed statement created, newest first, through the one delete path without its
-        /// cascade: every row the statement created is in the list, and a cascade could reach rows it didn't. A
-        /// row's removal also takes it out of a parent that lists it (ISS-088). The counters stay where the
+        /// cascade: every row the statement created is in the log (noted before it was written, so one it got part
+        /// way through is there too, and one never written is no row to delete), and a cascade could reach rows it
+        /// didn't. A row's removal also takes it out of a parent that lists it (ISS-088), and every entry the
+        /// statement added to an existing parent's list is taken out, whether or not its row was written. The
+        /// counters stay where the
         /// statement left them, as after a rollback (ISS-083): the caller's items hold the numbers it handed out.
         /// The failure is what the caller sees. If the removal fails too, the caller gets an XodException carrying
         /// both, the indexes of the tables the statement wrote are dropped (in memory and on disk: a derived cache,
@@ -52,10 +67,11 @@ namespace Xod.Engines.Xml
         /// </summary>
         private void UndoStatement(Exception failure)
         {
-            var created = statementCreates;
-            statementCreates = null;
-            if (created == null || created.Count == 0)
+            var log = statementLog;
+            statementLog = null;
+            if (log == null || (log.Created.Count == 0 && log.Linked.Count == 0))
                 return;
+            var created = log.Created;
 
             autonumberMarksPending = true;
             bool batch = !ioService.IsBatchOrBuffered;
@@ -67,6 +83,11 @@ namespace Xod.Engines.Xml
                 {
                     for (int i = created.Count - 1; i >= 0; i--)
                         DeleteByItemCode(created[i].Type, created[i].Code, isCascade: false, cascadeChildren: false);
+                    for (int i = log.Linked.Count - 1; i >= 0; i--)
+                    {
+                        var link = log.Linked[i];
+                        RemoveChildEntry(RowByItemCode(link.ParentType, link.ParentCode), link.ParentType, link.ChildType, link.ChildCode);
+                    }
                 }
                 finally
                 {
@@ -159,8 +180,6 @@ namespace Xod.Engines.Xml
             WriteDiagnostics.End(ref WriteDiagnostics.UniqueTicks, tUnique);
 
             string refCode = AddToPage(type, item, autonumbers, shallowWrite, writeTrack);
-            if (refCode != null)
-                statementCreates?.Add((type, refCode));
 
             if (trigger != null)
                 AfterAction?.Invoke(this, trigger);
@@ -192,6 +211,7 @@ namespace Xod.Engines.Xml
                     WriteDiagnostics.End(ref WriteDiagnostics.RawTicks, tRaw);
                     if (rawOk)
                     {
+                        statementLog?.Created.Add((type, itemPath));
                         indexService.IndexItem(type, item, itemPath);
 
                         if (rawTableModified)
@@ -217,6 +237,8 @@ namespace Xod.Engines.Xml
                     itemCode = ValueHelper.PickCode();
                     WriteDiagnostics.End(ref WriteDiagnostics.PickCodeTicks, tPick);
                     itemPath = $"{pageCode}.{itemCode}";
+                    // Noted before anything is written for it: its children, an existing parent's list, its page.
+                    statementLog?.Created.Add((type, itemPath));
 
                     var itemCreateTrack = new ReadWriteTrack
                     {
@@ -356,7 +378,7 @@ namespace Xod.Engines.Xml
             // Scalar / value types
             if (ValueHelper.IsScalarType(effectivePropType))
             {
-                if (StoredValue.IsLeftOut(value, effectivePropType, prop, shallowWrite))
+                if (StoredValue.IsLeftOut(value, effectivePropType, prop))
                     return null;
 
                 // A null a read wouldn't give back (a new instance holds something else): marked (ISS-060).
@@ -774,6 +796,38 @@ namespace Xod.Engines.Xml
             return updated;
         }
 
+        /// <summary>
+        /// A relationship wrote a key into the item after the row's scalars were written: the key's stored form is
+        /// written again by the one rule (<see cref="WriteProperty"/>, StoredValue), in its place, so the row never
+        /// holds two forms of it (a <c>nil</c> mark beside the value read back null: review of TASK-063). Every
+        /// write-back of a key goes through here.
+        /// </summary>
+        private void RewriteKeyProperty(Type type, object item, XElement xItem, string propertyName)
+        {
+            PropertyInfoItem prop = propertyService.Properties(type.FullName).FirstOrDefault(p => p.PropertyName == propertyName);
+            if (prop == null)
+                return;
+            var scratch = new XElement(xItem.Name);
+            WriteProperty(type, item, scratch, prop);
+            XElement written = scratch.Element(prop.PropertyName);
+            XElement stored = xItem.Element(prop.PropertyName);
+            foreach (var extra in xItem.Elements(prop.PropertyName).Skip(1).ToList())
+                extra.Remove();
+            if (written != null)
+            {
+                written.Remove();
+                if (stored != null)
+                    stored.ReplaceWith(written);
+                else
+                    xItem.Add(written);
+            }
+            else
+            {
+                stored?.Remove();
+            }
+            xItem.SetAttributeValue(prop.PropertyName, scratch.Attribute(prop.PropertyName)?.Value);
+        }
+
         private void WritePropertyMap(Type type, object item, Type propType, object value, XElement xItem, Dictionary<string, string> relationshipProps)
         {
             foreach (var relationshipProp in relationshipProps)
@@ -789,11 +843,7 @@ namespace Xod.Engines.Xml
                         if (!Equals(remoteKeyValue, ValueHelper.DefaultOf(localProp.PropertyType)) && !remoteKeyValue.Equals(localKeyValue))
                         {
                             localProp.SetValue(item, remoteKeyValue);
-                            var xLocalValue = xItem.Descendants(localProp.Name).FirstOrDefault();
-                            if (xLocalValue != null)
-                                xLocalValue.Value = ValueHelper.FormatScalar(remoteKeyValue);
-                            else
-                                xItem.Add(new XElement(localProp.Name, ValueHelper.FormatScalar(remoteKeyValue)));
+                            RewriteKeyProperty(type, item, xItem, localProp.Name);
                         }
                     }
                 }
@@ -1066,53 +1116,7 @@ namespace Xod.Engines.Xml
                             }
 
                             if (!isCascade)
-                            {
-                                var itemPrmVals = GetPrimaryValues(type, fullEntity);
-                                if (itemPrmVals != null && itemPrmVals.Count > 0)
-                                {
-                                    var parRefProps = propertyService.Properties(type.FullName)
-                                        .Where(s => s.ReferenceType == PropertyReferenceType.Parent);
-
-                                    foreach (var parRefProp in parRefProps)
-                                    {
-                                        object parentValue = parRefProp.Property.GetValue(fullEntity) ?? parRefProp.Property.GetValue(item);
-                                        Dictionary<string, object> parentPrmVals;
-
-                                        if (parentValue == null)
-                                        {
-                                            parentPrmVals = new Dictionary<string, object>();
-                                            if (parRefProp.ParentKeys != null)
-                                            {
-                                                foreach (var pk in parRefProp.ParentKeys)
-                                                {
-                                                    var pkProp = propertyService.Properties(type.FullName)
-                                                        .FirstOrDefault(s => s.PropertyName == pk.LocalProperty);
-                                                    if (pkProp != null)
-                                                    {
-                                                        object pkVal = pkProp.Property.GetValue(fullEntity);
-                                                        if (pkVal != null)
-                                                            parentPrmVals[pk.RemoteProperty] = pkVal;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        else
-                                        {
-                                            // Fixed XOD 1.x bug: pass parRefProp.PropertyType (not type)
-                                            parentPrmVals = GetPrimaryValues(parRefProp.PropertyType, parentValue);
-                                        }
-
-                                        if (parentPrmVals == null || parentPrmVals.Count == 0)
-                                            continue;
-
-                                        object parent = SelectItemsByExample(parRefProp.PropertyType, PopulateItemProperties(parRefProp.PropertyType, parentPrmVals), "*").FirstOrDefault();
-                                        if (parent == null)
-                                            continue;
-
-                                        RemoveFromParent(type, itemCode, parRefProp, parent);
-                                    }
-                                }
-                            }
+                                RemoveFromParentElements(type, row, itemCode);
                         }
 
                         rowTree.Page.RemoveRow(row);
@@ -1149,7 +1153,7 @@ namespace Xod.Engines.Xml
         public bool DropType(Type type)
         {
             ThrowIfWritesRefused();
-            rwLock.EnterWriteLock();
+            EnterWrite(rwLock.EnterWriteLock);
             try
             {
                 var trigger = new TriggerEventArgs
@@ -1302,13 +1306,26 @@ namespace Xod.Engines.Xml
 
         // A parent lists a child by its item code, "page.row" (XmlEngine.Relations, ParseChildren); the bare row code
         // matched no entry, so a delete through here left the child listed (ISS-088).
+        /// <summary>
+        /// Takes a deleted row out of the lists of the parents that hold it, for every delete path (by item code, by
+        /// a scan) and the statement undo: the one unlink. The parent is the one the row names (the
+        /// <c>refType="parent"</c> element a child row stores, whether or not the child has a key property: review of
+        /// TASK-063), else the one its parent keys find. A child with no parent property names none, so nothing finds
+        /// its parent here (ISS-095).
+        /// </summary>
         private void RemoveFromParentElements(Type type, XElement rawRow, string itemCode)
         {
             var parRefProps = propertyService.Properties(type.FullName)
                 .Where(s => s.ReferenceType == PropertyReferenceType.Parent);
+            XElement entity = rawRow?.Element(type.Name) ?? rawRow?.Elements().FirstOrDefault();
 
             foreach (var parRefProp in parRefProps)
             {
+                XElement named = entity?.Element(parRefProp.PropertyName);
+                if (named != null && named.Attribute("refType")?.Value == "parent" &&
+                    RemoveChildEntry(RowByItemCode(parRefProp.PropertyType, named.Value), parRefProp.PropertyType, type, itemCode))
+                    continue;
+
                 var parentPrmVals = new Dictionary<string, object>();
                 if (parRefProp.ParentKeys != null)
                 {

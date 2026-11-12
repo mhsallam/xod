@@ -236,12 +236,18 @@ namespace Xod.Services
 
         // The hold is let go even when the last flush fails: the context is gone either way, and a hold kept would
         // refuse every later open with LockDatabase, and every password change, until the garbage collector ran.
+        /// <summary>
+        /// Lets go of the database. It writes nothing: the engine's close (XmlEngine.Dispose) is the one place that
+        /// decides whether the close writes, and has flushed what it may; a context that writes nothing more writes
+        /// nothing at its close (review of TASK-063: a refused context's buffer was written here, so the close threw
+        /// and left the rest of the context undisposed). Writes still waiting (a last flush that failed, a refused
+        /// context's buffer) are dropped, as at a crash.
+        /// </summary>
         public void Dispose()
         {
             try
             {
                 FaultInjection.Step("closing");
-                FlushBufferedFiles();
             }
             finally
             {

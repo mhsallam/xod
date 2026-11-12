@@ -48,6 +48,60 @@ namespace Xod.Tests
         [ParentKey(nameof(LinkParentId))] public LinkParent Parent { get; set; }
     }
 
+    // A child inserted on its own whose own children are refused (review of TASK-063).
+    public class UndoGParent
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        [Children] public List<UndoGChild> Children { get; set; }
+    }
+
+    public class UndoGChild
+    {
+        public int Id { get; set; }
+        public int UndoGParentId { get; set; }
+        public string Label { get; set; }
+        [ParentKey(nameof(UndoGParentId))] public UndoGParent Parent { get; set; }
+        [Children] public List<UndoGGrand> Grands { get; set; }
+    }
+
+    public class UndoGGrand
+    {
+        public int Id { get; set; }
+        public int UndoGChildId { get; set; }
+        [Required] public string Label { get; set; }
+    }
+
+    // A child with a parent property and no key property for it: the parent is found from the row.
+    public class NavParent
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        [Children] public List<NavChild> Kids { get; set; }
+    }
+
+    public class NavChild
+    {
+        public int Id { get; set; }
+        public string Label { get; set; }
+        public NavParent Parent { get; set; }
+    }
+
+    // The same with a natural key: a stale entry with the key hid a later child that had it.
+    public class NavKeyParent
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        [Children] public List<NavKeyChild> Kids { get; set; }
+    }
+
+    public class NavKeyChild
+    {
+        [PrimaryKey] public string Code { get; set; }
+        public string Label { get; set; }
+        public NavKeyParent Parent { get; set; }
+    }
+
     public class XodStatementUndoTests
     {
         private static string PageText<T>(string dbPath)
@@ -152,6 +206,199 @@ namespace Xod.Tests
                 Assert.Equal(db.Select<UndoTag>().Count(), db.Query<UndoTag>(t => t.Id == 1).Count());
                 db.Insert(new UndoTag { Name = "after reopening" });
             }
+        }
+
+        // The same with buffered durability: the close of a context that writes nothing more writes nothing, so it
+        // doesn't throw, and it lets go of everything (review of TASK-063: the close threw from the buffer's flush
+        // and left the rest of the context undisposed). What was still buffered is dropped, as at a crash.
+        [Fact]
+        public void A_buffered_context_whose_undo_failed_closes_without_writing()
+        {
+            if (!OperatingSystem.IsWindows())
+                return; // a file held open blocks its deletion on Windows only
+
+            string path = NewDatabase("undo-fails-buffered");
+            string dir = Path.GetDirectoryName(path)!;
+            using (var seed = new XodContext(path))
+                seed.Insert(new UndoTag { Name = "seed" });
+
+            var db = new XodContext(path, null, new DatabaseOptions { Durability = DurabilityMode.Buffered, LockDatabase = true });
+            FileStream held = null;
+            db.AfterAction += (_, e) =>
+            {
+                if (e.Item is UndoTag t && t.Name == "refused")
+                {
+                    db.Delete(db.Find<UndoTag>(x => x.Name == "seed"));
+                    string table = File.ReadAllText(Path.Combine(dir, typeof(UndoTag).FullName + ".xtab"));
+                    string page = Regex.Match(table, "file=\"([^\"]+)\"").Groups[1].Value;
+                    held = new FileStream(Path.Combine(dir, page), FileMode.Open, FileAccess.Read, FileShare.None);
+                    throw new InvalidOperationException("trigger refused it");
+                }
+            };
+            try
+            {
+                Assert.ThrowsAny<XodException>(() => db.Insert(new UndoTag { Name = "refused" }));
+            }
+            finally
+            {
+                held?.Dispose();
+            }
+            db.Dispose();
+
+            // Let go of: an exclusive open succeeds.
+            using (var after = new XodContext(path, null, new DatabaseOptions { LockDatabase = true }))
+            {
+                Assert.Equal(after.Select<UndoTag>().Count(), after.Query<UndoTag>(t => t.Id == 1).Count());
+                after.Insert(new UndoTag { Name = "after reopening" });
+            }
+        }
+
+        // ---- review of TASK-063: what the undo takes back ----
+
+        // A child inserted on its own is added to its parent's list while its row is built, before its page is
+        // written: a refused grandchild, or a parent key that disagrees, failed it after the parent was saved, and the
+        // parent kept listing a child that didn't exist.
+        [Fact]
+        public void A_child_insert_that_fails_after_its_parent_listed_it_leaves_the_parent_without_it()
+        {
+            string path = NewDatabase("listed-then-failed");
+            using (var db = new XodContext(path))
+            {
+                var parent = db.Insert(new UndoGParent { Name = "p" });
+                Assert.ThrowsAny<Exception>(() => db.Insert(new UndoGChild
+                {
+                    UndoGParentId = parent.Id,
+                    Label = "c",
+                    Grands = new() { new UndoGGrand { Label = "g1" }, new UndoGGrand() },
+                }));
+                Assert.Empty(db.Select<UndoGChild>());
+                Assert.Empty(db.Select<UndoGGrand>());
+
+                var linked = db.Insert(new LinkParent { Name = "p" });
+                Assert.ThrowsAny<Exception>(() => db.Insert(new LinkChild { LinkParentId = 999, Parent = linked, Label = "x" }));
+                Assert.Empty(db.Select<LinkChild>());
+            }
+            Assert.DoesNotContain("<UndoGChild", PageText<UndoGParent>(path));
+            Assert.DoesNotContain("<LinkChild", PageText<LinkParent>(path));
+        }
+
+        // A row whose own page write failed was already in the cached page, and wasn't noted for the undo: the next
+        // write of that table saved it, a child whose parent didn't exist.
+        [Fact]
+        public void A_row_whose_page_write_fails_is_taken_back()
+        {
+            if (!OperatingSystem.IsWindows())
+                return; // a file held open blocks writing it on Windows only
+
+            string path = NewDatabase("page-write-fails");
+            string dir = Path.GetDirectoryName(path)!;
+            using (var db = new XodContext(path))
+            {
+                db.Insert(new RefusedParent { Name = "first", Children = new() { new RefusedChild { Label = "c0" } } });
+                string table = File.ReadAllText(Path.Combine(dir, typeof(RefusedChild).FullName + ".xtab"));
+                string page = Regex.Match(table, "file=\"([^\"]+)\"").Groups[1].Value;
+                using (new FileStream(Path.Combine(dir, page), FileMode.Open, FileAccess.Read, FileShare.None))
+                    Assert.ThrowsAny<Exception>(() => db.Insert(new RefusedParent { Name = "bad", Children = new() { new RefusedChild { Label = "orphan" } } }));
+                // Its undo couldn't write the page either: the context writes nothing more (ISS-091), and the row
+                // stays out of the disk.
+                Assert.Contains("Reopen", Assert.ThrowsAny<XodException>(() =>
+                    db.Insert(new RefusedParent { Name = "refused", Children = new() { new RefusedChild { Label = "x" } } })).Message);
+            }
+            using (var db = new XodContext(path))
+                db.Insert(new RefusedParent { Name = "later", Children = new() { new RefusedChild { Label = "c2" } } });
+            using (var db = new XodContext(path))
+            {
+                var parents = db.Select<RefusedParent>().Select(p => p.Id).ToHashSet();
+                var children = db.Select<RefusedChild>().ToList();
+                Assert.Equal(new[] { "c0", "c2" }, children.Select(c => c.Label).OrderBy(l => l));
+                Assert.All(children, c => Assert.Contains(c.RefusedParentId, parents));
+            }
+        }
+
+        // A child with a parent property but no key property for it: its delete, and an undo of its insert, left it
+        // in the parent's list (the unlink looked for the parent by a key property only). The row names its parent.
+        [Fact]
+        public void A_child_without_a_parent_key_property_leaves_its_parents_list()
+        {
+            string path = NewDatabase("nav-only");
+            using (var db = new XodContext(path))
+            {
+                var parent = db.Insert(new NavParent { Name = "p" });
+                var deleted = db.Insert(new NavChild { Label = "deleted", Parent = parent });
+                Assert.True(db.Delete(deleted));
+                db.AfterAction += (_, e) =>
+                {
+                    if (e.Item is NavChild k && k.Label == "refused")
+                        throw new InvalidOperationException("trigger refused it");
+                };
+                Assert.Throws<InvalidOperationException>(() => db.Insert(new NavChild { Label = "refused", Parent = parent }));
+                Assert.Empty(db.Select<NavChild>());
+            }
+            Assert.DoesNotContain("<NavChild", PageText<NavParent>(path));
+
+            // The same delete through a scan of the pages (no index): the one unlink.
+            string scanned = NewDatabase("nav-only-scan");
+            var noIndex = new DatabaseOptions { EnableIndexing = false };
+            using (var db = new XodContext(scanned, null, noIndex))
+            {
+                var parent = db.Insert(new NavParent { Name = "p" });
+                Assert.True(db.Delete(db.Insert(new NavChild { Label = "deleted", Parent = parent })));
+            }
+            Assert.DoesNotContain("<NavChild", PageText<NavParent>(scanned));
+        }
+
+        // A child deleted and inserted again with the same key is in its parent's list.
+        [Fact]
+        public void A_child_inserted_again_with_its_key_is_listed()
+        {
+            string path = NewDatabase("same-key");
+            using (var db = new XodContext(path))
+            {
+                var parent = db.Insert(new NavKeyParent { Name = "p" });
+                Assert.True(db.Delete(db.Insert(new NavKeyChild { Code = "k", Label = "first", Parent = parent })));
+                db.Insert(new NavKeyChild { Code = "k", Label = "second", Parent = parent });
+            }
+            using (var db = new XodContext(path))
+                Assert.Equal(new[] { "second" }, (db.Select<NavKeyParent>().Single().Kids ?? new()).Select(k => k.Label));
+        }
+
+        // An entry a delete left behind (2.0 and earlier left them) with a child's key names that child once it is
+        // inserted: the entry hid it from its parent.
+        [Fact]
+        public void A_stale_entry_with_a_child_s_key_names_the_child_inserted_with_it()
+        {
+            string path = NewDatabase("stale-entry");
+            using (var db = new XodContext(path))
+                db.Insert(new NavKeyParent { Name = "p" });
+            string dir = Path.GetDirectoryName(path)!;
+            string table = File.ReadAllText(Path.Combine(dir, typeof(NavKeyParent).FullName + ".xtab"));
+            string pageFile = Path.Combine(dir, Regex.Match(table, "file=\"([^\"]+)\"").Groups[1].Value);
+            string stale = "<Kids dataType=\"" + typeof(NavKeyChild).FullName + "\" collType=\"generic\" refType=\"children\">" +
+                "<NavKeyChild Code=\"k\">0deadbeef.0deadbeef</NavKeyChild></Kids></NavKeyParent>";
+            File.WriteAllText(pageFile, File.ReadAllText(pageFile).Replace("</NavKeyParent>", stale));
+            foreach (var index in Directory.GetFiles(dir, "*.xidx"))
+                File.Delete(index);
+
+            using (var db = new XodContext(path))
+                db.Insert(new NavKeyChild { Code = "k", Label = "new", Parent = db.Select<NavKeyParent>().Single() });
+            using (var db = new XodContext(path))
+                Assert.Equal(new[] { "new" }, (db.Select<NavKeyParent>().Single().Kids ?? new()).Select(k => k.Label));
+            Assert.DoesNotContain("0deadbeef", PageText<NavKeyParent>(path));
+        }
+
+        // ISS-095 (named, not fixed): a child with no parent property names no parent in its row, so its own delete
+        // leaves its entry in the parent's list. The parent reads the children that are there.
+        [Fact]
+        public void A_child_with_no_parent_property_deleted_on_its_own_is_not_read_as_its_parent_s()
+        {
+            string path = NewDatabase("no-parent-property");
+            using (var db = new XodContext(path))
+            {
+                db.Insert(new RefusedParent { Name = "p", Children = new() { new RefusedChild { Label = "a" }, new RefusedChild { Label = "b" } } });
+                Assert.True(db.Delete(db.Select<RefusedChild>().Single(c => c.Label == "b")));
+            }
+            using (var db = new XodContext(path))
+                Assert.Equal(new[] { "a" }, db.Select<RefusedParent>().Single().Children.Select(c => c.Label));
         }
 
         public static IEnumerable<object[]> Formats() => XodTextRoundTripTests.Formats();

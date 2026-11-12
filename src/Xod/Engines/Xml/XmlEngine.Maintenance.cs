@@ -9,10 +9,12 @@ namespace Xod.Engines.Xml
     {
         public DatabaseStatistics GetStatistics()
         {
-            rwLock.EnterReadLock();
+            // The engine-wide write lock: the flush writes files (the counters' marks among them), which a read lock
+            // doesn't cover (review of TASK-063: another thread's write to a table could run beside it).
+            EnterWrite(rwLock.EnterWriteLock);
             try
             {
-                FlushToDisk(caughtUp: false); // under the read lock: another thread may be writing
+                FlushToDisk(caughtUp: true);
                 var stats = new DatabaseStatistics
                 {
                     DatabasePath = path,
@@ -90,7 +92,7 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                rwLock.ExitReadLock();
+                rwLock.ExitWriteLock();
             }
         }
 
@@ -115,7 +117,7 @@ namespace Xod.Engines.Xml
         // password the files are under.
         private void SwitchPassword(Action check, string newPassword)
         {
-            rwLock.EnterWriteLock();
+            EnterWrite(rwLock.EnterWriteLock);
             try
             {
                 // A rollback would restore files as they were before the switch, under the old password.
@@ -181,7 +183,7 @@ namespace Xod.Engines.Xml
 
         public void Flush()
         {
-            rwLock.EnterWriteLock();
+            EnterWrite(rwLock.EnterWriteLock);
             try
             {
                 FlushToDisk(caughtUp: true);
@@ -224,7 +226,7 @@ namespace Xod.Engines.Xml
         /// </summary>
         private void DropCaches()
         {
-            rwLock.EnterWriteLock();
+            EnterWrite(rwLock.EnterWriteLock);
             try
             {
                 bool inTransaction = activeTransaction != null && activeTransaction.IsActive;
@@ -247,7 +249,8 @@ namespace Xod.Engines.Xml
         /// </summary>
         // Everything but the autonumber counters: a number handed out is gone whatever becomes of its row, since
         // the caller holds it (the insert gave it back), so a rollback mustn't hand it out again (ISS-083). The
-        // counters only ever rise; their highs reach the tables' marks at the next flush (RecordCountersInMarks).
+        // counters only rise, but for a drop's reset, which a rollback takes back (AutonumberService.RaiseTo);
+        // their highs reach the tables' marks at the next flush (RecordCountersInMarks).
         private void ForgetEverythingHeld()
         {
             ioService.DiscardPendingWrites();

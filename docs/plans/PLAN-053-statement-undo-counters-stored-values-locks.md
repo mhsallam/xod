@@ -1,6 +1,6 @@
 # PLAN-053: Statement undo, counters across a rollback, values that read back as written, and the lock fixes from the reviews (ISS-060, ISS-062, ISS-083 to ISS-088, ISS-091)
 
-- **Task ID**: `TASK-063`
+- **Task ID**: `TASK-063`; the fixes from its review, `TASK-065` (sections 5 and 6)
 - **Status**: Fixed in the tree (2026-11-12), not released: no version change, nothing pushed.
 - **Related**: [`PLAN-048`](PLAN-048-format-defect-fixes.md) section 7 (ISS-060 and ISS-062 filed),
   [`PLAN-052`](PLAN-052-autonumbers-password-service-migrator.md) (ISS-083 filed; its round-2 review found
@@ -62,8 +62,11 @@
   whose index check keys an empty element `""` and a nil one not at all. PLAN-046 sections 7.2 and 8.3
   describe it. A conformance fixture written by the tree, `conformance/data/stored-values` (two tables, one
   per row writer), pins the forms for every reader (PLAN-047 section 6.1).
-- **Older readers**: 2.0.0 and 2.0.1 skip an empty value and leave what a new instance holds (their reader's
-  code), so they read the new forms as they read a value left out: as they read their own files.
+- **Older readers**: 2.0.0 and 2.0.1 skip an empty or marked element and leave what a new instance holds (their
+  reader's code), as they read a value left out; an empty attribute they read as `""`, which is harmless, but
+  their index rebuild leaves `""` out, so they don't find an indexed empty value through the index. Files of
+  XOD 1.x stored `""` as an empty element, which every earlier version read as null and this one reads as `""`
+  (corrected by the review, section 5).
 - **Limitation (ISS-094, filed)**: an attribute can't say null, so a null in an attribute-positioned property
   whose new instance holds a value still reads back as that value.
 
@@ -153,27 +156,72 @@
 
 ## 5. Independent review
 
-To run on the committed tree (concurrency, persistence and the format are high-risk areas).
+Two fresh reviewers read the committed tree (`45f7a12..4a0ce19`) with the problem and no conclusions, one on
+shared access, locks, recovery, the migrator and the counters, one on the statement undo and stored values. Both
+ran probes (one also in a Linux container, as a second user and on a read-only mount). Every finding below was
+reproduced on the tree before acting (their probes run against it: 12 of 14 failed as reported), and fixed in
+`TASK-065` unless marked filed.
+
+| # | Finding | Done |
+| :--- | :--- | :--- |
+| 1 | **Regression (ISS-083)**: a `Drop` inside a transaction reset the counter, and the rollback kept the reset, so the next insert got a number a restored row held (`ReservedPrimaryKeyException`, or a silent duplicate) | fixed: a rollback raises each counter to where it was when the transaction began (`AutonumberService.Highs`/`RaiseTo`), in the rollback's `finally` |
+| 2 | **Regression (ISS-060)**: a relationship key a new instance holds as `""`, null on insert with its navigation set, was marked `nil` by the scalar pass; the write-backs set the text beside the mark or added a second element, and it read back null | fixed: every write-back of a key (`WritePropertyMap`, both parent paths) goes through `RewriteKeyProperty`, which writes the key again by the one writer, in place |
+| 3 | The stored-value rule was bypassed: an update keeping a value read a `nil` or missing null as `""` (`KeepStoredValue`); `lazyLoad: true` kept 2.0's rule; a type without a parameterless constructor took `""` for what the reader makes as null | fixed: `KeepStoredValue` reads through `StoredScalar` (the reader's rule); `IsLeftOut` lost its `shallowWrite` case; `ReadBackOfMissing` makes the instance as the reader does (`ValueHelper.CreateInstance`) |
+| 4 | Collections: a dictionary's null value reads `""`, a list drops a null item (predates) | filed `ISS-097`; the release note says scalars |
+| 5 | The undo missed a parent entry written while the child's row was built (a refused grandchild, `ReservedChildException`), and a row whose own page write failed after it was in the cached page | fixed: a row is noted once its path is chosen, before anything is written for it; entries added to an existing parent's list are noted as they are added and taken out by the undo |
+| 6 | ISS-088 covered one shape: a child with a parent property but no key property for it stayed listed after its delete and its undo, and `Delete`'s scan path kept its own unlink; a stale entry with a natural key hid a child inserted again with it | fixed: one unlink (`RemoveFromParentElements`) for every delete path, finding the parent from the row's `refType="parent"` element first; `RemoveChildEntry` is the one place an entry leaves a list; a stale entry with the child's key is pointed at the new row |
+| 7 | A child with no parent property is still left listed by its own delete | filed `ISS-095` (reads skip the entry, pinned by a test) |
+| 8 | Under `Buffered`, a context whose undo failed threw at its close (the IO service flushed its buffer on its own) and left its other resources undisposed | fixed: the IO service's close writes nothing (the engine's close decides), and every resource is let go even if one before it fails; the buffer is dropped, as at a crash (named) |
+| 9 | **Regression on an NFS client (ISS-084)**: the exclusive open with read access takes no lock there (flock(2): LOCK_EX needs a file open for writing), and .NET ignores the failure | fixed: write access where the lock file allows it, read access otherwise; an exclusive hold counts only once a second open of the file is refused (`ProveExclusive`), unless the caller switched .NET's file locking off |
+| 10 | A read-only medium without a lock file was refused as "locked" (EROFS is a plain `IOException`) | fixed: an `IOException` with no lock file there is a lock file that can't be created; proven in a Linux container on a read-only mount |
+| 11 | Two opens naming different new database files in an empty folder both pass the check (inferred) | filed `ISS-096` |
+| 12 | `Flush`, `ClearCache`, `Drop`, `GetStatistics`, a password change and a commit took the write lock outside the helper (a raw `LockRecursionException` inside a read); `GetStatistics` flushed, counters' marks included, under the read lock | fixed: all through `EnterWrite`; `GetStatistics` takes the write lock |
+| 13 | The refusal's message named the wrong cases (it fires for any write lock, and queries don't enumerate lazily) | fixed |
+| 14 | The obsolete password service is still silent for a folder that doesn't exist | named: deliberate (it sets the password a later database is created with, as before) |
+| 15 | Claims: 2.0.x reading the new forms, 1.x files' `""`, the spec's database-file rule and string keys, stale comments | corrected here, in PLAN-046 sections 2, 7.2 and 9, the release notes and the code |
+
+Confirmed sound by the reviewers: the lock helpers release what they took; `globalWriteDepth` and the statement
+log are touched only under the engine-wide write lock; another user's read-only lock file holds on Linux; a case
+variant of the path shares the lock on Windows; the fast writer agrees with the rule on every path it takes.
+
+**Tests added** (each red against the tree, the reviewers' probes for the same cases red as above):
+`XodAutonumberTests` 2 (a rolled-back drop; a committed drop still resets); `XodStoredValueTests` 4 (a key
+written back from a relationship, every format; an update keeping values; a `lazyLoad` insert; a type made
+without a constructor); `XodStatementUndoTests` 7 (a child failing after its parent listed it; a row whose page
+write fails; a child without a parent key property, by index and by scan; a child inserted again with its key; a
+stale entry; ISS-095 pinned; a buffered context whose undo failed); `XodLockSafetyTests` 3 (maintenance inside a
+read; an unproven exclusive hold; read-only media, run in a Linux container).
 
 ## 6. Verdicts
 
-Provisional, until the review reports:
+After the review and `TASK-065`:
 
 | Change | Verdict |
 | :--- | :--- |
-| ISS-062 statement undo | Mitigation (fix filed as ISS-090): created rows only, in-process only |
+| ISS-062 statement undo | Mitigation (fix filed as ISS-090): rows and parent entries the statement made, in-process only; not changes to existing rows (ISS-089), not across a crash |
 | ISS-083 counters across a rollback | Clean with named debt: the marks wait for the next flush, so a crash before it can still reissue a number |
-| ISS-060 stored values | Clean with named debt: an attribute can't hold a null (ISS-094); the independent reader and a fixture pin the forms |
-| ISS-084 lock file access, no recovery without a hold | Clean: an exclusive hold needs no write access; without a hold nothing recovers or converts |
-| ISS-085 one database per folder | Clean: one owner decides the database; processes of 2.0.0 and 2.0.1 can still create a second file |
-| ISS-086 lock helpers | Clean: each helper holds all or nothing |
-| ISS-087 password service path | Clean with named debt: the service can't pass `DatabaseOptions` |
-| ISS-088 parent unlink | Clean with named debt: two copies of the unlink remain (`Delete`'s scan path and `RemoveFromParentElements`) |
-| ISS-091 failed undo | Mitigation within ISS-090's: the index is dropped and the context refuses writes; if the index file's own deletion fails, the next open has only its time-based staleness check (ISS-043) |
+| ISS-060 stored values | Clean with named debt: scalar properties, every writer through the one rule and every reader through the reader's; an attribute can't hold a null (ISS-094); collection entries aren't covered (ISS-097) |
+| ISS-084 lock file access, no recovery without a hold | Clean with named debt: an exclusive hold is proven, not assumed; with .NET's file locking switched off the caller's word is taken |
+| ISS-085 one database per folder | Clean with named debt: the creation race of two new files (ISS-096); processes of 2.0.0 and 2.0.1 can still create a second file |
+| ISS-086 lock helpers | Clean: every write-lock taker goes through the helper |
+| ISS-087 password service path | Clean with named debt: the service can't pass `DatabaseOptions`; a folder that doesn't exist is still silent (deliberate) |
+| ISS-088 parent unlink | Clean with named debt: one unlink; a child with no parent property isn't found (ISS-095) |
+| ISS-091 failed undo | Mitigation within ISS-090's: the index is dropped and the context refuses writes, its close writing nothing; under `Buffered` what it had buffered is dropped |
 
-**Gate** (the tree as committed, 2026-11-12): `Xod.Tests` 277/277 on net8.0 and on net9.0; conformance 14/14
-on each; the independent reader `read.mjs --check` (six fixtures, `stored-values` among them) and
-`--check-fresh` ok; `XodBench.Tests` 26/26; the library builds with 0 warnings.
+**Gate** (`TASK-063`, the tree as committed in `4a0ce19`, 2026-11-12): `Xod.Tests` 277/277 on net8.0 and on
+net9.0; conformance 14/14 on each; the independent reader `read.mjs --check` (six fixtures) and `--check-fresh`
+ok; `XodBench.Tests` 26/26; the library builds with 0 warnings.
+
+**Gate** (`TASK-065`, the tree as committed after the review's fixes, 2026-11-12): `Xod.Tests` 301/301 on net8.0
+and on net9.0 (`TASK-064`'s tests among them); conformance 14/14 on each; `read.mjs --check` (six fixtures) and
+`--check-fresh` ok; `XodBench.Tests` 26/26; the library builds with 0 warnings. The four changed test classes,
+147/147, also pass in a Linux container (.NET 9 SDK image, no network), the read-only-media test on a read-only
+mount. **Guards proven by breaking the code**: 14 breaks, each turning at least one of the new tests red (a
+rollback keeping a drop's reset; a key write-back not rewritten; a kept value read the old way; a `lazyLoad`
+insert under the old rule; a constructorless type's missing value; a row noted after its write; a parent entry
+not noted; the unlink ignoring the row's parent; the scan delete without the unlink; a stale entry kept; the IO
+service's close flushing its buffer; `Flush` and `GetStatistics` taking the lock outside the helper; an
+exclusive hold not proven).
 
 ## 7. Remaining debt
 
@@ -189,4 +237,7 @@ on each; the independent reader `read.mjs --check` (six fixtures, `stored-values
   back as that value.
 - The migrator compares folders ignoring case on Windows and macOS, so on a case-sensitive volume there it
   could take another folder for the source.
-- Two copies of the unlink from parents (`Delete`'s scan path and `RemoveFromParentElements`).
+- **ISS-095**, **ISS-096**, **ISS-097** (filed by the review, Low): see section 5.
+- Under `DurabilityMode.Buffered`, a context whose undo failed drops what it had buffered (the cause is ISS-090).
+- Shared holds on an NFS client: a shared lock needs read access only, so it holds; whether NFS clients are a
+  supported place for a database at all is not decided.

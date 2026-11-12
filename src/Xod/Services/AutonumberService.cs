@@ -197,6 +197,37 @@ namespace Xod.Services
             }
         }
 
+        /// <summary>The counters' highs now, for <see cref="RaiseTo"/>: what a transaction starts from.</summary>
+        internal Dictionary<(Type Type, string Property), decimal> Highs()
+        {
+            lock (syncLock)
+            {
+                return counters.Where(c => c.Value.High.HasValue).ToDictionary(c => c.Key, c => c.Value.High.Value);
+            }
+        }
+
+        /// <summary>
+        /// After a rollback: no counter stays below what it was when the transaction began. A counter only rises,
+        /// but a drop resets its table's (<see cref="ClearType"/>); the rollback brings the table back, and with it
+        /// the numbers its rows hold. Numbers the transaction handed out stay handed out (ISS-083).
+        /// </summary>
+        internal void RaiseTo(Dictionary<(Type Type, string Property), decimal> highs)
+        {
+            if (highs == null)
+                return;
+            lock (syncLock)
+            {
+                foreach (var (key, high) in highs)
+                {
+                    if (!counters.TryGetValue(key, out var counter))
+                        counters[key] = counter = new Counter();
+                    if (!counter.High.HasValue || counter.High.Value < high)
+                        counter.High = high;
+                }
+            }
+        }
+
+        /// <summary>A drop: the table is gone, so its numbering starts again from the seed.</summary>
         internal void ClearType(Type type)
         {
             lock (syncLock)

@@ -372,6 +372,43 @@ namespace Xod.Tests
             }
         }
 
+        // A drop inside the transaction resets the counter; the rollback brings the rows back, and their numbers
+        // with them (review of TASK-063: the next number was one a row held). Keyed and unguarded alike.
+        [Fact]
+        public void A_rolled_back_drop_takes_its_counter_reset_with_it()
+        {
+            string path = NewDatabase("drop-rollback");
+            using var db = new XodContext(path);
+            for (int i = 0; i < 3; i++) db.Insert(new NumberedItem { Name = "n" + i });
+            for (int i = 0; i < 3; i++) db.Insert(new SequencedNote { Key = "k" + i });
+            using (var tx = db.BeginTransaction())
+            {
+                db.Drop<NumberedItem>();
+                db.Drop<SequencedNote>();
+                Assert.Equal(1, db.Insert(new NumberedItem { Name = "in tx" }).Id);
+                Assert.Equal(1, db.Insert(new SequencedNote { Key = "in tx" }).Seq);
+                tx.Rollback();
+            }
+            Assert.Equal(4, db.Insert(new NumberedItem { Name = "after" }).Id);
+            Assert.Equal(4, db.Insert(new SequencedNote { Key = "after" }).Seq);
+            Assert.Equal(new[] { 1, 2, 3, 4 }, db.Select<SequencedNote>().Select(n => n.Seq).OrderBy(s => s));
+        }
+
+        // A committed drop still resets the counter: the table is gone.
+        [Fact]
+        public void A_committed_drop_resets_its_counter()
+        {
+            string path = NewDatabase("drop-commit");
+            using var db = new XodContext(path);
+            for (int i = 0; i < 3; i++) db.Insert(new NumberedItem { Name = "n" + i });
+            using (var tx = db.BeginTransaction())
+            {
+                db.Drop<NumberedItem>();
+                tx.Commit();
+            }
+            Assert.Equal(1, db.Insert(new NumberedItem { Name = "after" }).Id);
+        }
+
         // ---- Review of TASK-062 ----
 
         // The new item is the caller's: an update keeps each row's own value without writing it into the new

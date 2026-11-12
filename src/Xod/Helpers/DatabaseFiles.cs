@@ -38,7 +38,7 @@ namespace Xod.Helpers
             if (present.Length > 1)
                 throw new XodException($"The folder '{folder}' holds more than one database file ({string.Join(", ", present.Select(Path.GetFileName))}). " +
                     "A folder holds one database: every database file in it shares its tables, and contexts opened through different ones " +
-                    "wouldn't see each other. Move all but one, with the tables that belong to it, to folders of their own.");
+                    "wouldn't see each other. Move all but one to folders of their own.");
 
             if (file == null)
                 return (present.Length == 1 ? present[0] : Path.Combine(folder, "data.xod"), folder);

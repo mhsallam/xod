@@ -137,13 +137,12 @@ namespace Xod.Engines.Xml
             filter?.Properties == null ||
             (filter.Behavior == UpdateFilterBehavior.Skip) != filter.Properties.Contains(propertyName);
 
-        // The row's stored value, read as a read gives it, set on the row's item (copied from the new item first).
+        // The row's stored value, read as a read gives it (StoredScalar), set on the row's item (copied from the new
+        // item first).
         private void KeepStoredValue(Type type, PropertyInfoItem prop, XElement oldRow, object newItem, ref object rowItem)
         {
-            string text = StoredText(type, prop, oldRow);
-            object value = string.IsNullOrEmpty(text)
-                ? Helpers.ValueHelper.DefaultOf(prop.PropertyType)
-                : ReadValue(prop, prop.PropertyType, text);
+            XElement entity = oldRow?.Element(type.Name) ?? oldRow?.Elements().FirstOrDefault();
+            object value = StoredScalar(prop, entity);
             if (ReferenceEquals(rowItem, newItem))
                 rowItem = ShallowCopy(newItem);
             prop.SetValue(rowItem, value);

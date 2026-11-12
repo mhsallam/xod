@@ -12,7 +12,7 @@ namespace Xod.Services
     {
         /// <summary>
         /// Recovers what a crash left in the database folder <paramref name="root"/>: a password change, an atomic
-        /// write of a database file, a commit. Only with the database to the caller (or a folder nothing can write):
+        /// write of a database file, a commit. Only with the database to the caller (an exclusive hold):
         /// a context's open, and <see cref="XodMigrator"/> before it converts.
         /// </summary>
         internal static void RecoverInterruptedWrites(string root)

@@ -25,19 +25,20 @@ namespace Xod.Helpers
         internal static bool HasEmptyForm(PropertyInfoItem prop) =>
             prop.PropertyType == typeof(string) && prop.Encryption == CryptoMethod.None && !prop.IsGenericType;
 
-        /// <summary>True when the writers leave this value out of the row. The one rule: the document writer
-        /// asks it, and the fast row writer (IOService.RawPages) asks it for each value that may be left out (an
-        /// empty or default one), deciding the rest inline for speed.</summary>
-        internal static bool IsLeftOut(object value, Type effectivePropType, PropertyInfoItem prop, bool shallowWrite)
+        /// <summary>True when the writers leave this value out of the row. The one rule, for every write of a
+        /// row: the document writer asks it (an insert with or without its relations, an update, a relationship
+        /// key written back), and the fast row writer (IOService.RawPages) asks it for each value that may be left
+        /// out (an empty or default one), deciding the rest inline for speed.</summary>
+        internal static bool IsLeftOut(object value, Type effectivePropType, PropertyInfoItem prop)
         {
             // A null is left out when a read gives null back. An attribute can't say null, so there it is left
             // out whatever a read gives (the property then reads as a new instance holds it).
             if (value == null)
-                return shallowWrite || prop.IsGenericType || prop.ValuePosition == ValuePosition.Attribute || ReadBackOfMissing(prop) == null;
+                return prop.IsGenericType || prop.ValuePosition == ValuePosition.Attribute || ReadBackOfMissing(prop) == null;
 
             bool isTypeDefault = value.Equals(ValueHelper.DefaultOf(effectivePropType));
             // A key at its type's default isn't set.
-            if (shallowWrite || prop.IsPrimaryKey || prop.IsRelationshipKey)
+            if (prop.IsPrimaryKey || prop.IsRelationshipKey)
                 return isTypeDefault;
 
             // The values the writers may leave out, as 2.0 wrote them; each only when a read gives it back,
@@ -58,7 +59,9 @@ namespace Xod.Helpers
         }
 
         /// <summary>The value a read gives a property whose row leaves it out (XmlEngine.Read and the fast
-        /// row reader): an element's non-default <c>DefaultValue</c>, otherwise what a new instance holds.</summary>
+        /// row reader): an element's non-default <c>DefaultValue</c>, otherwise what a new instance holds, made as
+        /// the reader makes it (<see cref="ValueHelper.CreateInstance"/>: without a constructor when the type has
+        /// no parameterless one, so its strings hold null).</summary>
         internal static object ReadBackOfMissing(PropertyInfoItem prop)
         {
             if (prop.MissingValueKnown)
@@ -73,17 +76,8 @@ namespace Xod.Helpers
             }
             else
             {
-                try
-                {
-                    Type owner = prop.Property?.ReflectedType ?? prop.Property?.DeclaringType;
-                    object instance = Activator.CreateInstance(owner, nonPublic: true);
-                    value = prop.GetValue(instance);
-                }
-                catch
-                {
-                    // No parameterless constructor: the reader can't make one either, so the default.
-                    value = ValueHelper.DefaultOf(prop.PropertyType);
-                }
+                Type owner = prop.Property?.ReflectedType ?? prop.Property?.DeclaringType;
+                value = prop.GetValue(ValueHelper.CreateInstance(owner));
             }
 
             prop.MissingValue = value;
@@ -96,7 +90,7 @@ namespace Xod.Helpers
         /// moves a time in a daylight-saving gap; it is put through its stored text.</summary>
         internal static object AsReadBack(PropertyInfoItem prop, object value)
         {
-            if (IsLeftOut(value, prop.PropertyType, prop, shallowWrite: false))
+            if (IsLeftOut(value, prop.PropertyType, prop))
                 return ReadBackOfMissing(prop);
             if (value is DateTime { Kind: DateTimeKind.Local } local)
                 return ValueHelper.ParseScalar(typeof(DateTime), ValueHelper.FormatScalar(local));

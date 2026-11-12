@@ -289,8 +289,8 @@ namespace Xod.Engines.Xml
             }
             catch (LockRecursionException e)
             {
-                throw new XodException("A table can't be written from inside a read of it on the same thread (a query's predicate, " +
-                    "or while enumerating a query's results): finish the read first, for example with ToList().", e);
+                throw new XodException("This can't run inside a read on the same thread (inside a query's predicate, for " +
+                    "example): the read holds back the lock it needs. Run it after the read has returned.", e);
             }
         }
 
@@ -403,18 +403,31 @@ namespace Xod.Engines.Xml
         // refused, and the close would throw for what the caller has already been told.
         private bool MayFlushAtClose() => ioService != null && indexService != null && WritesRefused() == null;
 
+        // Each resource is let go even if one before it fails: the hold above all (ioService).
         private void DisposeResources()
         {
-            itemsCacheService?.Dispose();
-            ioService?.Dispose();
-            autonumberService?.Dispose();
-            transactionGate?.Dispose();
-            foreach (var kvp in tableLocks)
+            try
             {
-                kvp.Value?.Dispose();
+                itemsCacheService?.Dispose();
             }
-            tableLocks.Clear();
-            rwLock?.Dispose();
+            finally
+            {
+                try
+                {
+                    ioService?.Dispose();
+                }
+                finally
+                {
+                    autonumberService?.Dispose();
+                    transactionGate?.Dispose();
+                    foreach (var kvp in tableLocks)
+                    {
+                        kvp.Value?.Dispose();
+                    }
+                    tableLocks.Clear();
+                    rwLock?.Dispose();
+                }
+            }
         }
     }
 }

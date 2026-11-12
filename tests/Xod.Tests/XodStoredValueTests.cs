@@ -43,6 +43,53 @@ namespace Xod.Tests
         [Property(Indexed = true)] public string Area { get; set; } = "north";
     }
 
+    // Relationship keys a new instance holds as "" (review of TASK-063): the write-back fills them after the
+    // scalar pass has marked them null.
+    public class KeyedAuthor
+    {
+        [PrimaryKey] public string Code { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class KeyedBook
+    {
+        public int Id { get; set; }
+        public string Title { get; set; }
+        public string AuthorCode { get; set; } = "";
+        [ForeignKey(nameof(AuthorCode), "Code")] public KeyedAuthor Author { get; set; }
+    }
+
+    public class KeyedShelf
+    {
+        [PrimaryKey] public string Code { get; set; }
+        [Children] public List<KeyedSlot> Slots { get; set; }
+    }
+
+    public class KeyedSlot
+    {
+        public int Id { get; set; }
+        public string KeyedShelfCode { get; set; } = "";
+        public string Label { get; set; }
+        [ParentKey(nameof(KeyedShelfCode), "Code")] public KeyedShelf Shelf { get; set; }
+    }
+
+    public class KeptStoredValues
+    {
+        public int Id { get; set; }
+        [Property(Indexed = true)] public string Code { get; set; }
+        [Property(Indexed = true)] public string Area { get; set; } = "north";
+        public string Name { get; set; }
+    }
+
+    // A type the reader makes without a constructor: its strings hold null without the row.
+    public class UnconstructedValues
+    {
+        public UnconstructedValues(int id) { Id = id; }
+        public int Id { get; set; }
+        public string Name { get; set; }
+        [Property(Indexed = true)] public string Code { get; set; }
+    }
+
     public class XodStoredValueTests
     {
         public static IEnumerable<object[]> Formats() => XodTextRoundTripTests.Formats();
@@ -139,6 +186,90 @@ namespace Xod.Tests
                 Assert.Null(db.Find<IndexedStoredValues>(x => x.Area == ""));
                 Assert.Null(db.Find<IndexedStoredValues>(x => x.Area == "north"));
                 Assert.Null(db.Select<IndexedStoredValues>().Single(x => x.Id == 1).Area);
+            }
+        }
+
+        // A key the relationship write-back fills in after the scalar pass marked it null is stored as its value,
+        // in place: a foreign key, and a parent key (review of TASK-063: both read back null).
+        [Theory]
+        [MemberData(nameof(Formats))]
+        public void A_key_filled_in_by_its_relationship_reads_back(StorageFormat format, string password)
+        {
+            string path = NewDatabase("writeback-" + format);
+            var options = new DatabaseOptions { StorageFormat = format };
+            using (var db = new XodContext(path, password, options))
+            {
+                var author = db.Insert(new KeyedAuthor { Code = "A1", Name = "a" });
+                db.Insert(new KeyedBook { Title = "t", AuthorCode = null, Author = author });
+                var shelf = db.Insert(new KeyedShelf { Code = "S1" });
+                db.Insert(new KeyedSlot { Label = "s", KeyedShelfCode = null, Shelf = shelf });
+            }
+            using (var db = new XodContext(path, password, options))
+            {
+                Assert.Equal("A1", db.Select<KeyedBook>().Single().AuthorCode);
+                var slot = db.Select<KeyedSlot>().Single();
+                Assert.Equal("S1", slot.KeyedShelfCode);
+            }
+            if (format == StorageFormat.Xml && password == null)
+            {
+                string pages = string.Concat(Directory.GetFiles(Path.GetDirectoryName(path)!, "*.xpag").Select(File.ReadAllText));
+                Assert.DoesNotContain("nil=", pages);
+                Assert.Single(System.Text.RegularExpressions.Regex.Matches(pages, "<KeyedShelfCode"));
+            }
+        }
+
+        // An update that leaves an indexed property as it was keys it as a read gives it back: a marked null and
+        // a null left out are no key, an empty string is the empty key (review of TASK-063: both nulls keyed "").
+        [Fact]
+        public void An_update_that_leaves_a_property_out_keys_it_as_it_reads_back()
+        {
+            string path = NewDatabase("kept");
+            using var db = new XodContext(path);
+            var skip = new UpdateFilter { Behavior = UpdateFilterBehavior.Skip, Properties = new[] { "Code", "Area" } };
+            db.Insert(new KeptStoredValues { Code = null, Area = null });
+            Assert.True(db.Update(db.Find<KeptStoredValues>(v => v.Id == 1), new KeptStoredValues { Id = 1, Code = "x", Area = "x", Name = "b" }, skip));
+            Assert.Null(db.Find<KeptStoredValues>(v => v.Code == ""));
+            Assert.Null(db.Find<KeptStoredValues>(v => v.Area == ""));
+            var first = db.Select<KeptStoredValues>().Single();
+            Assert.Null(first.Code);
+            Assert.Null(first.Area);
+
+            db.Insert(new KeptStoredValues { Code = "", Area = "" });
+            Assert.True(db.Update(db.Find<KeptStoredValues>(v => v.Id == 2), new KeptStoredValues { Id = 2, Code = "x", Area = "x", Name = "b" }, skip));
+            Assert.Equal(2, db.Find<KeptStoredValues>(v => v.Code == "")?.Id);
+            Assert.Equal(2, db.Find<KeptStoredValues>(v => v.Area == "")?.Id);
+        }
+
+        // An insert that leaves the item's relations out (lazyLoad) stores its values by the same rule.
+        [Fact]
+        public void A_shallow_insert_stores_values_a_read_would_not_give_back()
+        {
+            string path = NewDatabase("shallow");
+            using (var db = new XodContext(path))
+                db.Insert(Written(), lazyLoad: true);
+            using (var db = new XodContext(path))
+                ReadsBackAsWritten(db.Select<StoredValues>().Single());
+        }
+
+        // A type without a parameterless constructor: the reader makes it without one, so a string it leaves out
+        // reads null, and an empty string is stored (review of TASK-063: "" was left out and read back null).
+        [Fact]
+        public void A_type_made_without_a_constructor_reads_back_an_empty_string()
+        {
+            string path = NewDatabase("unconstructed");
+            using (var db = new XodContext(path))
+            {
+                db.Insert(new UnconstructedValues(0) { Name = "", Code = "" });
+                db.Insert(new UnconstructedValues(0) { Name = null, Code = null });
+            }
+            using (var db = new XodContext(path))
+            {
+                var rows = db.Select<UnconstructedValues>().OrderBy(v => v.Id).ToList();
+                Assert.Equal("", rows[0].Name);
+                Assert.Equal("", rows[0].Code);
+                Assert.Null(rows[1].Name);
+                Assert.Null(rows[1].Code);
+                Assert.Equal(new[] { 1 }, db.Query<UnconstructedValues>(v => v.Code == "").Select(v => v.Id));
             }
         }
 

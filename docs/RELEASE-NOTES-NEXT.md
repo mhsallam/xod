@@ -58,29 +58,41 @@ records it.
   path naming a new database file in a folder that already holds one (a mistyped name, or a case that differs
   on Linux). Every database file in a folder shares its tables, so a second one was another way into the same
   data that the first one's lock didn't cover. Move all but one to folders of their own.
-- **Lock files**: a read-only lock file holds as well as any. A context that can't open or create the lock
-  file still opens for reading, but an open that finds a write cut short and can't take the lock is refused
-  (it can't tell a crash's leftovers from another context's write under way), and the migrator is refused
-  whenever it can't hold the source.
-- **A write from inside a read of the same table on the same thread** (inside a query's predicate, or while
-  enumerating its results) is refused with an `XodException` that says so, and the context goes on working.
-  Before, it threw `LockRecursionException` and left the context unusable.
+- **Lock files**: a read-only lock file holds on a local file system. Where the file system gives no exclusive
+  lock (an NFS client and a lock file the user can only read), `LockDatabase`, the recovery at open and a
+  password change are refused rather than run unprotected. A context that can't open or create the lock file
+  (a folder it can't write, read-only media) still opens for reading, but an open that finds a write cut short
+  and can't take the lock is refused (it can't tell a crash's leftovers from another context's write under
+  way), and the migrator is refused whenever it can't hold the source.
+- **Writes and maintenance from inside a read on the same thread** (inside a query's predicate): an insert,
+  update or delete, `BeginTransaction`, a commit or rollback, `Flush`, `ClearCache`, `Drop`, `GetStatistics`
+  and a password change are refused with an `XodException` that says so, and the context goes on working.
+  Before, they threw `LockRecursionException`, and a write left the context unusable. `GetStatistics` now
+  takes the context's write lock, since it writes what the context holds first.
 - **A statement that fails outside a transaction removes the rows it created**: a parent whose second child is
   refused leaves no first child behind. It is not all or nothing: changes a failed update made to rows that
   were there before aren't put back, and a crash leaves the created rows. Use a transaction for all or nothing.
   If removing the rows fails too, the `XodException` carries both failures and the context writes nothing more
-  until it is reopened.
+  until it is reopened; under `DurabilityMode.Buffered`, writes still waiting in its buffer are then dropped, as
+  at a crash.
 - **A number handed out in a rolled-back transaction, or by a failed statement, isn't handed out again**, after
-  a reopen either.
-- **Values read back as written**: an empty string reads back as `""` (it read as null), `Guid.Empty`, a
+  a reopen either, unless the process stops before the context's next flush. A table dropped inside a
+  transaction that is rolled back keeps its numbering.
+- **Scalar values read back as written**: an empty string reads back as `""` (it read as null), `Guid.Empty`, a
   default date, a zero interval and a type default under another `[DefaultValue]` read back as stored, and a
-  null reads back as null where a new instance holds something else. The files gain two forms, an empty
-  element or attribute and an element marked `nil="true"`; XOD 2.0.0 and 2.0.1 read both as they read a value
-  left out. An attribute-positioned property can't store null that way (ISS-094).
+  null reads back as null where a new instance holds something else, whichever way the row is written (an
+  insert with or without `lazyLoad`, an update, a key filled in from a relationship). The files gain two forms,
+  an empty element or attribute and an element marked `nil="true"`. XOD 2.0.0 and 2.0.1 read an empty or
+  marked element as they read a value left out, and an empty attribute as `""`; their index leaves `""` out, so
+  they don't find an indexed empty value through the index. Files written by XOD 1.x stored an empty string as
+  an empty element: it now reads `""`, where every earlier version read null. An attribute-positioned property
+  can't store null that way (ISS-094), and collection entries aren't covered: a dictionary's null value reads
+  back `""` and a list drops a null item (ISS-097).
 - **`XodSecurityService`** (obsolete) accepts the database's folder, as a context does, and refuses a mistyped
   database file beside the database rather than doing nothing.
-- **Deleting a child removes it from its parent's list** when the delete finds the row through the primary
-  key's index (it stayed listed).
+- **Deleting a child removes it from its parent's list**, whichever way the delete finds the row, and whether or
+  not the child has a key property for its parent (it stayed listed); a child with no parent property still
+  does (ISS-095). A child inserted again with the key of one deleted before is listed again.
 
 - **Indexes after a crash** ([PLAN-054](plans/PLAN-054-indexes-left-behind-by-a-crash.md)): a context that
   writes keeps a small file beside the database, `<database file>.<id>.xidxdirty`, while its indexes are

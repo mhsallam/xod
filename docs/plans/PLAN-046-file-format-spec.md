@@ -43,9 +43,8 @@ model, a Rust core, the browser) to read the files XOD 2.0 writes, and to know w
   short name (section 7).
 - **`<code>`** is nine lowercase hex digits (`e2d552584`), from `ValueHelper.PickCode`.
 - **The database file:** the path given to `XodContext` when it ends in `.xod`/`.xodj`/`.xodb`;
-  otherwise the first file in the folder with one of those extensions, in ordinal order of names (before
-  2026-11-12: the first match of `*.xod*`, which could be a `.tmp` or `.xpwnew` beside it), or `data.xod`
-  for a new database. The extension only picks
+  otherwise the folder's one file with one of those extensions (before 2026-11-12: the first match of
+  `*.xod*`, which could be a `.tmp` or `.xpwnew` beside it), or `data.xod` for a new database. The extension only picks
   the default encoding for new files; it doesn't describe the files.
 - **One database per folder:** a folder holding more than one database file is refused, and so is a path
   naming a new database file beside one (since PLAN-053): every database file in a folder would share its
@@ -252,7 +251,8 @@ element ends.
   - `Guid.Empty`;
   - the default `DateTime`, `DateOnly`, `TimeOnly` and `TimeSpan`;
   - a type's default under a different `[DefaultValue]`;
-  - a key or relationship-key property that is 0 (always: it means the key isn't set).
+  - a key or relationship-key property at its type's default: 0, or `""` for a string key (always: it means
+    the key isn't set).
 
   Otherwise it stores them: an empty string as an element with no text (`<Name></Name>`) or an empty
   attribute, and a null as an element marked `nil="true"` (`<Status nil="true" />`), which reads as null.
@@ -530,8 +530,7 @@ in (`zone`, section 8.1), so a database opened in another zone rebuilds its inde
   that never finished. (The library itself, while other contexts have the database open, reads the files as
   they are: it can't tell a live journal from one a crash left; PLAN-051 section 7.)
 - **The lock file** `<database file>.lock` (since PLAN-051): every open context holds it, shared (read
-  access, others may read and write) or, with `LockDatabase`, exclusively (read access, no sharing; since
-  PLAN-053, so a read-only lock file holds as well as any); either kind fails while the other is held. A password change holds it exclusively for the whole change. An open recovers
+  access, others may read and write) or, with `LockDatabase`, exclusively (no sharing; opened with write access where the file allows it, since an NFS client locks exclusively only a file open for writing, and read access otherwise, so a read-only lock file holds on a local file system; an exclusive hold counts only once a second open of the file is refused, so a file system that gives no lock refuses it: since the review of PLAN-053); either kind fails while the other is held. A password change holds it exclusively for the whole change. An open recovers
   (the password-change, `.tmp` and journal steps) only while holding it exclusively: with `LockDatabase`, or
   when something is pending and no other context holds it; otherwise what is pending may be another
   context's, under way, and is left. The file is never deleted (a deletion would let two contexts hold

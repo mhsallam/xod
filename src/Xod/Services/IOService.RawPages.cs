@@ -1009,7 +1009,7 @@ namespace Xod.Services
                         Guid v = prop.GuidGetter(item);
                         if (prop.IsRequired && v == Guid.Empty)
                             exceptionService.Throw(new RequiredPropertyException(prop.PropertyName));
-                        if (v == Guid.Empty && StoredValue.IsLeftOut(v, typeof(Guid), prop, shallowWrite: false))
+                        if (v == Guid.Empty && StoredValue.IsLeftOut(v, typeof(Guid), prop))
                             continue;
                         EnsureScratchCapacity(ref buf, pos + prop.Utf8OpenTag.Length + prop.Utf8CloseTag.Length + 40);
                         Buffer.BlockCopy(prop.Utf8OpenTag, 0, buf, pos, prop.Utf8OpenTag.Length);
@@ -1027,7 +1027,7 @@ namespace Xod.Services
                             exceptionService.Throw(new RequiredPropertyException(prop.PropertyName));
                         if (string.IsNullOrEmpty(v))
                         {
-                            if (StoredValue.IsLeftOut(v, typeof(string), prop, shallowWrite: false))
+                            if (StoredValue.IsLeftOut(v, typeof(string), prop))
                                 continue;
                             pos = WriteStoredEmpty(prop, nil: v == null, ref buf, pos);
                             break;
@@ -1060,14 +1060,14 @@ namespace Xod.Services
                             exceptionService.Throw(new RequiredPropertyException(prop.PropertyName));
                         if (val == null)
                         {
-                            if (StoredValue.IsLeftOut(null, prop.PropertyType, prop, shallowWrite: false))
+                            if (StoredValue.IsLeftOut(null, prop.PropertyType, prop))
                                 continue;
                             pos = WriteStoredEmpty(prop, nil: true, ref buf, pos);
                             break;
                         }
                         bool isDefault = val.Equals(ValueHelper.DefaultOf(prop.PropertyType));
                         if (isDefault && (prop.IsPrimaryKey || prop.IsRelationshipKey || val is DateTime || val is DateOnly || val is TimeSpan || val is TimeOnly) &&
-                            StoredValue.IsLeftOut(val, prop.PropertyType, prop, shallowWrite: false))
+                            StoredValue.IsLeftOut(val, prop.PropertyType, prop))
                             continue;
 
                         string formatted = StoredValue.Text(val, prop.PropertyName);

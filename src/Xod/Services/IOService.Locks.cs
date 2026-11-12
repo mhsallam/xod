@@ -16,8 +16,9 @@ namespace Xod.Services
         /// <summary>
         /// Why this context holds no lock on the database, or null while it holds one. A context without a hold
         /// doesn't know whether others have the database open, so it writes nothing (the engine refuses every
-        /// write, XmlEngine.BeforeFileMutate): its folder can't be written, so the lock file couldn't be created;
-        /// or it lost its hold (another context took the database in the instant a password change gave it back).
+        /// write, XmlEngine.BeforeFileMutate): the lock file can't be created (a folder this user can't write,
+        /// read-only media) or opened (its permissions); or it lost its hold (another context took the database in
+        /// the instant a password change gave it back).
         /// </summary>
         internal string NoHoldReason { get; private set; }
 
@@ -127,26 +128,43 @@ namespace Xod.Services
 
         /// <summary>
         /// The one place a database's lock file (<c>&lt;database file&gt;.lock</c>) is opened, by a context and by
-        /// <see cref="XodMigrator"/>. Both kinds open it with read access only, so a read-only lock file holds as well
-        /// as any (ISS-084): shared lets others read and write it (on Unix .NET takes a shared advisory lock, flock
-        /// LOCK_SH); exclusive shares nothing (LOCK_EX, which .NET takes for FileShare.None whatever the access:
-        /// SafeFileHandle.Unix.cs, dotnet/runtime release/9.0). Either fails while the other kind is held, on a file
-        /// system with locking (not when .NET's file locking is switched off: System.IO.DisableFileLocking), with
-        /// <see cref="DatabaseLockedException"/> once <paramref name="retryTimeoutMs"/> has passed. An
-        /// UnauthorizedAccessException says the file can't be created (its folder can't be written) or opened (its
-        /// permissions): no hold, and no telling whether others have the database open.
+        /// <see cref="XodMigrator"/>. Shared, it is opened with read access, so a read-only lock file holds (on Unix
+        /// .NET takes flock LOCK_SH, which needs only read access, NFS included). Exclusive, it shares nothing (.NET
+        /// takes LOCK_EX for FileShare.None: SafeFileHandle.Unix.cs, dotnet/runtime release/8.0 and 9.0), and is
+        /// opened with write access where the file allows it, since an NFS client grants LOCK_EX only to a file open
+        /// for writing (flock(2)); a read-only lock file is opened for reading (ISS-084). .NET ignores a lock it
+        /// couldn't take for any reason but another's lock, so an exclusive hold is claimed only once a second open of
+        /// the file is refused (<see cref="ProveExclusive"/>; review of TASK-063: on NFS the read-only exclusive open
+        /// took no lock at all). Either kind fails while the other is held, with <see cref="DatabaseLockedException"/>
+        /// once <paramref name="retryTimeoutMs"/> has passed. An UnauthorizedAccessException says the file can't be
+        /// created (its folder can't be written, its medium is read-only) or opened (its permissions): no hold, and no
+        /// telling whether others have the database open.
         /// </summary>
         internal static FileStream OpenLockFile(string databasePath, bool exclusive, int retryTimeoutMs)
         {
             string lockFilePath = databasePath + ".lock";
             var sw = System.Diagnostics.Stopwatch.StartNew();
             int delayMs = 5;
+            bool writable = exclusive;
 
             while (true)
             {
+                FileStream stream;
                 try
                 {
-                    return new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.Read, exclusive ? FileShare.None : FileShare.ReadWrite);
+                    stream = new FileStream(lockFilePath, FileMode.OpenOrCreate, writable ? FileAccess.ReadWrite : FileAccess.Read,
+                        exclusive ? FileShare.None : FileShare.ReadWrite);
+                }
+                catch (UnauthorizedAccessException) when (writable)
+                {
+                    writable = false; // a lock file this user can only read
+                    continue;
+                }
+                catch (IOException ex) when (!File.Exists(lockFilePath))
+                {
+                    // No file to be locked: it couldn't be created (EROFS is an IOException, not an
+                    // UnauthorizedAccessException: Interop.IOErrors.cs, release/9.0). Not another's lock.
+                    throw new UnauthorizedAccessException("The database's lock file '" + lockFilePath + "' can't be created: " + ex.Message, ex);
                 }
                 catch (IOException ex)
                 {
@@ -158,8 +176,60 @@ namespace Xod.Services
 
                     System.Threading.Thread.Sleep(Math.Min(delayMs, remaining));
                     delayMs = Math.Min(delayMs * 2, 50);
+                    continue;
                 }
+
+                if (exclusive)
+                    ProveExclusive(stream, lockFilePath, databasePath);
+                return stream;
             }
+        }
+
+        /// <summary>
+        /// An exclusive hold is real only if no other open of the file can succeed: a shared open is tried, and must
+        /// be refused (Windows refuses it for the sharing; Unix for the lock). Where it succeeds, the file system gave
+        /// no lock (an NFS client and a lock file this user can only read), so nothing keeps others out: the hold is let
+        /// go and refused as if another context held the database, which is the safe reading. Not where the caller
+        /// switched .NET's file locking off (System.IO.DisableFileLocking, read as the runtime reads it): that says
+        /// nothing else opens the database, and is taken at its word, as before.
+        /// </summary>
+        private static void ProveExclusive(FileStream exclusive, string lockFilePath, string databasePath)
+        {
+            if (FileLockingSwitchedOff)
+                return;
+            FileStream probe;
+            try
+            {
+                probe = new FileStream(lockFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            }
+            catch (IOException)
+            {
+                return; // refused: the hold is exclusive
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return; // refused too (Windows reports a denied share this way for some files)
+            }
+            probe.Dispose();
+            exclusive.Dispose();
+            throw new DatabaseLockedException(databasePath, new IOException("The file system gave no exclusive lock on '" + lockFilePath +
+                "' (an NFS client and a lock file this user can only read, for example), so nothing keeps other contexts out."));
+        }
+
+        // The runtime's own reading (SafeFileHandle.DisableFileLocking: AppContextConfigHelper.GetBooleanConfig(
+        // "System.IO.DisableFileLocking", "DOTNET_SYSTEM_IO_DISABLEFILELOCKING"), dotnet/runtime release/9.0): the
+        // environment variable when it says "1"/"true" or "0"/"false" (the words in any case), else the AppContext
+        // switch, else off.
+        private static readonly bool FileLockingSwitchedOff = ReadFileLockingSwitchedOff();
+
+        private static bool ReadFileLockingSwitchedOff()
+        {
+            string v = Environment.GetEnvironmentVariable("DOTNET_SYSTEM_IO_DISABLEFILELOCKING");
+            if (v == "1" || bool.TrueString.Equals(v, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (v == "0" || bool.FalseString.Equals(v, StringComparison.OrdinalIgnoreCase))
+                return false;
+            return AppContext.TryGetSwitch("System.IO.DisableFileLocking", out bool switchedOff) && switchedOff;
         }
 
         /// <summary>

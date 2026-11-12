@@ -29,6 +29,7 @@ namespace Xod.Engines.Xml
                 // memory): the transaction's before-images then hold it, and a rollback or a failed commit, which
                 // forget every write still pending, forget only the transaction's.
                 FlushToDisk(caughtUp: true);
+                var countersAtBegin = autonumberService.Highs();
                 ioService.BeginBatch();
                 transactionBatchOpen = true;
                 activeTransactionThreadId = Environment.CurrentManagedThreadId;
@@ -37,7 +38,7 @@ namespace Xod.Engines.Xml
                     root,
                     exclusive: action =>
                     {
-                        rwLock.EnterWriteLock();
+                        EnterWrite(rwLock.EnterWriteLock);
                         try
                         {
                             action();
@@ -71,6 +72,8 @@ namespace Xod.Engines.Xml
                         }
                         finally
                         {
+                            // Whatever became of the files: a counter only rising keeps numbers unique.
+                            autonumberService.RaiseTo(countersAtBegin);
                             ForgetEverythingHeld();
                         }
                         autonumberMarksPending = true;
