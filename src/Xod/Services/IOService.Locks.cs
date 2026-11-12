@@ -59,6 +59,12 @@ namespace Xod.Services
                 {
                     // Another context has the database open: what is pending may be its own, under way.
                 }
+                catch (UnauthorizedAccessException e) when (!WritesPending(root))
+                {
+                    // Only index markers: what they say can be honoured without writing (ISS-043).
+                    _ = e;
+                    IndexFilesUntrusted = true;
+                }
                 catch (UnauthorizedAccessException e)
                 {
                     // No hold can be taken, so nothing tells whether what is pending is another context's, under
@@ -91,9 +97,12 @@ namespace Xod.Services
             this.exclusivePresence = false;
         }
 
-        // What a crash may have left: a transaction journal (or one cut short), a password change, an atomic write
-        // of a database file.
+        // What a crash may have left: a write cut short, or a context's indexes behind its pages (ISS-043).
         internal static bool RecoveryPending(string root) =>
+            WritesPending(root) || Directory.EnumerateFiles(root, "*" + IndexesBehindSuffix).Any();
+
+        // A transaction journal (or one cut short), a password change, an atomic write of a database file.
+        private static bool WritesPending(string root) =>
             Directory.EnumerateFiles(root).Any(f =>
                 f.EndsWith(".xwal", StringComparison.OrdinalIgnoreCase) ||
                 f.EndsWith(".xwal.tmp", StringComparison.OrdinalIgnoreCase) ||

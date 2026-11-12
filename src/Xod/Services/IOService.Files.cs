@@ -53,6 +53,9 @@ namespace Xod.Services
             // A commit that didn't finish and can't be undone stops the open (the journal stays): opening a commit
             // half done would let in writes that the journal would later undo.
             XodTransaction.RecoverWalJournalIfPresent(root);
+
+            // Last: the indexes of a context that stopped before they caught up with its pages (ISS-043).
+            DropIndexesLeftBehind(root);
         }
 
         internal bool FileExists(string fileName)

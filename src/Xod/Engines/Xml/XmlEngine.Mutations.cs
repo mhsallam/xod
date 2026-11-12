@@ -869,6 +869,8 @@ namespace Xod.Engines.Xml
                 finally
                 {
                     ioService.EndBatch();
+                    // The batch's pages are on disk and its indexes not yet (ISS-043's crash window).
+                    FaultInjection.Step("batch-written");
                     indexService.FlushDirtyIndexes();
                 }
                 return count;

@@ -114,6 +114,7 @@ namespace Xod.Engines.Xml
                 ThrowIfWritesRefused();
                 passwordSwitch.FinishPendingSwitch();
                 activeTransaction?.CaptureBeforeMutate(f);
+                ioService.NoteFileMutation(f);
             };
             this.ioService.HasActiveTransaction = () => activeTransaction != null && activeTransaction.IsActive;
             this.ioService.ItemWriterDelegate = t =>
@@ -383,11 +384,11 @@ namespace Xod.Engines.Xml
                     activeTransaction.Rollback();
                     // The rollback's autonumber marks (ISS-083) wait for a flush, and this is the last one.
                     if (MayFlushAtClose())
-                        FlushToDisk();
+                        FlushToDisk(caughtUp: true);
                 }
                 else if (MayFlushAtClose())
                 {
-                    FlushToDisk();
+                    FlushToDisk(caughtUp: true);
                     indexService.FoldLargeLogs();
                 }
             }

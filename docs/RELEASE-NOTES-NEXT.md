@@ -82,6 +82,13 @@ records it.
 - **Deleting a child removes it from its parent's list** when the delete finds the row through the primary
   key's index (it stayed listed).
 
+- **Indexes after a crash** ([PLAN-054](plans/PLAN-054-indexes-left-behind-by-a-crash.md)): a context that
+  writes keeps a small file beside the database, `<database file>.<id>.xidxdirty`, while its indexes are
+  behind its pages, and deletes it when it closes. After a crash, the next open that has the database to itself
+  drops the indexes and rebuilds them from the pages as they are needed (the first queries take longer), rather
+  than trusting an index that may miss the last rows written. Don't delete these files while the database is
+  open.
+
 ## Version
 
 The reviewer of `TASK-062` points out that the release adds a public type (`AutonumberSeedException`) and a
@@ -99,6 +106,7 @@ version rather than a patch. The owner decides.
 
 - Earlier unreleased fixes, each with its own behaviour notes: [PLAN-048](plans/PLAN-048-format-defect-fixes.md),
   [PLAN-049](plans/PLAN-049-property-encryption.md), [PLAN-050](plans/PLAN-050-password-change.md).
+- ISS-043: see [PLAN-054](plans/PLAN-054-indexes-left-behind-by-a-crash.md).
 - ISS-060, ISS-062 (mitigated), ISS-083 to ISS-088, ISS-091 (mitigated): see
   [PLAN-053](plans/PLAN-053-statement-undo-counters-stored-values-locks.md).
 - ISS-047, ISS-048 (mitigated), ISS-059, ISS-069, ISS-072, ISS-075, ISS-080 to ISS-082: see

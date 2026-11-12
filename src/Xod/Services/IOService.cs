@@ -246,7 +246,14 @@ namespace Xod.Services
             finally
             {
                 DiscardPendingWrites();
-                ReleaseHold();
+                try
+                {
+                    CloseIndexesMarker();
+                }
+                finally
+                {
+                    ReleaseHold();
+                }
             }
         }
     }

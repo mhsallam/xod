@@ -21,14 +21,16 @@ namespace Xod.Services
                 return false;
 
             string indexFileName = GetIndexFileName(type);
-            if (!ioService.FileExists(indexFileName))
+            if (!ioService.FileExists(indexFileName) || ioService.IndexFilesUntrusted)
                 return false;
 
             string indexFullPath = Path.Combine(ioService.RootDirectory, indexFileName);
             DateTime indexWriteTime = File.GetLastWriteTimeUtc(indexFullPath);
 
             // Verify no .xpag file of this table is newer than the .xidx file (e.g. after an unclean
-            // process crash). The page names are read from the table document as text: opening it as a
+            // process crash). A guess by time, kept for databases written by versions without the marker of
+            // ISS-043 (IOService.IndexesBehind): an index written just before a batch a crash kept from catching
+            // up is newer than its pages, and passes. The page names are read from the table document as text: opening it as a
             // document here cost 9-21 ms on a 100k-row table, which was most of the index load.
             string tableFileName = $"{type.FullName}.xtab";
             string tableFullPath = Path.Combine(ioService.RootDirectory, tableFileName);

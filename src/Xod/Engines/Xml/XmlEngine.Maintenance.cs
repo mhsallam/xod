@@ -12,7 +12,7 @@ namespace Xod.Engines.Xml
             rwLock.EnterReadLock();
             try
             {
-                FlushToDisk();
+                FlushToDisk(caughtUp: false); // under the read lock: another thread may be writing
                 var stats = new DatabaseStatistics
                 {
                     DatabasePath = path,
@@ -131,7 +131,7 @@ namespace Xod.Engines.Xml
                     passwordSwitch.FinishPendingSwitch();
                     // Everything this context holds goes to disk first: the switch rewrites the files on disk,
                     // and nothing may be written over them afterwards that the switch didn't see.
-                    FlushToDisk();
+                    FlushToDisk(caughtUp: true);
                     propertyKeys.PasswordChanging(password, newPassword);
                     try
                     {
@@ -184,7 +184,7 @@ namespace Xod.Engines.Xml
             rwLock.EnterWriteLock();
             try
             {
-                FlushToDisk();
+                FlushToDisk(caughtUp: true);
             }
             finally
             {
@@ -198,13 +198,19 @@ namespace Xod.Engines.Xml
         /// one it writes the index file itself. Pages go first: the index is a cache of them, and the open trusts
         /// an index no older than its pages (ISS-043).
         /// </summary>
-        private void FlushToDisk()
+        // caughtUp: no write of this context can be under way (its caller holds the engine-wide write lock, or the
+        // context is closing), so once this returns its indexes on disk hold every row its pages do, and the marker
+        // that said otherwise goes (ISS-043). Under the read lock another thread may be between a page write and
+        // its index change.
+        private void FlushToDisk(bool caughtUp)
         {
             if (autonumberMarksPending)
                 RecordCountersInMarks();
             ioService.FlushBufferedFiles();
             indexService.FlushDirtyIndexes();
             ioService.FlushBufferedFiles();
+            if (caughtUp)
+                ioService.IndexesCaughtUp();
         }
 
         public void ClearCache() => DropCaches();
@@ -223,7 +229,7 @@ namespace Xod.Engines.Xml
             {
                 bool inTransaction = activeTransaction != null && activeTransaction.IsActive;
                 if (!inTransaction)
-                    FlushToDisk();
+                    FlushToDisk(caughtUp: true);
                 ioService.ClearCurrentCache();
                 itemsCacheService.ClearCurrentCache();
                 if (!inTransaction)
