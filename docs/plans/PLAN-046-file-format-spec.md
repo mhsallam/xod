@@ -240,17 +240,23 @@ element ends.
 - **Children:** one per stored property, named by the property. The library writes scalars first, but
   readers must not depend on the order.
 - `[NotMapped]` and read-only properties are absent.
-- **An absent property** means null for a nullable type and the type's default otherwise. The writer
-  omits:
+- **An absent property** reads as the property is without the row: its `[DefaultValue]` (for an element),
+  or what a new instance of the class holds; without a model, null for a nullable type and the type's
+  default otherwise. The writer omits a value only when that is what a read gives back (ISS-060):
   - null;
-  - an empty string (it reads back as null);
+  - an empty string;
   - `Guid.Empty`;
   - the default `DateTime`, `DateOnly`, `TimeOnly` and `TimeSpan`;
-  - a key or relationship-key property that is 0.
+  - a type's default under a different `[DefaultValue]`;
+  - a key or relationship-key property that is 0 (always: it means the key isn't set).
 
-  It writes `0`, `false` and the default `DateTimeOffset` (`0001-01-01T00:00:00.0000000+00:00`). So
-  `TimeSpan? x = TimeSpan.Zero` reads back as null. Without a model a reader can't tell "absent" from
-  "null", which the manifest fixes (section 10).
+  Otherwise it stores them: an empty string as an element with no text (`<Name></Name>`) or an empty
+  attribute, and a null as an element marked `nil="true"` (`<Status nil="true" />`), which reads as null.
+  An attribute can't say null: a null attribute-positioned property is always omitted. It always writes
+  `0`, `false` and the default `DateTimeOffset` (`0001-01-01T00:00:00.0000000+00:00`). Up to 2.0.1 the
+  writer omitted the listed values whatever a read gave back, so an empty string read back as null and
+  `TimeSpan? x = TimeSpan.Zero` as null. Without a model a reader can't tell "absent" from "null", which
+  the manifest fixes (section 10).
 
 Property element shapes:
 
@@ -415,7 +421,8 @@ rebuilds the other's.
 
 The key depends on the property's **type**, which is another reason a model-less reader needs the
 manifest. An entry holds one or more item codes; the file doesn't say whether the property is unique (the
-manifest does). A null value has no key.
+manifest does). A null value has no key; an empty string is a value, keyed `""` (section 7.2: an element
+with no text, or an empty attribute, reads as an empty string; one marked `nil="true"` as null).
 
 **Keys v2** (the next release, `IndexKeys`) obey two rules, so that an index never changes an answer
 (`PLAN-045` principle 3):

@@ -9,9 +9,18 @@ namespace Xod.Services
         /// leaves it out, the property's value without a row (StoredValue).</summary>
         private static object ReadBackFromRow(PropertyInfoItem prop, System.Xml.Linq.XElement entityElement)
         {
-            string raw = prop.ValuePosition == ValuePosition.Attribute
-                ? entityElement.Attribute(prop.PropertyName)?.Value
-                : entityElement.Element(prop.PropertyName)?.Value;
+            string raw;
+            if (prop.ValuePosition == ValuePosition.Attribute)
+            {
+                raw = entityElement.Attribute(prop.PropertyName)?.Value;
+            }
+            else
+            {
+                var element = entityElement.Element(prop.PropertyName);
+                if (element != null && StoredValue.IsNil(element))
+                    return null;
+                raw = element?.Value;
+            }
             return raw == null ? StoredValue.ReadBackOfMissing(prop) : ValueHelper.ParseScalar(prop.PropertyType, raw);
         }
 

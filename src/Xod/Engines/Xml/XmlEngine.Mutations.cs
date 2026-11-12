@@ -14,7 +14,111 @@ namespace Xod.Engines.Xml
 {
     public partial class XmlEngine
     {
+        // The rows the statement under way has created, so that a statement that fails removes them (ISS-062): a
+        // row whose second child is refused leaves no first child behind. The outermost Create or UpdateItem of a
+        // statement keeps the list, and only inside EnterTableWriteLock's engine-wide write lock (globalWriteDepth):
+        // only a type with relations creates rows beyond its own, and for it (as with triggers or a transaction)
+        // EnterTableWriteLock takes that lock, so no other statement runs meanwhile. A standalone table's row
+        // creates nothing else.
+        //
+        // A mitigation, not all or nothing (ISS-090): it removes created rows only, while the process runs. What a
+        // failed statement changed in rows that were there before (an update's replaced row, children it dropped)
+        // isn't put back (ISS-089), and a crash leaves the created rows (they were written as they were created).
+        private List<(Type Type, string Code)> statementCreates;
+
+        private bool BeginStatement()
+        {
+            if (statementCreates != null || globalWriteDepth == 0)
+                return false;
+            statementCreates = new List<(Type, string)>();
+            return true;
+        }
+
+        private void EndStatement(bool owner)
+        {
+            if (owner)
+                statementCreates = null;
+        }
+
+        /// <summary>
+        /// Removes the rows a failed statement created, newest first, through the one delete path without its
+        /// cascade: every row the statement created is in the list, and a cascade could reach rows it didn't. A
+        /// row's removal also takes it out of a parent that lists it (ISS-088). The counters stay where the
+        /// statement left them, as after a rollback (ISS-083): the caller's items hold the numbers it handed out.
+        /// The failure is what the caller sees. If the removal fails too, the caller gets an XodException carrying
+        /// both, the indexes of the tables the statement wrote are dropped (in memory and on disk: a derived cache,
+        /// rebuilt from the pages, PLAN-046 section 8), since they may have dropped rows the pages still hold, and
+        /// the context writes nothing more until it is reopened (ISS-091). Not across a crash (see above).
+        /// </summary>
+        private void UndoStatement(Exception failure)
+        {
+            var created = statementCreates;
+            statementCreates = null;
+            if (created == null || created.Count == 0)
+                return;
+
+            autonumberMarksPending = true;
+            bool batch = !ioService.IsBatchOrBuffered;
+            try
+            {
+                if (batch)
+                    ioService.BeginBatch();
+                try
+                {
+                    for (int i = created.Count - 1; i >= 0; i--)
+                        DeleteByItemCode(created[i].Type, created[i].Code, isCascade: false, cascadeChildren: false);
+                }
+                finally
+                {
+                    if (batch)
+                    {
+                        ioService.EndBatch();
+                        indexService.FlushDirtyIndexes();
+                    }
+                }
+            }
+            catch (Exception undoFailure)
+            {
+                var failures = new List<Exception> { failure, undoFailure };
+                foreach (var type in created.Select(c => c.Type).Distinct())
+                {
+                    // Each one tried; one that fails is reported with the rest, and the refusal below stands.
+                    try
+                    {
+                        indexService.Remove(type);
+                    }
+                    catch (Exception indexFailure)
+                    {
+                        failures.Add(indexFailure);
+                    }
+                }
+                // After the index removals: each is a file write, which this refuses.
+                statementFault = "A statement failed, and removing the rows it had created failed too (" + undoFailure.Message +
+                    "): what this context holds may not be what the disk holds, so it writes nothing more. Reopen the database.";
+                throw new XodException("The statement failed, and the rows it had created couldn't all be removed: the database may " +
+                    "hold some of them. Reopen it to go on writing.", new AggregateException(failures));
+            }
+        }
+
         private string Create(Type type, object item, bool shallowWrite = false, ReadWriteTrack writeTrack = null)
+        {
+            bool statement = BeginStatement();
+            try
+            {
+                return CreateRow(type, item, shallowWrite, writeTrack);
+            }
+            catch (Exception failure) when (statement)
+            {
+                UndoStatement(failure);
+                throw;
+            }
+            finally
+            {
+                EndStatement(statement);
+            }
+        }
+
+        private string CreateRow(Type type, object item, bool shallowWrite, ReadWriteTrack writeTrack)
         {
             if (item == null)
                 exceptionService.Throw(new ArgumentNullException(nameof(item)));
@@ -55,6 +159,8 @@ namespace Xod.Engines.Xml
             WriteDiagnostics.End(ref WriteDiagnostics.UniqueTicks, tUnique);
 
             string refCode = AddToPage(type, item, autonumbers, shallowWrite, writeTrack);
+            if (refCode != null)
+                statementCreates?.Add((type, refCode));
 
             if (trigger != null)
                 AfterAction?.Invoke(this, trigger);
@@ -253,6 +359,14 @@ namespace Xod.Engines.Xml
                 if (StoredValue.IsLeftOut(value, effectivePropType, prop, shallowWrite))
                     return null;
 
+                // A null a read wouldn't give back (a new instance holds something else): marked (ISS-060).
+                if (value == null)
+                {
+                    propertyElement = new XElement(prop.PropertyName, new XAttribute(StoredValue.NilAttribute, "true"));
+                    xItem.Add(propertyElement);
+                    return propertyElement;
+                }
+
                 string formattedValue = StoredValue.Text(value, prop.PropertyName);
 
                 // [Crypto] applies to a string wherever it is stored, element or attribute (ISS-064).
@@ -359,6 +473,24 @@ namespace Xod.Engines.Xml
         }
 
         private bool UpdateItem(Type type, object item, object newItem, ReadWriteTrack track = null, UpdateFilter filter = null)
+        {
+            bool statement = BeginStatement();
+            try
+            {
+                return UpdateRows(type, item, newItem, track, filter);
+            }
+            catch (Exception failure) when (statement)
+            {
+                UndoStatement(failure);
+                throw;
+            }
+            finally
+            {
+                EndStatement(statement);
+            }
+        }
+
+        private bool UpdateRows(Type type, object item, object newItem, ReadWriteTrack track, UpdateFilter filter)
         {
             propertyService.LoadType(type);
             EnsureIndexHydrated(type);
@@ -1060,7 +1192,7 @@ namespace Xod.Engines.Xml
                 rwLock.ExitWriteLock();
             }
         }
-        private bool DeleteByItemCode(Type type, string itemCode, bool isCascade)
+        private bool DeleteByItemCode(Type type, string itemCode, bool isCascade, bool cascadeChildren = true)
         {
             int dot = itemCode.IndexOf('.');
             if (dot <= 0 || dot >= itemCode.Length - 1)
@@ -1089,7 +1221,10 @@ namespace Xod.Engines.Xml
 
                 if (meta == null || meta.HasCascadeDeleteOrParentProperties)
                 {
-                    CascadeDeleteChildElements(type, rawRow, isCascade);
+                    if (cascadeChildren)
+                        CascadeDeleteChildElements(type, rawRow, itemCode, isCascade);
+                    else if (!isCascade)
+                        RemoveFromParentElements(type, rawRow, itemCode);
                 }
 
                 return true;
@@ -1098,7 +1233,7 @@ namespace Xod.Engines.Xml
             return false;
         }
 
-        private void CascadeDeleteChildElements(Type type, XElement rawRow, bool isCascade)
+        private void CascadeDeleteChildElements(Type type, XElement rawRow, string itemCode, bool isCascade)
         {
             if (rawRow == null) return;
 
@@ -1159,11 +1294,13 @@ namespace Xod.Engines.Xml
 
             if (!isCascade)
             {
-                RemoveFromParentElements(type, rawRow);
+                RemoveFromParentElements(type, rawRow, itemCode);
             }
         }
 
-        private void RemoveFromParentElements(Type type, XElement rawRow)
+        // A parent lists a child by its item code, "page.row" (XmlEngine.Relations, ParseChildren); the bare row code
+        // matched no entry, so a delete through here left the child listed (ISS-088).
+        private void RemoveFromParentElements(Type type, XElement rawRow, string itemCode)
         {
             var parRefProps = propertyService.Properties(type.FullName)
                 .Where(s => s.ReferenceType == PropertyReferenceType.Parent);
@@ -1195,10 +1332,7 @@ namespace Xod.Engines.Xml
                 {
                     object parent = SelectItemsByExample(parRefProp.PropertyType, PopulateItemProperties(parRefProp.PropertyType, parentPrmVals), "*").FirstOrDefault();
                     if (parent != null)
-                    {
-                        string rowCode = rawRow.Attribute("code")?.Value;
-                        RemoveFromParent(type, rowCode, parRefProp, parent);
-                    }
+                        RemoveFromParent(type, itemCode, parRefProp, parent);
                 }
             }
         }

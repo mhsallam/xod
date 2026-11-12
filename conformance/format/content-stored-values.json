@@ -1,0 +1,74 @@
+{
+ "Xod.Conformance.Model.Format.Blank": [
+  {
+   "element": "Blank",
+   "attrs": {},
+   "fields": {
+    "Id": "1",
+    "Text": "",
+    "Label": null,
+    "Area": null,
+    "Token": "00000000-0000-0000-0000-000000000000",
+    "When": "0001-01-01T00:00:00.0000000"
+   }
+  },
+  {
+   "element": "Blank",
+   "attrs": {},
+   "fields": {
+    "Id": "2",
+    "Label": "set",
+    "Area": "north",
+    "Token": "6f1c2b8e-1d4a-4c3b-9e2f-000000000001",
+    "When": "2020-01-01T00:00:00.0000000Z"
+   }
+  },
+  {
+   "element": "Blank",
+   "attrs": {},
+   "fields": {
+    "Id": "3",
+    "Text": "x",
+    "Label": "",
+    "Area": "",
+    "Token": "6f1c2b8e-1d4a-4c3b-9e2f-000000000003",
+    "When": "2021-06-30T12:00:00.0000000Z"
+   }
+  }
+ ],
+ "Xod.Conformance.Model.Format.BlankDocument": [
+  {
+   "element": "BlankDocument",
+   "attrs": {
+    "Tag": ""
+   },
+   "fields": {
+    "Id": "1",
+    "Text": "",
+    "Label": null,
+    "Count": "0"
+   }
+  },
+  {
+   "element": "BlankDocument",
+   "attrs": {},
+   "fields": {
+    "Id": "2",
+    "Label": "set",
+    "Count": "5"
+   }
+  },
+  {
+   "element": "BlankDocument",
+   "attrs": {
+    "Tag": "t"
+   },
+   "fields": {
+    "Id": "3",
+    "Text": "y",
+    "Label": "",
+    "Count": "7"
+   }
+  }
+ ]
+}

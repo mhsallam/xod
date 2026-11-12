@@ -299,7 +299,9 @@ export function readDatabase(dir, password, columnTypes = {}, applicationKey = n
     }
     if (f.attrs.collType === 'dictionary') return { map: Object.fromEntries(f.children.map((c) => [c.attrs.key, c.text ?? ''])) };
     if (f.attrs.collType) return { list: f.children.map((c) => c.text) };
-    return f.cdata ? { cdata: f.text } : canonical(columnTypes[table]?.[name], scalar(f.text));
+    // A scalar element: nil="true" is null, no text an empty string (section 7.2).
+    if (f.attrs.nil === 'true') return null;
+    return f.cdata ? { cdata: f.text } : canonical(columnTypes[table]?.[name], scalar(f.text ?? ''));
   };
   // Booleans are case-insensitive (section 7.5): the fast writer stores true, the document writer True.
   const canonical = (type, t) => (type === 'bool' && t != null ? t.toLowerCase() : t);
@@ -324,7 +326,10 @@ export function readDatabase(dir, password, columnTypes = {}, applicationKey = n
       if (!type) { indexProblems.push(`${table}.${prop}: no type in column-types.json`); continue; }
       const want = {};
       for (const r of tables[table] ?? []) {
-        const k = normKey(type, r.fields[prop]?.text ?? r.attrs[prop], version);
+        // The value as a read gives it (section 7.2): an element marked nil="true" is null (no key), an
+        // element with no text an empty string (the key ""), a missing element whatever the attribute says.
+        const f = r.fields[prop];
+        const k = normKey(type, f ? (f.attrs.nil === 'true' ? null : f.text ?? '') : r.attrs[prop], version);
         if (k != null) (want[k] ??= new Set()).add(r.code);
       }
       const canon = (o) => JSON.stringify(Object.keys(o).sort().map((k) => [k, [...o[k]].sort()]));
@@ -390,8 +395,11 @@ const DATASET = (root) => [
   { name: 'binary', dir: path.join(root, 'binary'), propertyKey: DATASET_KEY, expect: 'content.json', types: 'dataset', secrets: SECRETS },
   { name: 'password', dir: path.join(root, 'password'), password: 'conformance-password', expect: 'content.json', types: 'dataset', secrets: SECRETS },
 ];
+// The stored-values fixture (ISS-060): written by the library in the tree, so checked fresh too.
+const STORED_VALUES = (root) => ({ name: 'stored-values', dir: path.join(root, 'stored-values'), expect: 'content-stored-values.json', types: 'stored-values' });
 const FIXTURES = [
   ...DATASET(path.join(repo, 'conformance', 'data')),
+  STORED_VALUES(path.join(repo, 'conformance', 'data')),
   { name: 'v1.2.5', dir: path.join(repo, 'tests', 'Xod.Tests', 'fixtures', 'v1.2.5-xml'), expect: 'content-v1.2.5.json', types: 'v1.2.5' },
 ];
 const stable = (o) => JSON.stringify(o, null, 1) + '\n';
@@ -402,7 +410,7 @@ function main(args) {
     const fresh = args[0] === '--check-fresh';
     if (fresh && !args[1]) { console.error('usage: read.mjs --check-fresh <root written by: -- data <root>>'); process.exit(2); }
     let failed = 0;
-    for (const fx of fresh ? DATASET(path.resolve(args[1])) : FIXTURES) {
+    for (const fx of fresh ? [...DATASET(path.resolve(args[1])), STORED_VALUES(path.resolve(args[1]))] : FIXTURES) {
       let line;
       try {
         const r = readDatabase(fx.dir, fx.password, types[fx.types], fx.propertyKey);

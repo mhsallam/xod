@@ -21,7 +21,9 @@ namespace Xod
         /// <para>The source is held alone while it is read, as a context opened with
         /// <see cref="DatabaseOptions.LockDatabase"/> holds it: refused with <see cref="DatabaseLockedException"/>
         /// while a context or process has it open, and no other can open it meanwhile. What a crash left in it (a
-        /// commit or a password change that didn't finish) is recovered first, as an open would.</para>
+        /// commit or a password change that didn't finish) is recovered first, as an open would. Refused too: a
+        /// database whose lock file can't be opened or created (nothing would then tell whether others have it open),
+        /// and a folder that holds more than one database file (one folder holds one database).</para>
         /// <para>Into another folder, which must be new or empty (one that holds anything is refused): the database
         /// is written beside it and moved into place whole, so a crash leaves no target, only a folder named
         /// <c>.&lt;target&gt;.converting-&lt;id&gt;</c> beside it, which can be deleted. Into the source folder itself:
@@ -41,55 +43,48 @@ namespace Xod
             if (string.IsNullOrEmpty(targetDirectory))
                 throw new ArgumentNullException(nameof(targetDirectory));
 
+            // The database as a context finds it: a folder with two database files is refused (ISS-085), since a
+            // context opened through the other would write the tables this conversion holds.
+            var (databaseFile, resolvedFolder) = DatabaseFiles.Resolve(sourceDirectoryOrFile);
             // Full paths without a trailing separator, so that one folder is one string (SameFolder).
-            string sourceDir = Path.TrimEndingDirectorySeparator(File.Exists(sourceDirectoryOrFile)
-                ? Path.GetDirectoryName(Path.GetFullPath(sourceDirectoryOrFile))
-                : Path.GetFullPath(sourceDirectoryOrFile));
-
+            string sourceDir = Path.TrimEndingDirectorySeparator(resolvedFolder);
             string targetDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(targetDirectory));
             if (!Directory.Exists(sourceDir))
                 throw new DirectoryNotFoundException($"Source database directory not found: {sourceDir}");
+            if (!File.Exists(databaseFile))
+                throw new XodException($"'{sourceDir}' holds no XOD database: no .xod, .xodj or .xodb file.");
 
             bool inPlace = SameFolder(sourceDir, targetDir);
             if (!inPlace && Directory.Exists(targetDir) && Directory.EnumerateFileSystemEntries(targetDir).Any())
                 throw new XodException($"The target folder '{targetDir}' isn't empty. Convert into a new or empty folder: a database's folder holds only that database.");
 
-            // The folder is the database; each database file in it is opened through its own lock file.
-            var databaseFiles = Directory.GetFiles(sourceDir).Where(DatabaseFiles.IsDatabaseFile).ToList();
-            if (databaseFiles.Count == 0)
-                throw new XodException($"'{sourceDir}' holds no XOD database: no .xod, .xodj or .xodb file.");
-
             string hashedPassword = string.IsNullOrEmpty(password)
                 ? null
                 : CryptoHelper.GetSHA256HashData(password);
 
-            var holds = new List<FileStream>();
+            // Held alone throughout. Without a hold nothing tells whether a context has the database open, or
+            // whether what a crash seems to have left is another process's commit under way, so the conversion is
+            // refused (ISS-084: one that went on, taking a lock file it couldn't open for a folder nothing could
+            // write, undid a live commit). A lock file is opened with read access only, so a read-only one holds.
+            FileStream hold;
             try
             {
-                foreach (var databaseFile in databaseFiles)
-                {
-                    try
-                    {
-                        holds.Add(IOService.OpenLockFile(databaseFile, exclusive: true, retryTimeoutMs: 0));
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        // The folder can't be written (read-only media): neither this conversion's recovery nor any
-                        // context can write it, as for a context that opens it to read (IOService.OpenAndRecover).
-                    }
-                }
+                hold = IOService.OpenLockFile(databaseFile, exclusive: true, retryTimeoutMs: 0);
+            }
+            catch (UnauthorizedAccessException e)
+            {
+                throw new XodException($"The database's lock file can't be opened or created ({e.Message}), so this conversion can't hold " +
+                    "the database alone, nor tell whether others have it open. Convert it as a user who can, or convert a copy.", e);
+            }
 
+            using (hold)
+            {
                 IOService.RecoverInterruptedWrites(sourceDir);
 
                 var files = Directory.GetFiles(sourceDir).Where(DatabaseFiles.IsOfDatabase).ToList();
                 return inPlace
                     ? ConvertInPlace(files, targetFormat, hashedPassword)
                     : ConvertInto(files, targetDir, targetFormat, hashedPassword);
-            }
-            finally
-            {
-                foreach (var hold in holds)
-                    hold.Dispose();
             }
         }
 

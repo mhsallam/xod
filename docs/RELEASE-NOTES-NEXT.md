@@ -53,6 +53,35 @@ records it.
   - into another folder: the target appears whole or not at all (a crash leaves a `.<target>.converting-<id>`
     folder beside it, which can be deleted); in place: each file is replaced whole.
 
+- **A folder holds one database** ([PLAN-053](plans/PLAN-053-statement-undo-counters-stored-values-locks.md)):
+  opening a folder that holds more than one database file (`.xod`, `.xodj`, `.xodb`) is refused, and so is a
+  path naming a new database file in a folder that already holds one (a mistyped name, or a case that differs
+  on Linux). Every database file in a folder shares its tables, so a second one was another way into the same
+  data that the first one's lock didn't cover. Move all but one to folders of their own.
+- **Lock files**: a read-only lock file holds as well as any. A context that can't open or create the lock
+  file still opens for reading, but an open that finds a write cut short and can't take the lock is refused
+  (it can't tell a crash's leftovers from another context's write under way), and the migrator is refused
+  whenever it can't hold the source.
+- **A write from inside a read of the same table on the same thread** (inside a query's predicate, or while
+  enumerating its results) is refused with an `XodException` that says so, and the context goes on working.
+  Before, it threw `LockRecursionException` and left the context unusable.
+- **A statement that fails outside a transaction removes the rows it created**: a parent whose second child is
+  refused leaves no first child behind. It is not all or nothing: changes a failed update made to rows that
+  were there before aren't put back, and a crash leaves the created rows. Use a transaction for all or nothing.
+  If removing the rows fails too, the `XodException` carries both failures and the context writes nothing more
+  until it is reopened.
+- **A number handed out in a rolled-back transaction, or by a failed statement, isn't handed out again**, after
+  a reopen either.
+- **Values read back as written**: an empty string reads back as `""` (it read as null), `Guid.Empty`, a
+  default date, a zero interval and a type default under another `[DefaultValue]` read back as stored, and a
+  null reads back as null where a new instance holds something else. The files gain two forms, an empty
+  element or attribute and an element marked `nil="true"`; XOD 2.0.0 and 2.0.1 read both as they read a value
+  left out. An attribute-positioned property can't store null that way (ISS-094).
+- **`XodSecurityService`** (obsolete) accepts the database's folder, as a context does, and refuses a mistyped
+  database file beside the database rather than doing nothing.
+- **Deleting a child removes it from its parent's list** when the delete finds the row through the primary
+  key's index (it stayed listed).
+
 ## Version
 
 The reviewer of `TASK-062` points out that the release adds a public type (`AutonumberSeedException`) and a
@@ -70,6 +99,8 @@ version rather than a patch. The owner decides.
 
 - Earlier unreleased fixes, each with its own behaviour notes: [PLAN-048](plans/PLAN-048-format-defect-fixes.md),
   [PLAN-049](plans/PLAN-049-property-encryption.md), [PLAN-050](plans/PLAN-050-password-change.md).
+- ISS-060, ISS-062 (mitigated), ISS-083 to ISS-088, ISS-091 (mitigated): see
+  [PLAN-053](plans/PLAN-053-statement-undo-counters-stored-values-locks.md).
 - ISS-047, ISS-048 (mitigated), ISS-059, ISS-069, ISS-072, ISS-075, ISS-080 to ISS-082: see
   [PLAN-052](plans/PLAN-052-autonumbers-password-service-migrator.md).
 - ISS-070, ISS-071 (mitigated), ISS-073, ISS-074, ISS-076 to ISS-079: see

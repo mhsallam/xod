@@ -99,6 +99,79 @@ namespace Xod.Tests
             Assert.Equal(21, db.Count<ConvertNote>());
         }
 
+        // ISS-084: the conversion's exclusive hold asked for write access, so a read-only lock file failed it with
+        // UnauthorizedAccessException, which the conversion took for a folder nothing can write: it went on with no
+        // hold, past the open context, and in place rewrote the files under it.
+        [Fact]
+        public void A_read_only_lock_file_does_not_let_a_conversion_past_an_open_context()
+        {
+            string dir = PlainDatabase("source");
+            string target = Path.Combine(tempRoot, "target");
+            string lockFile = Path.Combine(dir, "notes.xod.lock");
+            using (var open = new XodContext(Path.Combine(dir, "notes.xod")))
+            {
+                File.SetAttributes(lockFile, FileAttributes.ReadOnly);
+                try
+                {
+                    Assert.ThrowsAny<XodException>(() => XodMigrator.ConvertDatabase(dir, target, StorageFormat.Json));
+                    Assert.ThrowsAny<XodException>(() => XodMigrator.ConvertDatabase(dir, dir, StorageFormat.Json));
+                    open.Insert(new ConvertNote { Text = "still writing" });
+                }
+                finally
+                {
+                    File.SetAttributes(lockFile, FileAttributes.Normal);
+                }
+            }
+            Assert.False(Directory.Exists(target));
+            using var db = new XodContext(Path.Combine(dir, "notes.xod"));
+            Assert.Equal(21, db.Count<ConvertNote>());
+        }
+
+        // ISS-084, with a commit under way in another process: the conversion's recovery, run without a hold,
+        // undid that live commit and deleted its journal; the commit then reported success with its rows gone.
+        [Fact]
+        public void A_read_only_lock_file_does_not_let_a_conversion_undo_a_live_commit()
+        {
+            string dir = CrashDb.New(tempRoot, "source");
+            string target = Path.Combine(tempRoot, "target");
+            string lockFile = Path.Combine(dir, "pw.xod.lock");
+            using var writer = XodCrashSafetyTests.StartWriterProcess("txcommit", dir, ("XOD_PAUSE_AT_STEP", "commit-written"));
+            string line;
+            while ((line = writer.StandardOutput.ReadLine()) != null && !line.StartsWith("PAUSED", StringComparison.Ordinal)) { }
+            Assert.NotNull(line);
+
+            File.SetAttributes(lockFile, FileAttributes.ReadOnly);
+            try
+            {
+                Assert.ThrowsAny<XodException>(() => XodMigrator.ConvertDatabase(dir, target, StorageFormat.Json, "first"));
+            }
+            finally
+            {
+                File.SetAttributes(lockFile, FileAttributes.Normal);
+                writer.StandardInput.WriteLine();
+                writer.StandardInput.Flush();
+            }
+            string rest = writer.StandardOutput.ReadToEnd() + writer.StandardError.ReadToEnd();
+            Assert.True(writer.WaitForExit(120_000));
+            Assert.Contains("COMMITTED", rest);
+            Assert.False(Directory.Exists(target));
+            CrashDb.HoldsBatches(dir, "first", 2);
+        }
+
+        // ISS-085: a folder holds one database, but each database file has its own lock file: a context opened
+        // through a second database file in the folder wrote to the shared tables while a conversion held the
+        // first. A folder with two database files is refused.
+        [Fact]
+        public void A_folder_with_two_database_files_is_refused()
+        {
+            string dir = PlainDatabase("source");
+            File.Copy(Path.Combine(dir, "notes.xod"), Path.Combine(dir, "other.xod"));
+            string target = Path.Combine(tempRoot, "target");
+            var refused = Assert.ThrowsAny<XodException>(() => XodMigrator.ConvertDatabase(dir, target, StorageFormat.Json));
+            Assert.Contains("other.xod", refused.Message);
+            Assert.False(Directory.Exists(target));
+        }
+
         [Fact]
         public void Opening_the_source_during_a_conversion_is_refused()
         {

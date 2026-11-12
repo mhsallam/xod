@@ -208,6 +208,92 @@ namespace Xod.Tests
             CrashDb.HoldsBatches(dir, "second", 1);
         }
 
+        // ISS-084, at the open: with the lock file read-only, the open's exclusive try failed with
+        // UnauthorizedAccessException, which it took for a folder nothing can write, and it recovered without a
+        // hold: what it deleted (a staged write) or undid (a journal) may be another context's, under way.
+        [Fact]
+        public void An_open_recovers_nothing_while_another_context_holds_the_database_even_with_a_read_only_lock_file()
+        {
+            string path = NewDatabase("read-only-lock");
+            string dir = Path.GetDirectoryName(path)!;
+            using var first = new XodContext(path, "first");
+            string staged = Directory.GetFiles(dir, "*.xpag").First() + ".tmp";
+            File.WriteAllText(staged, "another context's write, under way");
+            File.SetAttributes(path + ".lock", FileAttributes.ReadOnly);
+            try
+            {
+                using var second = new XodContext(path, "first");
+                Assert.Equal(10, second.Count<PwItem>());
+                Assert.True(File.Exists(staged));
+            }
+            finally
+            {
+                File.SetAttributes(path + ".lock", FileAttributes.Normal);
+            }
+        }
+
+        // ISS-084 for a lock file this user can't read (another user's, on Unix 0600): no hold can be taken, so
+        // nothing tells whether what is pending is another context's write under way. The open is refused, and
+        // recovers nothing; it used to recover anyway, taking this for a folder nothing could write.
+        [Fact]
+        public void An_open_that_cannot_take_a_hold_recovers_nothing_and_is_refused_while_something_is_pending()
+        {
+            if (!OperatingSystem.IsWindows())
+                return; // the lock file is made unreadable with a Windows access rule
+
+            string path = NewDatabase("unreadable-lock");
+            string dir = Path.GetDirectoryName(path)!;
+            string staged = Directory.GetFiles(dir, "*.xpag").First() + ".tmp";
+            File.WriteAllText(staged, "another context's write, under way");
+            var info = new FileInfo(path + ".lock");
+            var me = System.Security.Principal.WindowsIdentity.GetCurrent().User!;
+            var deny = new System.Security.AccessControl.FileSystemAccessRule(me,
+                System.Security.AccessControl.FileSystemRights.ReadData, System.Security.AccessControl.AccessControlType.Deny);
+            var acl = info.GetAccessControl();
+            acl.AddAccessRule(deny);
+            info.SetAccessControl(acl);
+            try
+            {
+                Assert.Throws<UnauthorizedAccessException>(() => File.ReadAllBytes(path + ".lock"));
+                Assert.ThrowsAny<XodException>(() => { using var db = new XodContext(path, "first"); });
+                Assert.True(File.Exists(staged));
+                Assert.ThrowsAny<XodException>(() => XodMigrator.ConvertDatabase(dir, Path.Combine(tempRoot, "unreadable-target"), StorageFormat.Json, "first"));
+                Assert.True(File.Exists(staged));
+            }
+            finally
+            {
+                acl = info.GetAccessControl();
+                acl.RemoveAccessRule(deny);
+                info.SetAccessControl(acl);
+            }
+            using (var db = new XodContext(path, "first"))
+                Assert.Equal(10, db.Count<PwItem>());
+            Assert.False(File.Exists(staged));
+        }
+
+        // ISS-085: a folder holds one database: every database file in it shares its tables, but each has its own
+        // lock file, so contexts opened through two of them didn't see each other. A new database file beside
+        // one is refused (a mistyped name, a case that differs), and so is a folder that holds two.
+        [Fact]
+        public void A_second_database_file_in_a_folder_is_refused()
+        {
+            string path = NewDatabase("second-file");
+            string dir = Path.GetDirectoryName(path)!;
+            string other = Path.Combine(dir, "other.xod");
+
+            var refused = Assert.ThrowsAny<XodException>(() => { using var db = new XodContext(other, "first"); });
+            Assert.Contains("pw.xod", refused.Message);
+            Assert.False(File.Exists(other));
+
+            File.Copy(path, other);
+            Assert.ThrowsAny<XodException>(() => { using var db = new XodContext(path, "first"); });
+            Assert.ThrowsAny<XodException>(() => { using var db = new XodContext(dir, "first"); });
+
+            File.Delete(other);
+            using (var db = new XodContext(dir, "first"))
+                Assert.Equal(10, db.Count<PwItem>());
+        }
+
         // A folder the process can't write to, holding a database without its lock file (from 2.0.1, or copied
         // without it): the context opens for reading, and refuses writes with the reason. The open used to fail.
         [Fact]

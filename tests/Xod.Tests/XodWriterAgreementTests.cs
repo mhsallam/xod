@@ -72,6 +72,32 @@ namespace Xod.Tests
             Assert.Equal(Header(document), Header(fast));
         }
 
+        // ISS-060: an empty string and a null a read wouldn't give back, as each writer stores them.
+        [Fact]
+        public void Both_writers_store_an_empty_string_and_a_marked_null_the_same_way()
+        {
+            string path = NewDatabase("agree-empty");
+            using (var db = new XodContext(path))
+            {
+                db.Insert(new FastStoredValues { Plain = "", Code = "c", Status = null, Token = Guid.Empty, When = default, Span = TimeSpan.Zero }); // the fast row writer
+                var rewritten = db.Insert(new FastStoredValues { Plain = "x", Code = "c", Status = "s", Token = Guid.NewGuid(), When = DateTime.UtcNow, Span = null });
+                rewritten.Plain = "";
+                rewritten.Status = null;
+                rewritten.Token = Guid.Empty;
+                rewritten.When = default;
+                rewritten.Span = TimeSpan.Zero;
+                Assert.True(db.Update(rewritten));                          // rewritten in place by the document writer
+            }
+
+            var rows = Regex.Matches(PageText<FastStoredValues>(path), "<FastStoredValues>(.*?)</FastStoredValues>")
+                .Select(m => Regex.Replace(m.Groups[1].Value, "<Id>[^<]*</Id>", ""))
+                .ToList();
+            Assert.Equal(2, rows.Count);
+            Assert.Equal(rows[0], rows[1]);
+            Assert.Contains("<Plain></Plain>", rows[0]);
+            Assert.Contains("<Status nil=\"true\" />", rows[0]);
+        }
+
         [Fact]
         public void The_table_file_holds_no_page_key_ranges()
         {

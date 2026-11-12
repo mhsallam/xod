@@ -3,42 +3,58 @@ using System;
 namespace Xod.Helpers
 {
     /// <summary>
-    /// What a row stores for a scalar property, and what a read gives back. The writers leave some values
-    /// out of the row (a default key, an empty string, <c>Guid.Empty</c>, a default date or interval); a
-    /// read then gives the property the value it has without the row: its <c>DefaultValue</c> (for an
-    /// element), or what a new instance holds. The index keys what a read gives back, from an object and
-    /// from a row alike, so it agrees with the rows whichever way it was built (IndexService).
+    /// What a row stores for a scalar property, and what a read gives back. A read gives a property the row
+    /// leaves out the value it has without the row: its <c>DefaultValue</c> (for an element), or what a new
+    /// instance holds. So the writers leave a value out only when that is the value (ISS-060: an empty string
+    /// read back as null, 0 as a different DefaultValue, Guid.Empty as a new instance's Guid). An empty string
+    /// is then an empty element or attribute, and a null a new instance wouldn't hold is an element marked
+    /// <c>nil="true"</c>. The index keys what a read gives back, from an object and from a row alike, so it
+    /// agrees with the rows whichever way it was built (IndexService).
     /// </summary>
     internal static class StoredValue
     {
-        /// <summary>True when the writers leave this value out of the row. The one rule: the document
-        /// writer asks it, and the fast row writer (IOService.RawPages) inlines the same tests for speed.</summary>
+        /// <summary>The attribute that marks a property element as null.</summary>
+        internal const string NilAttribute = "nil";
+
+        /// <summary>True when the element says its property is null.</summary>
+        internal static bool IsNil(System.Xml.Linq.XElement element) =>
+            element.HasAttributes && element.Attribute(NilAttribute)?.Value == "true";
+
+        /// <summary>True when an empty text is the property's value (a plain string): no other type has an empty
+        /// form, and an encrypted or hashed string is never stored empty.</summary>
+        internal static bool HasEmptyForm(PropertyInfoItem prop) =>
+            prop.PropertyType == typeof(string) && prop.Encryption == CryptoMethod.None && !prop.IsGenericType;
+
+        /// <summary>True when the writers leave this value out of the row. The one rule: the document writer
+        /// asks it, and the fast row writer (IOService.RawPages) asks it for each value that may be left out (an
+        /// empty or default one), deciding the rest inline for speed.</summary>
         internal static bool IsLeftOut(object value, Type effectivePropType, PropertyInfoItem prop, bool shallowWrite)
         {
+            // A null is left out when a read gives null back. An attribute can't say null, so there it is left
+            // out whatever a read gives (the property then reads as a new instance holds it).
             if (value == null)
-                return true;
+                return shallowWrite || prop.IsGenericType || prop.ValuePosition == ValuePosition.Attribute || ReadBackOfMissing(prop) == null;
 
             bool isTypeDefault = value.Equals(ValueHelper.DefaultOf(effectivePropType));
+            // A key at its type's default isn't set.
             if (shallowWrite || prop.IsPrimaryKey || prop.IsRelationshipKey)
-            {
                 return isTypeDefault;
-            }
 
-            if (isTypeDefault && prop.DefaultValue != null && !prop.DefaultValue.Equals(ValueHelper.DefaultOf(effectivePropType)))
-            {
-                return true;
-            }
-
-            return value switch
-            {
-                string s => string.IsNullOrEmpty(s),
-                Guid g => g == Guid.Empty,
-                DateTime dt => dt == default,
-                DateOnly d => d == default,
-                TimeSpan ts => ts == default,
-                TimeOnly to => to == default,
-                _ => false
-            };
+            // The values the writers may leave out, as 2.0 wrote them; each only when a read gives it back,
+            // so rows that read back as written are stored as before.
+            bool mayLeaveOut =
+                (isTypeDefault && prop.DefaultValue != null && !prop.DefaultValue.Equals(ValueHelper.DefaultOf(effectivePropType))) ||
+                value switch
+                {
+                    string s => s.Length == 0,
+                    Guid g => g == Guid.Empty,
+                    DateTime dt => dt == default,
+                    DateOnly d => d == default,
+                    TimeSpan ts => ts == default,
+                    TimeOnly to => to == default,
+                    _ => false
+                };
+            return mayLeaveOut && (prop.IsGenericType || value.Equals(ReadBackOfMissing(prop)));
         }
 
         /// <summary>The value a read gives a property whose row leaves it out (XmlEngine.Read and the fast

@@ -1009,7 +1009,7 @@ namespace Xod.Services
                         Guid v = prop.GuidGetter(item);
                         if (prop.IsRequired && v == Guid.Empty)
                             exceptionService.Throw(new RequiredPropertyException(prop.PropertyName));
-                        if (v == Guid.Empty)
+                        if (v == Guid.Empty && StoredValue.IsLeftOut(v, typeof(Guid), prop, shallowWrite: false))
                             continue;
                         EnsureScratchCapacity(ref buf, pos + prop.Utf8OpenTag.Length + prop.Utf8CloseTag.Length + 40);
                         Buffer.BlockCopy(prop.Utf8OpenTag, 0, buf, pos, prop.Utf8OpenTag.Length);
@@ -1026,7 +1026,12 @@ namespace Xod.Services
                         if (prop.IsRequired && string.IsNullOrWhiteSpace(v))
                             exceptionService.Throw(new RequiredPropertyException(prop.PropertyName));
                         if (string.IsNullOrEmpty(v))
-                            continue;
+                        {
+                            if (StoredValue.IsLeftOut(v, typeof(string), prop, shallowWrite: false))
+                                continue;
+                            pos = WriteStoredEmpty(prop, nil: v == null, ref buf, pos);
+                            break;
+                        }
                         StoredValue.CheckText(v, prop.PropertyName);
 
                         ReadOnlySpan<char> chars = v.AsSpan();
@@ -1054,9 +1059,15 @@ namespace Xod.Services
                         if (prop.IsRequired && (val == null || (val is DateTime dtReq && dtReq == default) || (val is DateOnly doReq && doReq == default)))
                             exceptionService.Throw(new RequiredPropertyException(prop.PropertyName));
                         if (val == null)
-                            continue;
+                        {
+                            if (StoredValue.IsLeftOut(null, prop.PropertyType, prop, shallowWrite: false))
+                                continue;
+                            pos = WriteStoredEmpty(prop, nil: true, ref buf, pos);
+                            break;
+                        }
                         bool isDefault = val.Equals(ValueHelper.DefaultOf(prop.PropertyType));
-                        if (isDefault && (prop.IsPrimaryKey || prop.IsRelationshipKey || val is DateTime || val is DateOnly || val is TimeSpan || val is TimeOnly))
+                        if (isDefault && (prop.IsPrimaryKey || prop.IsRelationshipKey || val is DateTime || val is DateOnly || val is TimeSpan || val is TimeOnly) &&
+                            StoredValue.IsLeftOut(val, prop.PropertyType, prop, shallowWrite: false))
                             continue;
 
                         string formatted = StoredValue.Text(val, prop.PropertyName);
@@ -1087,6 +1098,26 @@ namespace Xod.Services
             scratchRowBuffer = buf;
             buffer = buf;
             return pos;
+        }
+
+        // An empty string (an open and a close tag) or a null a read wouldn't give back (nil="true"), as the
+        // document writer writes them (ISS-060).
+        private static int WriteStoredEmpty(PropertyInfoItem prop, bool nil, ref byte[] buf, int pos)
+        {
+            if (nil)
+            {
+                EnsureScratchCapacity(ref buf, pos + prop.Utf8NameBytes.Length + 16);
+                buf[pos++] = (byte)'<';
+                Buffer.BlockCopy(prop.Utf8NameBytes, 0, buf, pos, prop.Utf8NameBytes.Length);
+                pos += prop.Utf8NameBytes.Length;
+                " nil=\"true\" />"u8.CopyTo(buf.AsSpan(pos));
+                return pos + 14;
+            }
+            EnsureScratchCapacity(ref buf, pos + prop.Utf8OpenTag.Length + prop.Utf8CloseTag.Length);
+            Buffer.BlockCopy(prop.Utf8OpenTag, 0, buf, pos, prop.Utf8OpenTag.Length);
+            pos += prop.Utf8OpenTag.Length;
+            Buffer.BlockCopy(prop.Utf8CloseTag, 0, buf, pos, prop.Utf8CloseTag.Length);
+            return pos + prop.Utf8CloseTag.Length;
         }
 
         // Element text by XmlText's policy: the markup three as entities, and the characters XML can't
@@ -1185,11 +1216,13 @@ namespace Xod.Services
 
                     bool isSelfClosing = rowSpan[cursor + tagEndRel] == (byte)'/';
                     int nameLen = isSelfClosing ? tagEndRel - 1 : tagEndRel;
-                    ReadOnlySpan<byte> propNameSpan = rowSpan.Slice(cursor + 1, nameLen);
+                    ReadOnlySpan<byte> tagSpan = rowSpan.Slice(cursor + 1, nameLen);
+                    // A property element may carry nil="true" (ISS-060): its name ends at the first space.
+                    int nameEnd = tagSpan.IndexOf((byte)' ');
+                    ReadOnlySpan<byte> propNameSpan = nameEnd < 0 ? tagSpan : tagSpan.Slice(0, nameEnd);
+                    bool isNil = nameEnd >= 0 && tagSpan.Slice(nameEnd).IndexOf(" nil=\"true\""u8) >= 0;
 
                     cursor += 1 + tagEndRel + 1;
-                    if (isSelfClosing)
-                        continue;
 
                     PropertyInfoItem matchedProp = null;
                     for (int offset = 0; offset < propCount; offset++)
@@ -1204,6 +1237,16 @@ namespace Xod.Services
                         }
                     }
 
+                    if (isSelfClosing)
+                    {
+                        // No text: null when marked, an empty string for a string (ISS-060).
+                        if (matchedProp != null && isNil)
+                            matchedProp.SetValue(item, null);
+                        else if (matchedProp != null && matchedProp.ScalarKind == ScalarPropertyKind.String)
+                            matchedProp.StringSetter(item, string.Empty);
+                        continue;
+                    }
+
                     int valEndRel = rowSpan.Slice(cursor).IndexOf("</"u8);
                     if (valEndRel < 0)
                         break;
@@ -1215,8 +1258,19 @@ namespace Xod.Services
                         break;
                     cursor += closeGt + 1;
 
-                    if (matchedProp == null || valSpan.Length == 0)
+                    if (matchedProp == null)
                         continue;
+                    if (isNil)
+                    {
+                        matchedProp.SetValue(item, null);
+                        continue;
+                    }
+                    if (valSpan.Length == 0)
+                    {
+                        if (matchedProp.ScalarKind == ScalarPropertyKind.String)
+                            matchedProp.StringSetter(item, string.Empty);
+                        continue;
+                    }
 
                     switch (matchedProp.ScalarKind)
                     {

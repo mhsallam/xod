@@ -2,6 +2,7 @@
 //   dotnet run --project conformance/Xod.Conformance -f net9.0 -- cases   rewrite conformance/cases from Cases.cs
 //   dotnet run --project conformance/Xod.Conformance -f net9.0 -- data    rewrite the fixtures in conformance/data
 //   ... -- data <folder>    write the same files to <folder> instead (for read.mjs --check-fresh)
+//   ... -- stored-values [root]   write the stored-values fixture to <root>/stored-values (StoredValuesFixture.cs)
 // The fixtures are written by the library under test, so rewrite them only when the dataset or the file
 // format changes on purpose, and record why in PLAN-047. `dotnet test` never writes either.
 using System;
@@ -32,8 +33,14 @@ namespace Xod.Conformance
                         Console.WriteLine($"wrote {dir}");
                     }
                     return 0;
+                case StoredValuesFixture.Name:
+                    string root = args.Length > 1 ? Path.GetFullPath(args[1]) : Path.Combine(Repo.Conformance, "data");
+                    string folder = Path.Combine(root, StoredValuesFixture.Name);
+                    StoredValuesFixture.Write(folder);
+                    Console.WriteLine($"wrote {folder}");
+                    return 0;
                 default:
-                    Console.Error.WriteLine("usage: Xod.Conformance cases | data [folder]");
+                    Console.Error.WriteLine("usage: Xod.Conformance cases | data [folder] | stored-values [root]");
                     return 2;
             }
         }

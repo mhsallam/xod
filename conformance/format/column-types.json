@@ -35,6 +35,16 @@
       "Id": "int"
     }
   },
+  "stored-values": {
+    "Xod.Conformance.Model.Format.Blank": {
+      "Id": "int",
+      "Text": "text",
+      "Area": "text"
+    },
+    "Xod.Conformance.Model.Format.BlankDocument": {
+      "Id": "int"
+    }
+  },
   "v1.2.5": {
     "FixtureCustomer": {
       "Id": "int"

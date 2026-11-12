@@ -14,6 +14,12 @@ namespace Xod.Engines.Xml
     public partial class XmlEngine : IXodEngine
     {
         private readonly ReaderWriterLockSlim rwLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
+
+        // How deep the thread holding rwLock's write lock is in EnterTableWriteLock's engine-wide write (a trigger's
+        // write nests one deeper). Only that thread changes or reads it while it is above 0: every other thread that
+        // reads it holds rwLock in some mode, which the write lock excludes. The statement undo asks it (ISS-062),
+        // since ReaderWriterLockSlim.IsWriteLockHeld is for asserts and debugging only, per its documentation.
+        private int globalWriteDepth;
         private readonly ConcurrentDictionary<string, ReaderWriterLockSlim> tableLocks = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, bool> standaloneTableCache = new(StringComparer.Ordinal);
         private readonly SemaphoreSlim transactionGate = new SemaphoreSlim(1, 1);
@@ -39,6 +45,9 @@ namespace Xod.Engines.Xml
         // Set when a commit failed and couldn't be undone (ISS-070): every write is refused until the database
         // is reopened, which undoes the commit from its journal.
         private volatile string transactionFault;
+        // Set when a failed statement's undo failed too (ISS-091): what this context holds may not be what the disk
+        // holds, so it writes nothing more until it is reopened.
+        private volatile string statementFault;
         // The transaction's batch is open: its commit hasn't ended it yet (a rollback discards it).
         private bool transactionBatchOpen;
         private int activeTransactionThreadId;
@@ -70,44 +79,11 @@ namespace Xod.Engines.Xml
             this.StorageFormat = this.options.StorageFormat;
             this.pageSize = this.options.PageSize > 0 ? this.options.PageSize : 524288;
 
-            string resolvedPath = null;
-            string resolvedRoot = null;
-
-            string ext = System.IO.Path.GetExtension(file)?.ToLowerInvariant();
-            if (ext == ".xod" || ext == ".xodj" || ext == ".xodb")
+            var (resolvedPath, resolvedRoot) = DatabaseFiles.Resolve(file);
+            if (!File.Exists(resolvedPath) && this.options.InitialCreate)
             {
-                resolvedPath = System.IO.Path.GetFullPath(file);
-                resolvedRoot = System.IO.Path.GetDirectoryName(resolvedPath);
-            }
-            else
-            {
-                resolvedRoot = System.IO.Path.GetFullPath(file);
-            }
-
-            if (string.IsNullOrEmpty(resolvedPath) || !File.Exists(resolvedPath))
-            {
-                if (Directory.Exists(resolvedRoot))
-                {
-                    // The database file by its own extensions, not "*.xod*", which also matches what a write or a
-                    // password change leaves beside it ("pw.xod.tmp", "pw.xod.xpwnew", "pw.xod.lock").
-                    string[] files = Directory.GetFiles(resolvedRoot)
-                        .Where(DatabaseFiles.IsDatabaseFile)
-                        .OrderBy(f => f, StringComparer.Ordinal)
-                        .ToArray();
-                    if (files.Length > 0 && string.IsNullOrEmpty(resolvedPath))
-                        resolvedPath = files[0];
-                }
-
-                if (string.IsNullOrEmpty(resolvedPath))
-                {
-                    resolvedPath = System.IO.Path.Combine(resolvedRoot, "data.xod");
-                }
-
-                if (!File.Exists(resolvedPath) && this.options.InitialCreate)
-                {
-                    Directory.CreateDirectory(resolvedRoot);
-                    IsNew = true;
-                }
+                Directory.CreateDirectory(resolvedRoot);
+                IsNew = true;
             }
 
             this.path = resolvedPath;
@@ -243,9 +219,12 @@ namespace Xod.Engines.Xml
                         }
                     }
 
-                    // The index now holds every row on the pages: whole, so it may be saved.
+                    // The index now holds every row on the pages: whole, so it may be saved. Not by a context that
+                    // writes nothing (WritesRefused): a read would fail on the refused write. The index is a derived
+                    // cache, so it is only rebuilt again at the next open.
                     indexService.MarkTypeHydrated(type);
-                    indexService.SaveToDisk(type);
+                    if (WritesRefused() == null)
+                        indexService.SaveToDisk(type);
                 }
 
                 indexService.MarkTypeHydrated(type);
@@ -267,20 +246,50 @@ namespace Xod.Engines.Xml
             return meta != null && meta.IsStandalone;
         }
 
+        // Every lock helper here either returns holding all it took or throws holding nothing: the caller's try, which
+        // gives the locks back, starts only after it returns (ISS-080, ISS-086).
         private void EnterTableReadLock(Type type, out ReaderWriterLockSlim tableLock)
         {
-            // Before the lock: this loads the type, which may refuse it (its attributes), and a throw after the
-            // lock was taken would leave it held, since the caller's try starts after this returns.
+            // Before the lock: this loads the type, which may refuse it (its attributes).
             bool standalone = IsStandaloneTable(type);
             rwLock.EnterReadLock();
             if (standalone)
             {
                 tableLock = GetTableLock(type);
-                tableLock.EnterReadLock();
+                EnterSecond(tableLock.EnterReadLock, rwLock.ExitReadLock);
             }
             else
             {
                 tableLock = null;
+            }
+        }
+
+        // The second lock of a pair: if taking it throws, the first is given back.
+        private static void EnterSecond(Action enter, Action exitFirst)
+        {
+            try
+            {
+                enter();
+            }
+            catch
+            {
+                exitFirst();
+                throw;
+            }
+        }
+
+        // A thread reading a table (inside a query's predicate, or enumerating its results) can't write it: a read
+        // lock can't be upgraded to a write lock. Said in XOD's terms rather than the lock's.
+        private static void EnterWrite(Action enter)
+        {
+            try
+            {
+                enter();
+            }
+            catch (LockRecursionException e)
+            {
+                throw new XodException("A table can't be written from inside a read of it on the same thread (a query's predicate, " +
+                    "or while enumerating a query's results): finish the read first, for example with ToList().", e);
             }
         }
 
@@ -300,14 +309,27 @@ namespace Xod.Engines.Xml
         /// The one decision that this context writes nothing more, checked when a write operation starts (so it
         /// changes nothing, in memory either) and again before every file write. A commit that failed and couldn't
         /// be undone: the next open undoes it from its journal, and would undo anything written now with it. A
-        /// context without a hold on the database: it can't tell whether others have it open (IOService).
+        /// statement whose undo failed: what the context holds may not be what the disk holds. A context without a
+        /// hold on the database: it can't tell whether others have it open (IOService).
         /// </summary>
         private void ThrowIfWritesRefused()
         {
+            var refused = WritesRefused();
+            if (refused != null)
+                throw refused;
+        }
+
+        // Why this context writes nothing more, or null: the one list of the reasons, which ThrowIfWritesRefused
+        // throws and Dispose asks before its last flush.
+        private Exception WritesRefused()
+        {
             if (transactionFault != null)
-                throw new TransactionException(transactionFault);
+                return new TransactionException(transactionFault);
+            if (statementFault != null)
+                return new XodException(statementFault);
             if (ioService.NoHoldReason != null)
-                throw new XodException(ioService.NoHoldReason);
+                return new XodException(ioService.NoHoldReason);
+            return null;
         }
 
         private void EnterTableWriteLock(Type type, out ReaderWriterLockSlim tableLock, out bool usedGlobalWriteLock)
@@ -319,13 +341,15 @@ namespace Xod.Engines.Xml
             {
                 usedGlobalWriteLock = false;
                 rwLock.EnterReadLock();
-                tableLock = GetTableLock(type);
-                tableLock.EnterWriteLock();
+                var table = GetTableLock(type);
+                EnterSecond(() => EnterWrite(table.EnterWriteLock), rwLock.ExitReadLock);
+                tableLock = table;
             }
             else
             {
                 usedGlobalWriteLock = true;
-                rwLock.EnterWriteLock();
+                EnterWrite(rwLock.EnterWriteLock);
+                globalWriteDepth++;
                 tableLock = null;
             }
         }
@@ -339,9 +363,14 @@ namespace Xod.Engines.Xml
             finally
             {
                 if (usedGlobalWriteLock)
+                {
+                    globalWriteDepth--;
                     rwLock.ExitWriteLock();
+                }
                 else
+                {
                     rwLock.ExitReadLock();
+                }
             }
         }
 
@@ -352,12 +381,14 @@ namespace Xod.Engines.Xml
                 if (activeTransaction != null && activeTransaction.IsActive)
                 {
                     activeTransaction.Rollback();
-                }
-                else
-                {
-                    if (ioService != null && indexService != null)
+                    // The rollback's autonumber marks (ISS-083) wait for a flush, and this is the last one.
+                    if (MayFlushAtClose())
                         FlushToDisk();
-                    indexService?.FoldLargeLogs();
+                }
+                else if (MayFlushAtClose())
+                {
+                    FlushToDisk();
+                    indexService.FoldLargeLogs();
                 }
             }
             finally
@@ -366,6 +397,10 @@ namespace Xod.Engines.Xml
                 DisposeResources();
             }
         }
+
+        // A context that writes nothing more (WritesRefused) writes nothing at its close either: each write would be
+        // refused, and the close would throw for what the caller has already been told.
+        private bool MayFlushAtClose() => ioService != null && indexService != null && WritesRefused() == null;
 
         private void DisposeResources()
         {

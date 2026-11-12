@@ -319,6 +319,59 @@ namespace Xod.Tests
             Assert.Equal(new[] { 1, 2 }, db.Select<NumberedItem>().Select(x => x.Id).OrderBy(x => x));
         }
 
+        // ISS-083: a number handed out inside a transaction that is rolled back is gone: the caller holds it (the
+        // insert gave it back), so it isn't handed out again, in this context or after reopening.
+        [Fact]
+        public void A_number_handed_out_in_a_rolled_back_transaction_is_not_handed_out_again()
+        {
+            string path = NewDatabase("rollback");
+            using var db = new XodContext(path);
+            db.Insert(new NumberedItem { Name = "a" });
+            db.Insert(new NumberedItem { Name = "b" });
+            using (var tx = db.BeginTransaction())
+            {
+                Assert.Equal(3, db.Insert(new NumberedItem { Name = "rolled back" }).Id);
+                tx.Rollback();
+            }
+            Assert.Equal(4, db.Insert(new NumberedItem { Name = "after" }).Id);
+        }
+
+        [Fact]
+        public void A_number_handed_out_in_a_transaction_the_close_rolls_back_is_not_handed_out_after_reopening()
+        {
+            string path = NewDatabase("rollback-reopen");
+            using (var db = new XodContext(path))
+            {
+                db.Insert(new NumberedItem { Name = "a" });
+                var tx = db.BeginTransaction();
+                Assert.Equal(2, db.Insert(new NumberedItem { Name = "rolled back" }).Id);
+                // Closed with the transaction open: the close rolls it back.
+            }
+            using (var db = new XodContext(path))
+            {
+                Assert.Equal(new[] { "a" }, db.Select<NumberedItem>().Select(x => x.Name));
+                Assert.Equal(3, db.Insert(new NumberedItem { Name = "after" }).Id);
+            }
+        }
+
+        // A table whose first rows were rolled back keeps the mark in a table with no pages.
+        [Fact]
+        public void A_number_handed_out_in_a_rolled_back_first_insert_is_not_handed_out_after_reopening()
+        {
+            string path = NewDatabase("rollback-first");
+            using (var db = new XodContext(path))
+            {
+                using var tx = db.BeginTransaction();
+                Assert.Equal(1, db.Insert(new NumberedItem { Name = "rolled back" }).Id);
+                tx.Rollback();
+            }
+            using (var db = new XodContext(path))
+            {
+                Assert.Empty(db.Select<NumberedItem>());
+                Assert.Equal(2, db.Insert(new NumberedItem { Name = "after" }).Id);
+            }
+        }
+
         // ---- Review of TASK-062 ----
 
         // The new item is the caller's: an update keeps each row's own value without writing it into the new

@@ -24,6 +24,7 @@ data, and that "the conformance set is the judge". This is that set. It has two 
 ```
 conformance/
   data/{xml,json,binary,password}/   the fixtures: one dataset, written by XOD 2.0.1
+  data/stored-values/                the stored-values fixture (ISS-060), written by the library in the tree
   cases/<group>.json                 the cases (12 groups), generated from Xod.Conformance/Cases.cs
   format/read.mjs                    the independent reader (Node 18+, standard library only)
   format/content*.json               what each fixture must read to (2.0 fixtures, and the 1.2.5 one)
@@ -173,6 +174,19 @@ for the number `2`, but the index stores `Gold`.
   is the one way to change what every implementation is judged against, so it is never part of a fix.
 - **Expected content of the format check:** `--write` rewrites `content.json` from the XML fixture and
   `content-v1.2.5.json`; `--check` then requires the other fixtures to match.
+
+### 6.1 Changes made
+
+- **2026-11-12, the stored-values fixture added** (`TASK-063`, [`PLAN-053`](PLAN-053-statement-undo-counters-stored-values-locks.md)):
+  ISS-060 gave the format two forms 2.0 never wrote, an element or attribute with no text (an empty string)
+  and an element marked `nil="true"` (null), so every reader must read them (PLAN-046 sections 7.2 and 8.3).
+  The 2.0 fixtures can't hold them (2.0 wrote neither) and stay as they are. `data/stored-values` holds two
+  small tables, one per row writer, written by the library in the tree with `-- stored-values` (its classes
+  and rows in `Xod.Conformance/StoredValuesFixture.cs`); `format/content-stored-values.json` is what it must
+  read to, and `--check-fresh` checks it as the tree writes it today. The reader's index check now keys an
+  element with no text as `""` and a nil element as nothing, as the library does. Each of four breaks of
+  the reader (the nil mark ignored, empty text read as missing, the index check skipping `""` or keying a
+  nil element) failed `--check` on this fixture.
 
 ## 7. The gate
 

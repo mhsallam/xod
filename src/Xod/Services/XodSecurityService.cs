@@ -22,7 +22,7 @@ namespace Xod.Helpers
         /// it. The change itself checks the password given against the database.</summary>
         public string Password { get; set; }
 
-        /// <summary>The database file.</summary>
+        /// <summary>The database: its file, or its folder, as for a context.</summary>
         public string Path { get; set; }
 
         public XodSecurityService(string path, string password = null)
@@ -38,11 +38,13 @@ namespace Xod.Helpers
         public void ChangePassword(string currentPassword, string newPassword) =>
             Change(currentPassword, db => db.ChangePassword(currentPassword, newPassword), CryptoHelper.GetSHA256HashData(newPassword));
 
-        // A database that isn't there has no files to change: only this object's password does, as before.
+        // The database found as a context finds it (a folder, a database file; a new database file beside one is
+        // refused, ISS-087). A database that isn't there has no files to change: only this object's password does,
+        // as before.
         private void Change(string openWith, Action<XodContext> change, string passwordAfter)
         {
             Changed?.Invoke(this, EventArgs.Empty);
-            if (!string.IsNullOrEmpty(Path) && File.Exists(Path))
+            if (!string.IsNullOrEmpty(Path) && File.Exists(DatabaseFiles.Resolve(Path).File))
             {
                 using var db = new XodContext(Path, openWith);
                 change(db);

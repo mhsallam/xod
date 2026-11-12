@@ -200,6 +200,8 @@ namespace Xod.Engines.Xml
         /// </summary>
         private void FlushToDisk()
         {
+            if (autonumberMarksPending)
+                RecordCountersInMarks();
             ioService.FlushBufferedFiles();
             indexService.FlushDirtyIndexes();
             ioService.FlushBufferedFiles();
@@ -237,13 +239,39 @@ namespace Xod.Engines.Xml
         /// The one place this context forgets what it holds, writes still pending included: after a rollback or
         /// a failed commit the disk is what counts, and nothing of the transaction may be shown or written later.
         /// </summary>
+        // Everything but the autonumber counters: a number handed out is gone whatever becomes of its row, since
+        // the caller holds it (the insert gave it back), so a rollback mustn't hand it out again (ISS-083). The
+        // counters only ever rise; their highs reach the tables' marks at the next flush (RecordCountersInMarks).
         private void ForgetEverythingHeld()
         {
             ioService.DiscardPendingWrites();
             itemsCacheService.ClearCurrentCache();
             indexService.ClearAll();
-            autonumberService.Reset();
             propertyKeys.Reset();
+        }
+
+        // Set by a rollback (or an undone commit): numbers it handed out are held only by the counters now.
+        private bool autonumberMarksPending;
+
+        /// <summary>
+        /// The counters' highs into the tables' marks (PLAN-046 section 6), after a rollback took away the rows
+        /// that held the numbers it handed out: only a mark keeps them from being handed out after a reopen. Run
+        /// by the next flush (the next transaction, Flush, or the close); a crash before then loses it, as it
+        /// loses any write still waiting.
+        /// </summary>
+        private void RecordCountersInMarks()
+        {
+            foreach (var type in autonumberService.CountedTypes())
+            {
+                string tableFileName = $"{type.FullName}.xtab";
+                // A table the rollback took away entirely keeps its mark in a table with no pages, as an emptied
+                // table does.
+                XFile tableFile = ioService.OpenFileOrCreate(tableFileName, typeof(Table), openOnly: true)
+                    ?? ioService.OpenFileOrCreate(tableFileName, typeof(Table));
+                if (tableFile != null && RaiseAutonumberMarks(type, tableFile, null))
+                    ioService.Save(tableFile);
+            }
+            autonumberMarksPending = false;
         }
     }
 }

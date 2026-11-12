@@ -58,7 +58,9 @@
 ### The read lock (ISS-080)
 
 `EnterTableReadLock` loads the type (`IsStandaloneTable`) before it takes the lock, as the write path already
-did, so a refusal leaves no lock held. It was the only lock site with work between the lock and its `try`.
+did, so a refusal leaves no lock held. This plan said it was the only lock site with work between the lock and
+its `try`; that was wrong: `EnterTableWriteLock` left its first lock held when the second threw, and
+`BeginTransaction` its gate (round 2 of the review, ISS-086, fixed in [`PLAN-053`](PLAN-053-statement-undo-counters-stored-values-locks.md)).
 
 ### One password writer (ISS-069)
 
@@ -87,7 +89,7 @@ did, so a refusal leaves no lock held. It was the only lock site with work betwe
 
 ## 3. Tests
 
-- `XodAutonumberTests` (69 with the earlier ones): a seed and increment used, in every encoding and without an
+- `XodAutonumberTests` (68 with the earlier ones; this plan said 69 until round 2 counted them): a seed and increment used, in every encoding and without an
   index; a long seed; settings refused when the type loads (increment 0, a fraction, text, out of range, a seed
   of 0 or less, a double seed past 2^53, a seed on a Guid); a float that stops at 2^24 instead of repeating a
   number; an update that raises, or lowers, an autonumber or an autonumber key; an unset key kept; one new item
@@ -152,23 +154,44 @@ and found:
   capability and a source break, the reviewer's view is that the release is a minor version, not a patch (the
   owner's decision).
 
-**Round 2** (ISS-069, ISS-072 and the round-1 fixes): pending.
+**Round 2** (ISS-069, ISS-072 and the round-1 fixes, on the committed tree `45f7a12`): the reviewer reproduced
+the baseline (82 tests in the three suites, net8.0 and net9.0) and probed with ten tests of its own. Verified
+here, each reproduced by a test that failed before its fix; fixed in `TASK-063`
+([`PLAN-053`](PLAN-053-statement-undo-counters-stored-values-locks.md)):
+
+- **ISS-084 (High; ISS-072 did not fully fix)**: a read-only lock file let the conversion past an open context
+  and, in place, rewrite the files under it; with a commit paused in another process, the conversion's
+  recovery undid it and deleted its journal, and the commit then reported success with its rows gone. The
+  exclusive open asked for write access, and an `UnauthorizedAccessException` was taken for a folder nothing
+  can write. The context's open had the same flaw (predates).
+- **ISS-085 (predates)**: a second database file in the folder escaped the lock (the lock is per file, the
+  database is the folder).
+- **ISS-086 (predates; this plan's claim about ISS-080 was wrong)**: a write from inside a read of its table
+  left the engine's read lock held.
+- **ISS-087**: the public password service did nothing, silently, given the database's folder.
+- Named debt, filed: what an update's triggers and write-backs see (ISS-092); a Binary conversion in place not
+  staying Binary (ISS-093). Recorded in PLAN-053 section 7: the migrator's case-insensitive folder comparison on
+  a case-sensitive volume; the service can't pass `DatabaseOptions` (a Binary `.xod` database changed through
+  it gets its database file rewritten as XML, which still reads).
+- Confirmed: one password writer; the migrator's target whole or absent; the update path's copy (one merge, the
+  checks and the index on the row's item); the dependency claims about `Directory.Move`, `File.Move` and
+  `Delegate.CreateDelegate`, per the .NET docs and the release/9.0 source.
 
 ## 6. Verdicts
 
-Provisional, until round 2 of the review reports:
+After round 2 of the review (its findings fixed in `TASK-063`, PLAN-053):
 
 | Change | Verdict |
 | :--- | :--- |
 | ISS-047 seed and increment | Clean: one reader, when the type loads |
 | ISS-048 `EnableCompression` | Mitigation: `[Obsolete]`; removal waits for a major version (ISS-048 open) |
 | ISS-059 counter and mark on update | Clean with named debt: the update's mark write has a delete's batch crash window |
-| ISS-075 unset autonumber kept | Clean: the row's item is a copy; the caller's new item is never changed |
-| ISS-080 read lock | Clean: the type loads before the lock |
+| ISS-075 unset autonumber kept | Clean with named debt: the row's item is a copy and the caller's new item is never changed, so what triggers and write-backs see depends on whether a copy was made (ISS-092) |
+| ISS-080 read lock | Clean for this case; the class (a lock left held when the second step throws) stayed open until ISS-086 |
 | ISS-081 filter merge | Clean: one merge, elements and attributes |
 | ISS-082 checks and index under a filter | Clean: they see the row as stored |
-| ISS-069 public password service | Clean with named debt: the obsolete types stay until a major version |
-| ISS-072 migrator | Clean with named debt: a crash leaves the staging folder; the source folder is recognised by its path; nothing is flushed to the device (PLAN-046 section 9) |
+| ISS-069 public password service | Clean with named debt: the obsolete types stay until a major version; a folder path did nothing until ISS-087 |
+| ISS-072 migrator | Did not fully fix as committed here: a read-only lock file and a second database file got past the hold (ISS-084, ISS-085). With those fixed: clean with named debt (a crash leaves the staging folder; the source folder is recognised by its path; nothing is flushed to the device, PLAN-046 section 9) |
 
 **Gate** (the tree as committed, 2026-11-12): `Xod.Tests` 239/239 on net8.0 and on net9.0; conformance 14/14
 on each; the independent reader `read.mjs --check` and `--check-fresh` ok; `XodBench.Tests` 26/26; the

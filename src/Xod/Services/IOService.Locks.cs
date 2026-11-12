@@ -51,7 +51,6 @@ namespace Xod.Services
             if (RecoveryPending(root))
             {
                 FileStream alone = null;
-                bool folderWritable = true;
                 try
                 {
                     alone = OpenLockFile(exclusive: true, retryTimeoutMs: 0);
@@ -60,21 +59,21 @@ namespace Xod.Services
                 {
                     // Another context has the database open: what is pending may be its own, under way.
                 }
-                catch (UnauthorizedAccessException)
+                catch (UnauthorizedAccessException e)
                 {
-                    folderWritable = false;
+                    // No hold can be taken, so nothing tells whether what is pending is another context's, under
+                    // way: it is never recovered without the database to itself (ISS-084: an open that took this
+                    // for a folder nothing could write undid a live commit). A folder nothing can write can't be
+                    // recovered either, so this open would have failed there anyway.
+                    throw new XodException("'" + root + "' holds what a write left (cut short by a crash, or under way in another " +
+                        "context). Recovering it needs the database to itself, but this context can't open or create the database's lock " +
+                        "file (" + e.Message + "), so it can't tell which. Open the database as a user who can, where its folder can be written.", e);
                 }
 
                 if (alone != null)
                 {
                     using (alone)
                         RecoverInterruptedWrites(root);
-                }
-                else if (!folderWritable)
-                {
-                    // Nothing can be written here, by this context or another: the recovery either finds nothing it
-                    // must change, or stops the open (a commit or a password change half done can't be opened).
-                    RecoverInterruptedWrites(root);
                 }
             }
 
@@ -84,9 +83,9 @@ namespace Xod.Services
             }
             catch (UnauthorizedAccessException e)
             {
-                // The lock file isn't there and the folder can't be written (a database from 2.0.1, or copied
-                // without the file, on read-only media): opened for reading only.
-                NoHoldReason = "This context holds no lock on the database, since the lock file can't be created in its folder (" +
+                // The lock file can't be created (a folder this user can't write: a database from 2.0.1, or copied
+                // without the file, on read-only media) or can't be opened: open for reading only.
+                NoHoldReason = "This context holds no lock on the database, since it can't open or create the database's lock file (" +
                     e.Message + "), so it can't tell whether others have the database open: it is open for reading only.";
             }
             this.exclusivePresence = false;
@@ -94,7 +93,7 @@ namespace Xod.Services
 
         // What a crash may have left: a transaction journal (or one cut short), a password change, an atomic write
         // of a database file.
-        private static bool RecoveryPending(string root) =>
+        internal static bool RecoveryPending(string root) =>
             Directory.EnumerateFiles(root).Any(f =>
                 f.EndsWith(".xwal", StringComparison.OrdinalIgnoreCase) ||
                 f.EndsWith(".xwal.tmp", StringComparison.OrdinalIgnoreCase) ||
@@ -119,11 +118,14 @@ namespace Xod.Services
 
         /// <summary>
         /// The one place a database's lock file (<c>&lt;database file&gt;.lock</c>) is opened, by a context and by
-        /// <see cref="XodMigrator"/>. Shared: read access, others may read and write (on Unix .NET takes a shared
-        /// advisory lock); exclusive: no sharing (an exclusive one). Either fails while the other kind is held, on a
-        /// file system with locking (not when .NET's file locking is switched off: System.IO.DisableFileLocking),
-        /// with <see cref="DatabaseLockedException"/> once <paramref name="retryTimeoutMs"/> has passed. Creating the
-        /// file needs the folder to be writable; an UnauthorizedAccessException says it isn't.
+        /// <see cref="XodMigrator"/>. Both kinds open it with read access only, so a read-only lock file holds as well
+        /// as any (ISS-084): shared lets others read and write it (on Unix .NET takes a shared advisory lock, flock
+        /// LOCK_SH); exclusive shares nothing (LOCK_EX, which .NET takes for FileShare.None whatever the access:
+        /// SafeFileHandle.Unix.cs, dotnet/runtime release/9.0). Either fails while the other kind is held, on a file
+        /// system with locking (not when .NET's file locking is switched off: System.IO.DisableFileLocking), with
+        /// <see cref="DatabaseLockedException"/> once <paramref name="retryTimeoutMs"/> has passed. An
+        /// UnauthorizedAccessException says the file can't be created (its folder can't be written) or opened (its
+        /// permissions): no hold, and no telling whether others have the database open.
         /// </summary>
         internal static FileStream OpenLockFile(string databasePath, bool exclusive, int retryTimeoutMs)
         {
@@ -135,9 +137,7 @@ namespace Xod.Services
             {
                 try
                 {
-                    return exclusive
-                        ? new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)
-                        : new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite);
+                    return new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.Read, exclusive ? FileShare.None : FileShare.ReadWrite);
                 }
                 catch (IOException ex)
                 {

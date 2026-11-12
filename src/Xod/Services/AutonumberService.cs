@@ -13,8 +13,8 @@ namespace Xod.Services
     /// after the row that held it is deleted, in this context or after reopening (ISS-052), or after an update
     /// changes it (ISS-059, XmlEngine.RecordAutonumberChanges). Not covered: two contexts writing one database at
     /// once without <c>DatabaseOptions.LockDatabase</c>; a crash between a delete's or an update's page write and
-    /// its mark write, since a batch flushes its files in no fixed order; and a rollback, which resets the
-    /// counters, so a number handed out inside the rolled-back transaction is handed out again.
+    /// its mark write, since a batch flushes its files in no fixed order; and a crash after a rollback and before
+    /// the next flush, which records the rolled-back numbers in the marks (ISS-083, XmlEngine.RecordCountersInMarks).
     /// </summary>
     internal class AutonumberService : IDisposable
     {
@@ -185,6 +185,15 @@ namespace Xod.Services
             else
             {
                 Observe(type, prop, Convert.ToDecimal(currentVal, CultureInfo.InvariantCulture));
+            }
+        }
+
+        /// <summary>The types with a counter that has handed out or seen a number.</summary>
+        internal List<Type> CountedTypes()
+        {
+            lock (syncLock)
+            {
+                return counters.Where(c => c.Value.High.HasValue).Select(c => c.Key.Type).Distinct().ToList();
             }
         }
 

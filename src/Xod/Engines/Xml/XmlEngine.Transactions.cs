@@ -22,7 +22,7 @@ namespace Xod.Engines.Xml
                 throw new TransactionException($"Timed out after {timeoutMs}ms waiting to acquire transaction lock.");
             }
 
-            rwLock.EnterWriteLock();
+            EnterSecond(() => EnterWrite(rwLock.EnterWriteLock), () => transactionGate.Release());
             try
             {
                 // Everything this context holds goes to disk first (with buffered durability, writes may wait in
@@ -73,6 +73,7 @@ namespace Xod.Engines.Xml
                         {
                             ForgetEverythingHeld();
                         }
+                        autonumberMarksPending = true;
                     },
                     onFaulted: message => transactionFault = message,
                     onDispose: () =>

@@ -439,13 +439,7 @@ namespace Xod.Engines.Xml
 
                     if (!e.HasAttributes)
                     {
-                        string strVal = e.Value;
-                        if (!string.IsNullOrEmpty(strVal))
-                        {
-                            object val = ReadValue(prop, prop.PropertyType, strVal);
-                            if (val != null)
-                                prop.SetValue(item, val);
-                        }
+                        SetFromStoredScalar(item, prop, e);
                         continue;
                     }
 
@@ -501,13 +495,7 @@ namespace Xod.Engines.Xml
                     }
                     else
                     {
-                        string strVal = e.Value;
-                        if (!string.IsNullOrEmpty(strVal))
-                        {
-                            object val = ReadValue(prop, prop.PropertyType, strVal);
-                            if (val != null)
-                                prop.SetValue(item, val);
-                        }
+                        SetFromStoredScalar(item, prop, e);
                     }
                 }
 
@@ -650,6 +638,12 @@ namespace Xod.Engines.Xml
                     else
                     {
                         string stringValue = e.Value;
+                        if (!prop.IsGenericType && ValueHelper.IsScalarType(prop.PropertyType) &&
+                            (stringValue.Length == 0 || StoredValue.IsNil(e)))
+                        {
+                            SetFromStoredScalar(item, prop, e);
+                            continue;
+                        }
                         if (string.IsNullOrEmpty(stringValue))
                             continue;
 
@@ -753,6 +747,26 @@ namespace Xod.Engines.Xml
 
             itemsCacheService.Add(cache);
             return item;
+        }
+
+        /// <summary>
+        /// Sets a property from its stored scalar element (ISS-060): <c>nil="true"</c> is null; an empty text is
+        /// an empty string where the property has that form (StoredValue.HasEmptyForm) and nothing otherwise;
+        /// any other text is read as a read reads it.
+        /// </summary>
+        private void SetFromStoredScalar(object item, PropertyInfoItem prop, XElement e)
+        {
+            if (StoredValue.IsNil(e))
+            {
+                prop.SetValue(item, null);
+                return;
+            }
+            string text = e.Value;
+            if (text.Length == 0 && !StoredValue.HasEmptyForm(prop))
+                return;
+            object val = ReadValue(prop, prop.PropertyType, text);
+            if (val != null)
+                prop.SetValue(item, val);
         }
 
         private object ReadValue(PropertyInfoItem prop, Type targetType, string stringValue)

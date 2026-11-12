@@ -50,6 +50,7 @@ jobs:
         if: matrix.framework == '9.0'
         run: |
           dotnet run --project conformance/Xod.Conformance/Xod.Conformance.csproj -c Release -f net9.0 -- data "${{ runner.temp }}/fresh"
+          dotnet run --project conformance/Xod.Conformance/Xod.Conformance.csproj -c Release -f net9.0 -- stored-values "${{ runner.temp }}/fresh"
           node conformance/format/read.mjs --check-fresh "${{ runner.temp }}/fresh"
 
       # The stress harness writes the files the site publishes; these pin what those files must say.

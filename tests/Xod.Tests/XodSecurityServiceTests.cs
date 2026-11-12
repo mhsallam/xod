@@ -85,6 +85,31 @@ namespace Xod.Tests
             Assert.Empty(Directory.GetFiles(dir));
         }
 
+        // ISS-087: given the database's folder, which a context accepts, the service changed nothing and reported
+        // nothing (it acted only on a path that was a file). It now finds the database as a context does.
+        [Fact]
+        public void A_change_through_the_database_folder_changes_the_database()
+        {
+            string path = NewDatabase("folder");
+            var service = new XodSecurityService(Path.GetDirectoryName(path)!, CryptoHelper.GetSHA256HashData("first"));
+            service.ChangePassword("first", "second");
+
+            using var db = new XodContext(path, "second");
+            Assert.Equal(5, db.Count<SecretMemo>());
+        }
+
+        // A database file named wrongly, in a folder that holds the database, is refused rather than taken for a
+        // database not created yet (which changes nothing).
+        [Fact]
+        public void A_mistyped_database_file_beside_the_database_is_refused()
+        {
+            string path = NewDatabase("mistyped");
+            var service = new XodSecurityService(Path.Combine(Path.GetDirectoryName(path)!, "ap.xod"), CryptoHelper.GetSHA256HashData("first"));
+            Assert.ThrowsAny<XodException>(() => service.ChangePassword("first", "second"));
+            using var db = new XodContext(path, "first");
+            Assert.Equal(5, db.Count<SecretMemo>());
+        }
+
         [Fact]
         public void The_public_service_refuses_a_wrong_current_password()
         {
