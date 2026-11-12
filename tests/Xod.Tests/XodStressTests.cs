@@ -274,8 +274,9 @@ namespace Xod.Tests
                 Assert.Throws<DatabaseLockedException>(() => new XodContext(dbPath, options: lockOptions));
             }
 
-            // Once primaryOwner is disposed, the .lock file is released and removed, allowing a new owner to acquire it
-            Assert.False(File.Exists(dbPath + ".lock"));
+            // Once primaryOwner is disposed the lock is released, allowing a new owner to acquire it. The file
+            // stays (PLAN-051): deleting it would let two contexts hold different files on Unix.
+            Assert.True(File.Exists(dbPath + ".lock"));
             using (var nextOwner = new XodContext(dbPath, options: lockOptions))
             {
                 Assert.Equal(1, nextOwner.Count<ToDoItem>());

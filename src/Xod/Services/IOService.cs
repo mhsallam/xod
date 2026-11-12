@@ -76,12 +76,10 @@ namespace Xod.Services
             this.storageSerializer = StorageSerializerFactory.Get(storageFormat);
             this.bufferedDurability = bufferedDurability;
 
-            if (lockDatabase && !string.IsNullOrEmpty(this.root) && Directory.Exists(this.root))
+            if (!string.IsNullOrEmpty(this.root) && Directory.Exists(this.root))
             {
-                AcquireDatabaseLock(lockRetryTimeoutMs);
+                OpenAndRecover(lockDatabase, lockRetryTimeoutMs);
             }
-
-            RecoverInterruptedWrites();
         }
 
         internal string RootDirectory => root;
@@ -188,18 +186,47 @@ namespace Xod.Services
             }
         }
 
+        /// <summary>
+        /// Drops what this context caches of the files, but never a write it hasn't made yet: a file or page that
+        /// waits in a batch or the buffer stays cached, since a later read must see it and a later write must
+        /// change it, not a copy read again from disk. <see cref="DiscardPendingWrites"/> drops those.
+        /// </summary>
         internal void ClearCurrentCache()
         {
             lock (syncLock)
             {
-                foreach (var rawPage in cachedRawPages.Values)
+                foreach (string name in cachedRawPages.Keys.ToList())
                 {
-                    rawPage?.ReleasePooledBuffer();
+                    if (dirtyBatchRawPages.Contains(name) || dirtyBufferedRawPages.Contains(name))
+                        continue;
+                    cachedRawPages[name]?.ReleasePooledBuffer();
+                    cachedRawPages.Remove(name);
                 }
-                cachedFiles.Clear();
-                cachedRawPages.Clear();
+                foreach (string name in cachedFiles.Keys.ToList())
+                {
+                    var entry = cachedFiles[name];
+                    if (dirtyBatchFiles.Contains(entry.File) || dirtyBufferedFiles.Contains(entry.File))
+                        continue;
+                    cachedFileBytes -= entry.CostBytes;
+                    cachedFiles.Remove(name);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Forgets every write this context hasn't made yet (a batch's, the buffer's) and everything it caches,
+        /// so none of it reaches the disk later: for a rollback, a failed commit, a close whose flush failed. The
+        /// one place pending writes are dropped; a batch still open is ended first by its owner (DiscardBatch).
+        /// </summary>
+        internal void DiscardPendingWrites()
+        {
+            lock (syncLock)
+            {
+                dirtyBatchFiles.Clear();
+                dirtyBufferedFiles.Clear();
                 dirtyBatchRawPages.Clear();
                 dirtyBufferedRawPages.Clear();
+                ClearCurrentCache();
             }
         }
 
@@ -208,24 +235,19 @@ namespace Xod.Services
             ClearCurrentCache();
         }
 
+        // The hold is let go even when the last flush fails: the context is gone either way, and a hold kept would
+        // refuse every later open with LockDatabase, and every password change, until the garbage collector ran.
         public void Dispose()
         {
-            FlushBufferedFiles();
-            ClearCurrentCache();
-            if (lockStream != null)
+            try
             {
-                try
-                {
-                    lockStream.Dispose();
-                    lockStream = null;
-                    if (!string.IsNullOrEmpty(lockFilePath) && File.Exists(lockFilePath))
-                    {
-                        File.Delete(lockFilePath);
-                    }
-                }
-                catch
-                {
-                }
+                FaultInjection.Step("closing");
+                FlushBufferedFiles();
+            }
+            finally
+            {
+                DiscardPendingWrites();
+                ReleaseHold();
             }
         }
     }

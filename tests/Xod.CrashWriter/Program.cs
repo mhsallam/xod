@@ -36,7 +36,7 @@ public static class Program
     {
         if (args.Length < 2)
         {
-            Console.Error.WriteLine("usage: Xod.CrashWriter <setup|onebatch|burst|count|pwsetup|pwchange|pwchange-twice|pwchange-then-write|bufferedflush|pwchange-buffered> <directory>");
+            Console.Error.WriteLine("usage: Xod.CrashWriter <setup|onebatch|burst|count|pwsetup|pwchange|pwchange-twice|pwchange-then-write|bufferedflush|pwchange-buffered|txcommit|txfail|pwopen|pwopen-locked> <directory>");
             return 2;
         }
 
@@ -51,6 +51,11 @@ public static class Program
             EnableIndexing = true,
             StorageFormat = StorageFormat.Xml,
         };
+        // Options a test sets for any mode.
+        if (Environment.GetEnvironmentVariable("XOD_TEST_DURABILITY") == "Buffered")
+            options.Durability = DurabilityMode.Buffered;
+        if (Environment.GetEnvironmentVariable("XOD_TEST_LOCK") == "1")
+            options.LockDatabase = true;
 
         if (mode == "setup")
         {
@@ -143,6 +148,143 @@ public static class Program
             return 0;
         }
 
+        // A transaction of one batch, committed; XOD_CRASH_AT_STEP / XOD_FAIL_AT_STEP stop it part-way.
+        if (mode == "txcommit" || mode == "txfail")
+        {
+            using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
+            try
+            {
+                using (var tx = db.BeginTransaction())
+                {
+                    // XOD_TEST_BATCH: which batch the transaction inserts (1 by default).
+                    int batch = int.TryParse(Environment.GetEnvironmentVariable("XOD_TEST_BATCH"), out int b) ? b : 1;
+                    // XOD_TEST_SINGLE: one insert per customer, which leaves the indexes to the commit to write.
+                    if (Environment.GetEnvironmentVariable("XOD_TEST_SINGLE") == "1")
+                        foreach (var customer in BuildBatch(batch))
+                            db.Insert(customer);
+                    else
+                        db.InsertRange(BuildBatch(batch));
+                    tx.Commit();
+                }
+                Console.WriteLine("COMMITTED");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("COMMIT FAILED " + e.GetType().Name + ": " + e.Message);
+            }
+            if (mode == "txcommit")
+                return 0;
+
+            // What this context sees after the failed commit, and whether it can go on writing (the next batch
+            // after what it sees).
+            int seen = db.Count<CrashCustomer>();
+            Console.WriteLine("COUNT " + seen);
+            try
+            {
+                db.InsertRange(BuildBatch(seen / BatchCustomers));
+                db.Flush();
+                Console.WriteLine("WROTE");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("REFUSED " + e.GetType().Name + ": " + e.Message);
+            }
+            return 0;
+        }
+
+        // A batch written outside a transaction (buffered, with XOD_TEST_DURABILITY=Buffered), then a transaction
+        // of the next batch that commits (XOD_FAIL_AT_STEP may fail it) or, in "txwrite-rollback", rolls back.
+        // Then what the context sees, and whether it can go on writing; then whether this process can open the
+        // database again once the context is disposed (it must have let go of it).
+        if (mode == "txwrite-commit" || mode == "txwrite-rollback")
+        {
+            string dbPath = Path.Combine(dir, "pw.xod");
+            var db = new XodContext(dbPath, "first", options);
+            try
+            {
+                db.InsertRange(BuildBatch(1));
+                try
+                {
+                    using (var tx = db.BeginTransaction())
+                    {
+                        db.InsertRange(BuildBatch(2));
+                        if (mode == "txwrite-commit")
+                            tx.Commit();
+                        else
+                            tx.Rollback();
+                    }
+                    Console.WriteLine(mode == "txwrite-commit" ? "COMMITTED" : "ROLLED BACK");
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("COMMIT FAILED " + e.GetType().Name + ": " + e.Message);
+                }
+
+                int seen = db.Count<CrashCustomer>();
+                Console.WriteLine("COUNT " + seen);
+                try
+                {
+                    db.InsertRange(BuildBatch(seen / BatchCustomers));
+                    db.Flush();
+                    Console.WriteLine("WROTE");
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("REFUSED " + e.GetType().Name + ": " + e.Message);
+                }
+            }
+            finally
+            {
+                try { db.Dispose(); Console.WriteLine("DISPOSED"); }
+                catch (Exception e) { Console.WriteLine("DISPOSE FAILED " + e.GetType().Name + ": " + e.Message); }
+            }
+
+            try
+            {
+                using var again = new XodContext(dbPath, "first", options);
+                Console.WriteLine("REOPENED");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("REOPEN FAILED " + e.GetType().Name + ": " + e.Message);
+            }
+            return 0;
+        }
+
+        // Opens the password database and counts (a recovery at open may fail: XOD_FAIL_AT_STEP).
+        if (mode == "pwopen")
+        {
+            try
+            {
+                using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
+                Console.WriteLine("COUNT " + db.Count<CrashCustomer>());
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("OPEN FAILED " + e.GetType().Name + ": " + e.Message);
+            }
+            return 0;
+        }
+
+        // With LockDatabase: an open whose recovery fails (XOD_FAIL_AT_STEP, once), then another in this process.
+        if (mode == "pwopen-locked")
+        {
+            options.LockDatabase = true;
+            for (int attempt = 1; attempt <= 2; attempt++)
+            {
+                try
+                {
+                    using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
+                    Console.WriteLine("OPEN " + attempt + " COUNT " + db.Count<CrashCustomer>());
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("OPEN " + attempt + " FAILED " + e.GetType().Name + ": " + e.Message);
+                }
+            }
+            return 0;
+        }
+
         if (mode == "count")
         {
             using var check = new XodContext(path);
@@ -186,9 +328,9 @@ public static class Program
             db.ChangePassword(from, to);
             return true;
         }
-        catch (XodException e)
+        catch (Exception e)
         {
-            Console.WriteLine("PENDING " + e.Message);
+            Console.WriteLine("PENDING " + e.GetType().Name + ": " + e.Message);
             return false;
         }
     }

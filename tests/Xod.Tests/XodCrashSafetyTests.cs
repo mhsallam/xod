@@ -105,10 +105,12 @@ namespace Xod.Tests
         }
 
         private (int ExitCode, string Output) RunWriter(string mode, string dir, int? crashAfterRows = null) =>
-            RunWriterProcess(mode, dir, crashAfterRows.HasValue ? ("XOD_CRASH_AFTER_ROWS", crashAfterRows.Value.ToString()) : default);
+            crashAfterRows.HasValue
+                ? RunWriterProcess(mode, dir, ("XOD_CRASH_AFTER_ROWS", crashAfterRows.Value.ToString()))
+                : RunWriterProcess(mode, dir);
 
         /// <summary>Starts the crash writer with its standard input open (for XOD_PAUSE_AT_STEP).</summary>
-        internal static Process StartWriterProcess(string mode, string dir, (string Name, string Value) fault)
+        internal static Process StartWriterProcess(string mode, string dir, params (string Name, string Value)[] env)
         {
             var psi = new ProcessStartInfo("dotnet")
             {
@@ -121,13 +123,14 @@ namespace Xod.Tests
             psi.ArgumentList.Add(WriterDll());
             psi.ArgumentList.Add(mode);
             psi.ArgumentList.Add(dir);
-            psi.Environment[fault.Name] = fault.Value;
+            foreach (var (name, value) in env)
+                psi.Environment[name] = value;
             return Process.Start(psi)!;
         }
 
-        /// <summary>Runs the crash writer to completion (or its crash); <paramref name="crash"/> names the fault
-        /// injection variable to set, if any.</summary>
-        internal static (int ExitCode, string Output) RunWriterProcess(string mode, string dir, (string Name, string Value) crash = default)
+        /// <summary>Runs the crash writer to completion (or its crash); <paramref name="env"/> sets the fault
+        /// injection variables and the writer's options (XOD_TEST_DURABILITY, XOD_TEST_LOCK).</summary>
+        internal static (int ExitCode, string Output) RunWriterProcess(string mode, string dir, params (string Name, string Value)[] env)
         {
             var psi = new ProcessStartInfo("dotnet")
             {
@@ -140,8 +143,8 @@ namespace Xod.Tests
             psi.ArgumentList.Add(mode);
             psi.ArgumentList.Add(dir);
 
-            if (crash.Name != null)
-                psi.Environment[crash.Name] = crash.Value;
+            foreach (var (name, value) in env)
+                psi.Environment[name] = value;
 
             using var process = Process.Start(psi)!;
             string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();

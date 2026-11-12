@@ -252,37 +252,6 @@ namespace Xod.Tests
 
         // ---- the crash writer: 25 customers with 3 orders each, under the password "first" ----
 
-        private string NewCrashDatabase(string name)
-        {
-            string dir = Path.Combine(tempRoot, name);
-            Directory.CreateDirectory(dir);
-            var setup = XodCrashSafetyTests.RunWriterProcess("pwsetup", dir);
-            Assert.True(setup.ExitCode == 0, setup.Output);
-            return dir;
-        }
-
-        // Every customer and order is there and found by its key, through the index.
-        private static void HoldsBatches(string dir, string password, int batches)
-        {
-            using var db = new XodContext(Path.Combine(dir, "pw.xod"), password);
-            Assert.Equal(25 * batches, db.Count<CrashCustomer>());
-            Assert.Equal(75 * batches, db.Count<CrashOrder>());
-            for (int id = 1; id <= 25 * batches; id++)
-                Assert.True(db.Find<CrashCustomer>(c => c.Id == id) != null, "customer " + id + " not found");
-            for (int id = 1; id <= 75 * batches; id++)
-                Assert.True(db.Find<CrashOrder>(o => o.Id == id) != null, "order " + id + " not found");
-        }
-
-        private static void DoesNotOpen(string dir, string password)
-        {
-            Assert.ThrowsAny<Exception>(() =>
-            {
-                using var db = new XodContext(Path.Combine(dir, "pw.xod"), password);
-                db.Count<CrashCustomer>();
-                db.Count<CrashOrder>();
-            });
-        }
-
         // A process killed at each step of a change: before the change is committed the database is the old
         // password's; from the commit on it is the new one's, finished at the next open. No file is ever
         // written in plain on the way.
@@ -294,7 +263,7 @@ namespace Xod.Tests
         [InlineData("switched:3", true)]
         public void A_crash_during_a_password_change_leaves_one_password(string step, bool changed)
         {
-            string dir = NewCrashDatabase("crash-" + step.Replace(':', '-'));
+            string dir = CrashDb.New(tempRoot, "crash-" + step.Replace(':', '-'));
 
             var change = XodCrashSafetyTests.RunWriterProcess("pwchange", dir, ("XOD_CRASH_AT_STEP", step));
             Assert.NotEqual(0, change.ExitCode);
@@ -304,8 +273,8 @@ namespace Xod.Tests
             Assert.All(Directory.GetFiles(dir).Where(f => !f.EndsWith(".lock", StringComparison.OrdinalIgnoreCase) && !f.EndsWith(".xpwlog", StringComparison.OrdinalIgnoreCase)),
                 f => Assert.True(Enveloped(f), Path.GetFileName(f) + " is in plain"));
 
-            HoldsBatches(dir, changed ? "second" : "first", 1);
-            DoesNotOpen(dir, changed ? "first" : "second");
+            CrashDb.HoldsBatches(dir, changed ? "second" : "first", 1);
+            CrashDb.DoesNotOpen(dir, changed ? "first" : "second");
             NothingLeftOver(dir);
         }
 
@@ -313,14 +282,14 @@ namespace Xod.Tests
         [Fact]
         public void A_commit_record_cut_short_is_not_a_commit()
         {
-            string dir = NewCrashDatabase("torn-record");
+            string dir = CrashDb.New(tempRoot, "torn-record");
             Assert.NotEqual(0, XodCrashSafetyTests.RunWriterProcess("pwchange", dir, ("XOD_CRASH_AT_STEP", "staged:3")).ExitCode);
 
             var staged = Directory.GetFiles(dir, "*.xpwnew").Select(f => Path.GetFileNameWithoutExtension(f)).ToList();
             Assert.Equal(3, staged.Count);
             File.WriteAllText(Path.Combine(dir, "pw.xod.xpwlog"), "XOD password change v1\n" + string.Join("\n", staged) + "\n");
 
-            HoldsBatches(dir, "first", 1);
+            CrashDb.HoldsBatches(dir, "first", 1);
             NothingLeftOver(dir);
         }
 
@@ -331,12 +300,12 @@ namespace Xod.Tests
         [InlineData("CrashCustomer.xtab")]
         public void A_change_that_cannot_replace_a_file_finishes_when_the_database_is_next_opened(string file)
         {
-            string dir = NewCrashDatabase("unreplaceable-" + file);
+            string dir = CrashDb.New(tempRoot, "unreplaceable-" + file);
             var change = XodCrashSafetyTests.RunWriterProcess("pwchange", dir, ("XOD_FAIL_AT_STEP", "switching:" + file));
             Assert.Contains("PENDING", change.Output);
 
-            HoldsBatches(dir, "second", 1);
-            DoesNotOpen(dir, "first");
+            CrashDb.HoldsBatches(dir, "second", 1);
+            CrashDb.DoesNotOpen(dir, "first");
             NothingLeftOver(dir);
         }
 
@@ -347,13 +316,13 @@ namespace Xod.Tests
         [InlineData("CrashCustomer.xtab")]
         public void A_change_after_one_that_did_not_finish_finishes_it_first(string file)
         {
-            string dir = NewCrashDatabase("unfinished-then-change-" + file);
+            string dir = CrashDb.New(tempRoot, "unfinished-then-change-" + file);
             var run = XodCrashSafetyTests.RunWriterProcess("pwchange-twice", dir, ("XOD_FAIL_AT_STEP", "switching:" + file));
             Assert.Contains("PENDING", run.Output);
             Assert.Contains("CHANGED", run.Output);
 
-            HoldsBatches(dir, "third", 1);
-            DoesNotOpen(dir, "second");
+            CrashDb.HoldsBatches(dir, "third", 1);
+            CrashDb.DoesNotOpen(dir, "second");
             NothingLeftOver(dir);
         }
 
@@ -362,12 +331,12 @@ namespace Xod.Tests
         [Fact]
         public void Writes_after_a_change_that_did_not_finish_are_kept()
         {
-            string dir = NewCrashDatabase("unfinished-then-write");
+            string dir = CrashDb.New(tempRoot, "unfinished-then-write");
             var run = XodCrashSafetyTests.RunWriterProcess("pwchange-then-write", dir, ("XOD_FAIL_AT_STEP", "switching:CrashCustomer.xidx"));
             Assert.Contains("PENDING", run.Output);
             Assert.Contains("WROTE", run.Output);
 
-            HoldsBatches(dir, "second", 2);
+            CrashDb.HoldsBatches(dir, "second", 2);
             NothingLeftOver(dir);
         }
 
@@ -376,7 +345,7 @@ namespace Xod.Tests
         [Fact]
         public void Opening_the_database_during_a_change_is_refused_and_the_change_completes()
         {
-            string dir = NewCrashDatabase("open-during-change");
+            string dir = CrashDb.New(tempRoot, "open-during-change");
             using var writer = XodCrashSafetyTests.StartWriterProcess("pwchange", dir, ("XOD_PAUSE_AT_STEP", "staged:2"));
             string line;
             while ((line = writer.StandardOutput.ReadLine()) != null && !line.StartsWith("PAUSED", StringComparison.Ordinal)) { }
@@ -395,7 +364,7 @@ namespace Xod.Tests
             Assert.True(writer.ExitCode == 0, rest);
             Assert.Contains("CHANGED", rest);
 
-            HoldsBatches(dir, "second", 1);
+            CrashDb.HoldsBatches(dir, "second", 1);
             NothingLeftOver(dir);
         }
 
@@ -403,11 +372,11 @@ namespace Xod.Tests
         [Fact]
         public void A_password_change_with_buffered_durability_keeps_rows_not_yet_flushed()
         {
-            string dir = NewCrashDatabase("buffered-change");
+            string dir = CrashDb.New(tempRoot, "buffered-change");
             var run = XodCrashSafetyTests.RunWriterProcess("pwchange-buffered", dir, ("XOD_CRASH_AT_STEP", "committed"));
             Assert.NotEqual(0, run.ExitCode);
 
-            HoldsBatches(dir, "second", 2);
+            CrashDb.HoldsBatches(dir, "second", 2);
             NothingLeftOver(dir);
         }
     }

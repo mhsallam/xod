@@ -14,6 +14,8 @@ The project's memory. `xod2` is the active rework of XOD; `xod` and `xod.core` a
 - [PLAN-046](plans/PLAN-046-file-format-spec.md) - the XOD file format (accepted 2026-11-11): folder, encodings, encryption, pages and rows, scalar forms, the index, the journal; the schema manifest (E1-E3 decided); defects ISS-050 to ISS-055 (ISS-051 to ISS-055 fixed in PLAN-048)
 - [PLAN-047](plans/PLAN-047-conformance-set.md) - the XOD conformance set (built 2026-11-11): dataset and fixtures, 139 query cases, the C# runner, the independent file reader, known-defect markers; G1-G3 decided
 - [PLAN-048](plans/PLAN-048-format-defect-fixes.md) - fixes for the format defects (2026-11-11, not released): keys v2, one XML character policy, the autonumber mark, the row built before the table changes
+- [PLAN-051](plans/PLAN-051-commit-failure-and-shared-access.md) - a failed commit undone at once; a database a password change has to itself (2026-11-12, not released): ISS-070, ISS-071, ISS-073, ISS-074, ISS-076 to ISS-079
+- [RELEASE-NOTES-NEXT](RELEASE-NOTES-NEXT.md) - behaviour changes waiting for the next release
 - [PLAN-050](plans/PLAN-050-password-change.md) - a password change that is all or nothing (2026-11-12, not released): ISS-065 to ISS-068
 - [PLAN-049](plans/PLAN-049-property-encryption.md) - property encryption with a key of the database's own (2026-11-11, not released): ISS-050, ISS-058, ISS-063, ISS-064
 

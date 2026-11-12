@@ -1,31 +1,58 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Xml.Linq;
 using Xod.Infra;
 
 namespace Xod.Services
 {
+    /// <summary>
+    /// A transaction's undo record. Before a file is first changed its bytes are kept (or it is noted as
+    /// created); the commit writes them to <c>transaction.xwal</c> before writing any file and deletes the
+    /// journal after. Putting the files back is one routine (<see cref="RestoreBeforeImages"/>) for the three
+    /// cases: a rollback, a commit that failed anywhere (undone at once), and a journal found at open. A commit
+    /// or a rollback runs whole under the engine's lock, so no write of another thread lands in between.
+    /// </summary>
     internal sealed class XodTransaction : IXodTransaction
     {
         private readonly Dictionary<string, byte[]> snapshots = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> newlyCreatedFiles = new(StringComparer.OrdinalIgnoreCase);
+        private readonly string rootDirectory;
         private readonly string walFilePath;
+        private readonly Action<Action> exclusive;
         private readonly Action onCommit;
-        private readonly Action onRollback;
+        private readonly Action<Action> onRollback;
+        private readonly Action<string> onFaulted;
         private readonly Action onDispose;
         private bool completed;
+        // This commit's own journal: staged (the .tmp written) and in place. Only this commit's is ever deleted.
+        private bool journalStaged;
+        private bool journalWritten;
 
         public Guid TransactionId { get; } = Guid.NewGuid();
         public bool IsActive => !completed;
 
-        internal XodTransaction(string rootDirectory, Action onCommit, Action onRollback, Action onDispose)
+        /// <param name="rootDirectory">The database folder.</param>
+        /// <param name="exclusive">Runs a commit or a rollback, whole, under the engine's lock.</param>
+        /// <param name="onCommit">Writes the transaction's files.</param>
+        /// <param name="onRollback">Puts the context back as it was: called with the routine that restores the
+        /// files, which it runs after ending the transaction's batch if it is still open, and before forgetting
+        /// everything the context holds, pending writes included.</param>
+        /// <param name="onFaulted">Called when a failed commit can't be undone: the context must write nothing
+        /// more (the next open undoes the commit from the journal, and would undo those writes with it).</param>
+        /// <param name="onDispose">Ends the transaction in the engine.</param>
+        internal XodTransaction(string rootDirectory, Action<Action> exclusive, Action onCommit, Action<Action> onRollback, Action<string> onFaulted, Action onDispose)
         {
+            this.exclusive = exclusive ?? (a => a());
+            this.rootDirectory = rootDirectory;
             this.walFilePath = !string.IsNullOrEmpty(rootDirectory)
                 ? Path.Combine(rootDirectory, "transaction.xwal")
                 : null;
             this.onCommit = onCommit;
             this.onRollback = onRollback;
+            this.onFaulted = onFaulted;
             this.onDispose = onDispose;
         }
 
@@ -52,19 +79,61 @@ namespace Xod.Services
             if (completed)
                 throw new TransactionException("Transaction has already been completed.");
 
-            completed = true;
+            exclusive(() =>
+            {
+                completed = true;
+                try
+                {
+                    bool writing = false;
+                    try
+                    {
+                        WriteWalJournal();
+                        writing = true;
+                        onCommit?.Invoke();
+                        DeleteWalJournal();
+                    }
+                    catch (Exception commitFailure)
+                    {
+                        // Wherever it failed (the journal, the files, the indexes, the journal's deletion), the
+                        // commit is undone now, so that this context and the disk agree, and nothing it writes later
+                        // is undone by the next open's recovery.
+                        UndoFailedCommit(commitFailure, writing);
+                    }
+                }
+                finally
+                {
+                    snapshots.Clear();
+                    newlyCreatedFiles.Clear();
+                    onDispose?.Invoke();
+                }
+            });
+        }
+
+        // filesWritten: the commit got past its journal, so some of its files may be written. Before that nothing
+        // was, and nothing is put back: another context may have written those files since this one read them.
+        private void UndoFailedCommit(Exception commitFailure, bool filesWritten)
+        {
             try
             {
-                WriteWalJournal();
-                onCommit?.Invoke();
+                // The indexes too: the commit wrote them after its journal, and they may hold its rows.
+                onRollback?.Invoke(() =>
+                {
+                    if (!filesWritten)
+                        return;
+                    FaultInjection.Step("undo");
+                    RestoreBeforeImages(rootDirectory, snapshots, newlyCreatedFiles, dropIndexes: true);
+                });
                 DeleteWalJournal();
             }
-            finally
+            catch (Exception undoFailure)
             {
-                snapshots.Clear();
-                newlyCreatedFiles.Clear();
-                onDispose?.Invoke();
+                string message = "The commit failed (" + commitFailure.Message + ") and couldn't be undone (" + undoFailure.Message +
+                    "). The database is put back as it was before the transaction when it is next opened; until then this context refuses writes.";
+                onFaulted?.Invoke(message);
+                throw new TransactionException(message, new AggregateException(commitFailure, undoFailure));
             }
+
+            ExceptionDispatchInfo.Capture(commitFailure).Throw();
         }
 
         private void WriteWalJournal()
@@ -91,22 +160,88 @@ namespace Xod.Services
 
             var doc = new XDocument(rootElm);
             string tmpWal = walFilePath + ".tmp";
-            using (var fs = new FileStream(tmpWal, FileMode.Create, FileAccess.Write, FileShare.None))
+
+            // The journal's name is the database's: one already there is another commit's, under way in another
+            // context, or one that didn't finish and waits for an open that has the database to itself. Written
+            // over, or deleted after this commit, it would be lost, and with it the only way to undo that commit.
+            const string JournalThere =
+                "Another commit's journal is in the database folder (one under way in another context, or one that didn't finish and is undone when the database is next opened by a context that has it to itself); this commit is refused.";
+            if (File.Exists(walFilePath) || File.Exists(tmpWal))
+                throw new TransactionException(JournalThere);
+
+            FaultInjection.Step("journal-writing");
+            try
             {
-                doc.Save(fs);
-                fs.Flush(flushToDisk: false);
+                using (var fs = new FileStream(tmpWal, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    journalStaged = true;
+                    doc.Save(fs);
+                    fs.Flush(flushToDisk: false);
+                }
+                FaultInjection.Step("journal-staged");
+                File.Move(tmpWal, walFilePath, overwrite: false);
             }
-            File.Move(tmpWal, walFilePath, overwrite: true);
+            catch (IOException e) when (!journalStaged || File.Exists(walFilePath))
+            {
+                // Another commit's staged or placed journal appeared between the check and here.
+                throw new TransactionException(JournalThere, e);
+            }
+            journalStaged = false;
+            journalWritten = true;
         }
 
+        // This commit's journal, staged or in place: never another's.
         private void DeleteWalJournal()
         {
-            if (!string.IsNullOrEmpty(walFilePath) && File.Exists(walFilePath))
+            if (journalStaged)
+            {
+                File.Delete(walFilePath + ".tmp");
+                journalStaged = false;
+            }
+            if (journalWritten)
             {
                 File.Delete(walFilePath);
+                journalWritten = false;
             }
         }
 
+        /// <summary>
+        /// Puts files back as they were before a transaction: deletes the files it created and writes each
+        /// snapshot back (atomically, through <c>.tmp</c>); with <paramref name="dropIndexes"/> deletes every
+        /// index file too, rebuilt from the pages when next needed. Idempotent, so a recovery interrupted part-way
+        /// can run again.
+        /// </summary>
+        private static void RestoreBeforeImages(string root, IEnumerable<KeyValuePair<string, byte[]>> before, IEnumerable<string> created, bool dropIndexes)
+        {
+            foreach (string file in created)
+            {
+                if (File.Exists(file))
+                    File.Delete(file);
+            }
+
+            int restoring = 0;
+            foreach (var snapshot in before)
+            {
+                FaultInjection.Step("recover-restoring", ++restoring);
+                string tmp = snapshot.Key + ".tmp";
+                File.WriteAllBytes(tmp, snapshot.Value);
+                File.Move(tmp, snapshot.Key, overwrite: true);
+            }
+
+            if (dropIndexes && !string.IsNullOrEmpty(root))
+            {
+                foreach (var idxFile in Directory.GetFiles(root, "*.xidx"))
+                    File.Delete(idxFile);
+            }
+        }
+
+        /// <summary>
+        /// Run when the database opens: a journal means a commit that didn't finish, and it is undone. A journal
+        /// that doesn't parse was cut short before its commit wrote any file (it is written whole, then renamed
+        /// into place), and is deleted. One that can't be undone (a file open elsewhere) stops the open and
+        /// stays for the next: opening a commit half done would let new writes in that the journal would later
+        /// undo.
+        /// </summary>
         internal static void RecoverWalJournalIfPresent(string rootDirectory)
         {
             if (string.IsNullOrEmpty(rootDirectory) || !Directory.Exists(rootDirectory))
@@ -114,51 +249,47 @@ namespace Xod.Services
 
             foreach (var walFile in Directory.GetFiles(rootDirectory, "*.xwal"))
             {
+                XElement journalRoot;
                 try
                 {
-                    var doc = XDocument.Load(walFile);
-                    var journalRoot = doc.Root;
-                    if (journalRoot != null && journalRoot.Name.LocalName == "TransactionJournal")
-                    {
-                        foreach (var createdElm in journalRoot.Elements("Created"))
-                        {
-                            string fileName = createdElm.Attribute("file")?.Value;
-                            if (!string.IsNullOrEmpty(fileName))
-                            {
-                                string target = Path.Combine(rootDirectory, fileName);
-                                if (File.Exists(target))
-                                    File.Delete(target);
-                            }
-                        }
-
-                        foreach (var snapElm in journalRoot.Elements("Snapshot"))
-                        {
-                            string fileName = snapElm.Attribute("file")?.Value;
-                            if (!string.IsNullOrEmpty(fileName))
-                            {
-                                byte[] originalBytes = Convert.FromBase64String(snapElm.Value);
-                                string target = Path.Combine(rootDirectory, fileName);
-                                string tmpTarget = target + ".tmp";
-                                File.WriteAllBytes(tmpTarget, originalBytes);
-                                File.Move(tmpTarget, target, overwrite: true);
-                            }
-                        }
-
-                        // Remove .xidx files so IndexService rebuilds indexes cleanly from the restored .xpag pages
-                        foreach (var idxFile in Directory.GetFiles(rootDirectory, "*.xidx"))
-                        {
-                            File.Delete(idxFile);
-                        }
-                    }
-
-                    File.Delete(walFile);
+                    journalRoot = XDocument.Load(walFile).Root;
                 }
-                catch
+                catch (System.Xml.XmlException)
                 {
-                    // If the .xwal file itself was truncated/corrupted before commit started, remove it
-                    try { File.Delete(walFile); } catch { }
+                    File.Delete(walFile);
+                    continue;
                 }
+
+                if (journalRoot == null || journalRoot.Name.LocalName != "TransactionJournal")
+                {
+                    File.Delete(walFile);
+                    continue;
+                }
+
+                try
+                {
+                    var created = journalRoot.Elements("Created").Select(e => InFolder(rootDirectory, e.Attribute("file")?.Value)).ToList();
+                    var before = journalRoot.Elements("Snapshot")
+                        .Select(e => new KeyValuePair<string, byte[]>(InFolder(rootDirectory, e.Attribute("file")?.Value), Convert.FromBase64String(e.Value)))
+                        .ToList();
+                    RestoreBeforeImages(rootDirectory, before, created, dropIndexes: true);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is FormatException || e is InvalidDataException)
+                {
+                    throw new XodException("A commit that didn't finish can't be undone (" + e.Message +
+                        "). The database opens once it can be; the journal " + Path.GetFileName(walFile) + " is kept.", e);
+                }
+
+                File.Delete(walFile);
             }
+        }
+
+        // A journal names files of its own folder only.
+        private static string InFolder(string root, string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName) || Path.GetFileName(fileName) != fileName)
+                throw new InvalidDataException("The journal names a file outside the database folder: '" + fileName + "'.");
+            return Path.Combine(root, fileName);
         }
 
         public void Rollback()
@@ -166,29 +297,20 @@ namespace Xod.Services
             if (completed)
                 throw new TransactionException("Transaction has already been completed.");
 
-            completed = true;
-
-            try
+            exclusive(() =>
             {
-                onRollback?.Invoke();
-
-                foreach (var created in newlyCreatedFiles)
+                completed = true;
+                try
                 {
-                    if (File.Exists(created))
-                        File.Delete(created);
+                    onRollback?.Invoke(() => RestoreBeforeImages(rootDirectory, snapshots, newlyCreatedFiles, dropIndexes: false));
                 }
-
-                foreach (var kvp in snapshots)
+                finally
                 {
-                    File.WriteAllBytes(kvp.Key, kvp.Value);
+                    snapshots.Clear();
+                    newlyCreatedFiles.Clear();
+                    onDispose?.Invoke();
                 }
-            }
-            finally
-            {
-                snapshots.Clear();
-                newlyCreatedFiles.Clear();
-                onDispose?.Invoke();
-            }
+            });
         }
 
         public void Dispose()

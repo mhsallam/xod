@@ -36,7 +36,7 @@ model, a Rust core, the browser) to read the files XOD 2.0 writes, and to know w
 | `<file>.tmp` | write in progress | an atomic write cut short | 9 |
 | `<file>.xpwnew` | password change in progress | a file under the new password, beside the one it replaces | 9 |
 | `<name>.xod.xpwlog` | password change in progress | the commit record of a password change | 9 |
-| `<name>.xod.lock` | open database | held open when `DatabaseOptions.LockDatabase` is on | 9 |
+| `<name>.xod.lock` | open database | held by every open context: shared, or exclusively with `DatabaseOptions.LockDatabase`; never deleted | 9 |
 
 - **`<Table>`** is the class's `Type.FullName` (`MyApp.Shop.Customer.xtab`). Rows name the class by its
   short name (section 7).
@@ -507,13 +507,27 @@ in (`zone`, section 8.1), so a database opened in another zone rebuilds its inde
   4. delete the journal.
 
   A journal that doesn't parse is deleted. Because it is written whole before any data file, an
-  unparseable journal means the commit hadn't started.
+  unparseable journal means the commit hadn't started. A journal that can't be written back (a file open
+  elsewhere), or that names a file outside the folder, stops the open and stays (since PLAN-051; before,
+  it was deleted).
+- **A commit that fails part-way** is undone by the library at once, by the same steps from the snapshots
+  it holds, and the journal deleted; if that fails, the journal stays for the next open (since PLAN-051).
 - **A reader that finds a journal** must either recover (if it may write) or read the snapshot bytes in
   place of the files they name, and treat `Created` files as absent. Otherwise it would read a commit
-  that never finished.
-- **The lock** (`LockDatabase`): `<database file>.lock` is held open with no sharing. A reader that
-  can't open it must treat the database as in use. Without the option there is no lock and nothing
-  coordinates two processes (ISS-042).
+  that never finished. (The library itself, while other contexts have the database open, reads the files as
+  they are: it can't tell a live journal from one a crash left; PLAN-051 section 7.)
+- **The lock file** `<database file>.lock` (since PLAN-051): every open context holds it, shared (read
+  access, others may read and write) or, with `LockDatabase`, exclusively (no sharing); either kind fails
+  while the other is held. A password change holds it exclusively for the whole change. An open recovers
+  (the password-change, `.tmp` and journal steps) only while holding it exclusively: with `LockDatabase`, or
+  when something is pending and no other context holds it; otherwise what is pending may be another
+  context's, under way, and is left. The file is never deleted (a deletion would let two contexts hold
+  different files on Unix); nothing else may delete it while the database is open. A reader that can't open it
+  shared must treat the database as in use. A context whose folder can't be written and has no lock file
+  holds nothing and opens for reading only. Beyond this, contexts without `LockDatabase` don't coordinate
+  their writes (ISS-042).
+- **A journal not renamed into place** (`transaction.xwal.tmp`) belongs to a commit that hadn't started: the
+  open deletes it (since PLAN-051). A commit is refused while a journal or a staged one is in the folder.
 
 ## 10. The schema manifest (D1; E1-E3 decided)
 

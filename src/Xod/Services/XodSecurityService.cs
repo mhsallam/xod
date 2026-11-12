@@ -122,7 +122,7 @@ namespace Xod.Helpers
                         byte[] output = newPassword == null ? plain : FileCryptoHelper.EncryptBytes(plain, newPassword);
                         staged.Add(file + StagedSuffix);
                         WriteDurably(file + StagedSuffix, output);
-                        FaultInjection.PasswordStep("staged", staged.Count, System.IO.Path.GetFileName(file));
+                        FaultInjection.Step("staged", staged.Count, System.IO.Path.GetFileName(file));
                     }
 
                     // 2. Commit: the record names the files and ends with the commit line, so a record cut short
@@ -152,7 +152,7 @@ namespace Xod.Helpers
                 }
 
                 this.Password = newPassword;
-                FaultInjection.PasswordStep("committed");
+                FaultInjection.Step("committed");
 
                 // 3. Switch: each staged file replaces its original; every one must still be there.
                 try
@@ -214,7 +214,7 @@ namespace Xod.Helpers
                 }
                 try
                 {
-                    FaultInjection.PasswordStep("switching", switched + 1, name);
+                    FaultInjection.Step("switching", switched + 1, name);
                     File.Move(source, target, overwrite: true);
                 }
                 catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
@@ -222,7 +222,7 @@ namespace Xod.Helpers
                     first ??= e;
                     continue;
                 }
-                FaultInjection.PasswordStep("switched", ++switched, name);
+                FaultInjection.Step("switched", ++switched, name);
             }
             if (first != null)
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();

@@ -1046,6 +1046,7 @@ namespace Xod.Engines.Xml
 
         public bool DropType(Type type)
         {
+            ThrowIfWritesRefused();
             rwLock.EnterWriteLock();
             try
             {

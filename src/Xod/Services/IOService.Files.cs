@@ -15,8 +15,7 @@ namespace Xod.Services
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
                 return;
 
-            // Outside the catch below: a password change that can't be finished must stop the open, not leave
-            // files under two passwords.
+            // A password change that can't be finished stops the open: it would leave files under two passwords.
             XodSecurityService.RecoverSwitch(root);
 
             try
@@ -25,7 +24,11 @@ namespace Xod.Services
                 {
                     string targetPath = tmpFile.Substring(0, tmpFile.Length - 4);
                     var tmpInfo = new FileInfo(tmpFile);
-                    if (File.Exists(targetPath) || tmpInfo.Length == 0)
+                    // A journal not yet renamed into place belongs to a commit that hadn't started: nothing of it
+                    // was written. Made the journal, it would write its before-images back over whatever was
+                    // written since (other contexts' writes, when the recovery waited for them to close).
+                    bool journal = targetPath.EndsWith(".xwal", StringComparison.OrdinalIgnoreCase);
+                    if (journal || File.Exists(targetPath) || tmpInfo.Length == 0)
                     {
                         File.Delete(tmpFile);
                     }
@@ -34,13 +37,17 @@ namespace Xod.Services
                         File.Move(tmpFile, targetPath, overwrite: true);
                     }
                 }
-
-                XodTransaction.RecoverWalJournalIfPresent(root);
             }
-            catch
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {
-                // Ignore recovery cleanup errors if directory is read-only
+                // An atomic write cut short that can't be tidied now (a read-only folder, a file open elsewhere):
+                // a .tmp beside an existing file is ignored by everything that reads the database, and this step
+                // runs again at the next open.
             }
+
+            // A commit that didn't finish and can't be undone stops the open (the journal stays): opening a commit
+            // half done would let in writes that the journal would later undo.
+            XodTransaction.RecoverWalJournalIfPresent(root);
         }
 
         internal bool FileExists(string fileName)

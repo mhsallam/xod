@@ -15,6 +15,7 @@ namespace Xod.Engines.Xml
                 throw new TransactionException("A transaction is already active on this database context.");
             }
 
+            ThrowIfWritesRefused();
             int timeoutMs = options.TransactionTimeoutMs > 0 ? options.TransactionTimeoutMs : 30000;
             if (!transactionGate.Wait(timeoutMs))
             {
@@ -24,42 +25,56 @@ namespace Xod.Engines.Xml
             rwLock.EnterWriteLock();
             try
             {
-                indexService.FlushDirtyIndexes();
+                // Everything this context holds goes to disk first (with buffered durability, writes may wait in
+                // memory): the transaction's before-images then hold it, and a rollback or a failed commit, which
+                // forget every write still pending, forget only the transaction's.
+                FlushToDisk();
                 ioService.BeginBatch();
+                transactionBatchOpen = true;
                 activeTransactionThreadId = Environment.CurrentManagedThreadId;
 
                 activeTransaction = new XodTransaction(
                     root,
+                    exclusive: action =>
+                    {
+                        rwLock.EnterWriteLock();
+                        try
+                        {
+                            action();
+                        }
+                        finally
+                        {
+                            rwLock.ExitWriteLock();
+                        }
+                    },
                     onCommit: () =>
                     {
-                        rwLock.EnterWriteLock();
-                        try
-                        {
-                            ioService.EndBatch();
-                            indexService.FlushDirtyIndexes();
-                        }
-                        finally
-                        {
-                            rwLock.ExitWriteLock();
-                        }
+                        transactionBatchOpen = false;
+                        ioService.EndBatch();
+                        FaultInjection.Step("commit-written");
+                        indexService.FlushDirtyIndexes();
+                        FaultInjection.Step("commit-indexed");
                     },
-                    onRollback: () =>
+                    onRollback: restoreFiles =>
                     {
-                        rwLock.EnterWriteLock();
+                        // The batch is ended unwritten if the commit didn't get to it, the files go back, and the
+                        // context forgets what it holds even if that failed: it must not show, or later write, a
+                        // commit the disk doesn't hold.
                         try
                         {
-                            ioService.DiscardBatch();
-                            ioService.ClearCurrentCache();
-                            itemsCacheService.ClearCurrentCache();
-                            indexService.ClearAll();
-                            autonumberService.Reset();
-                            propertyKeys.Reset();
+                            if (transactionBatchOpen)
+                            {
+                                transactionBatchOpen = false;
+                                ioService.DiscardBatch();
+                            }
+                            restoreFiles();
                         }
                         finally
                         {
-                            rwLock.ExitWriteLock();
+                            ForgetEverythingHeld();
                         }
                     },
+                    onFaulted: message => transactionFault = message,
                     onDispose: () =>
                     {
                         activeTransaction = null;

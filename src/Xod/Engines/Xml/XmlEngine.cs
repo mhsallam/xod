@@ -36,6 +36,11 @@ namespace Xod.Engines.Xml
         private readonly LogService logService;
         private readonly ExceptionService exceptionService;
         private XodTransaction activeTransaction;
+        // Set when a commit failed and couldn't be undone (ISS-070): every write is refused until the database
+        // is reopened, which undoes the commit from its journal.
+        private volatile string transactionFault;
+        // The transaction's batch is open: its commit hasn't ended it yet (a rollback discards it).
+        private bool transactionBatchOpen;
         private int activeTransactionThreadId;
 
         public event EventHandler<TriggerEventArgs> BeforeAction;
@@ -130,6 +135,7 @@ namespace Xod.Engines.Xml
             // write, over it.
             this.ioService.BeforeFileMutate = f =>
             {
+                ThrowIfWritesRefused();
                 securityService.FinishPendingSwitch();
                 activeTransaction?.CaptureBeforeMutate(f);
             };
@@ -144,30 +150,39 @@ namespace Xod.Engines.Xml
                 return new XDocument(Write(t, instance));
             };
 
-            string databaseFile = System.IO.Path.GetFileName(path);
-            XFile xodFile = this.ioService.OpenFileOrCreate<Database>(databaseFile, !this.options.InitialCreate, this.options.InitialCreate);
-            if (xodFile == null)
-                exceptionService.Throw(new DatabaseFileException());
-            else
-                this.path = xodFile.Path;
-
-            this.propertyKeys = new PropertyKeyService(ioService, databaseFile, this.options.PropertyEncryptionKey, () => this.password);
-
-            this.itemsCacheService = new ItemsCacheService(path);
-            this.indexService = new IndexService(this.propertyService, this.ioService);
-
-            this.autonumberService = new AutonumberService(
-                path,
-                this.propertyService,
-                this.ioService,
-                this.exceptionService)
+            try
             {
-                HighestUsedDelegate = HighestAutonumberUsed
-            };
+                string databaseFile = System.IO.Path.GetFileName(path);
+                XFile xodFile = this.ioService.OpenFileOrCreate<Database>(databaseFile, !this.options.InitialCreate, this.options.InitialCreate);
+                if (xodFile == null)
+                    exceptionService.Throw(new DatabaseFileException());
+                else
+                    this.path = xodFile.Path;
 
-            this.logService = new LogService(root);
-            this.LazyLoad = this.options.LazyLoad;
-            this.LazyLoadParent = this.options.LazyLoadParent;
+                this.propertyKeys = new PropertyKeyService(ioService, databaseFile, this.options.PropertyEncryptionKey, () => this.password);
+
+                this.itemsCacheService = new ItemsCacheService(path);
+                this.indexService = new IndexService(this.propertyService, this.ioService);
+
+                this.autonumberService = new AutonumberService(
+                    path,
+                    this.propertyService,
+                    this.ioService,
+                    this.exceptionService)
+                {
+                    HighestUsedDelegate = HighestAutonumberUsed
+                };
+
+                this.logService = new LogService(root);
+                this.LazyLoad = this.options.LazyLoad;
+                this.LazyLoadParent = this.options.LazyLoadParent;
+            }
+            catch
+            {
+                // A failed open (a wrong password, a missing file) lets go of the database it took hold of.
+                this.ioService.Dispose();
+                throw;
+            }
         }
 
         private static StorageFormat InferStorageFormat(string filePath)
@@ -278,8 +293,23 @@ namespace Xod.Engines.Xml
             }
         }
 
+        /// <summary>
+        /// The one decision that this context writes nothing more, checked when a write operation starts (so it
+        /// changes nothing, in memory either) and again before every file write. A commit that failed and couldn't
+        /// be undone: the next open undoes it from its journal, and would undo anything written now with it. A
+        /// context without a hold on the database: it can't tell whether others have it open (IOService).
+        /// </summary>
+        private void ThrowIfWritesRefused()
+        {
+            if (transactionFault != null)
+                throw new TransactionException(transactionFault);
+            if (ioService.NoHoldReason != null)
+                throw new XodException(ioService.NoHoldReason);
+        }
+
         private void EnterTableWriteLock(Type type, out ReaderWriterLockSlim tableLock, out bool usedGlobalWriteLock)
         {
+            ThrowIfWritesRefused();
             if (BeforeAction == null && AfterAction == null &&
                 (activeTransaction == null || !activeTransaction.IsActive) &&
                 IsStandaloneTable(type))

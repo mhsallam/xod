@@ -123,31 +123,36 @@ namespace Xod.Engines.Xml
                 // A rollback would restore files as they were before the switch, under the old password.
                 if (activeTransaction != null && activeTransaction.IsActive)
                     throw new TransactionException("A database password can't be set, changed or removed inside a transaction.");
-
-                // A change this context made earlier that couldn't replace every file: finished before anything
-                // below reads the files, or this one is refused.
-                securityService.FinishPendingSwitch();
                 check();
-                // Everything this context holds goes to disk first: the switch rewrites the files on disk, and
-                // nothing may be written over them afterwards that the switch didn't see.
-                FlushToDisk();
-                propertyKeys.PasswordChanging(password, newPassword);
-                try
+
+                // No other context may have the database open: one would go on writing under the old password.
+                ioService.WithDatabaseToItself(() =>
                 {
-                    switchFiles();
-                }
-                finally
-                {
-                    // The files' password is the security service's: the old one if the switch failed before
-                    // its commit, the new one from the commit on (even when a file is replaced only at the next open).
-                    password = securityService.Password;
-                    ioService.Password = password;
-                    ClearCache();
-                }
-                // Only after a finished switch: removes the key's protection by the old password. A switch that
-                // failed leaves at most a protection by the password it tried (inside the database file, under
-                // the password that still opens it); the next finished change removes that too.
-                propertyKeys.PasswordChanged();
+                    // A change this context made earlier that couldn't replace every file: finished before
+                    // anything below reads the files, or this one is refused.
+                    securityService.FinishPendingSwitch();
+                    // Everything this context holds goes to disk first: the switch rewrites the files on disk,
+                    // and nothing may be written over them afterwards that the switch didn't see.
+                    FlushToDisk();
+                    propertyKeys.PasswordChanging(password, newPassword);
+                    try
+                    {
+                        switchFiles();
+                    }
+                    finally
+                    {
+                        // The files' password is the security service's: the old one if the switch failed before
+                        // its commit, the new one from the commit on (even when a file is replaced only at the
+                        // next open).
+                        password = securityService.Password;
+                        ioService.Password = password;
+                        ClearCache();
+                    }
+                    // Only after a finished switch: removes the key's protection by the old password. A switch
+                    // that failed leaves at most a protection by the password it tried (inside the database file,
+                    // under the password that still opens it); the next finished change removes that too.
+                    propertyKeys.PasswordChanged();
+                });
             }
             finally
             {
@@ -202,16 +207,27 @@ namespace Xod.Engines.Xml
             ioService.FlushBufferedFiles();
         }
 
-        public void ClearCache()
+        public void ClearCache() => DropCaches();
+
+        public void ClearCaches() => DropCaches();
+
+        /// <summary>
+        /// Drops what this context caches. Outside a transaction its writes go to disk first, and the indexes are
+        /// dropped too (loaded again when needed). Inside one, its writes and the indexes stay: they hold the
+        /// transaction's changes, which a dropped cache used to lose, in part.
+        /// </summary>
+        private void DropCaches()
         {
             rwLock.EnterWriteLock();
             try
             {
-                if (activeTransaction == null || !activeTransaction.IsActive)
+                bool inTransaction = activeTransaction != null && activeTransaction.IsActive;
+                if (!inTransaction)
                     FlushToDisk();
                 ioService.ClearCurrentCache();
                 itemsCacheService.ClearCurrentCache();
-                indexService.ClearAll();
+                if (!inTransaction)
+                    indexService.ClearAll();
             }
             finally
             {
@@ -219,21 +235,17 @@ namespace Xod.Engines.Xml
             }
         }
 
-        public void ClearCaches()
+        /// <summary>
+        /// The one place this context forgets what it holds, writes still pending included: after a rollback or
+        /// a failed commit the disk is what counts, and nothing of the transaction may be shown or written later.
+        /// </summary>
+        private void ForgetEverythingHeld()
         {
-            rwLock.EnterWriteLock();
-            try
-            {
-                if (activeTransaction == null || !activeTransaction.IsActive)
-                    FlushToDisk();
-                ioService.ClearAllCache();
-                itemsCacheService.ClearAllCache();
-                indexService.ClearAll();
-            }
-            finally
-            {
-                rwLock.ExitWriteLock();
-            }
+            ioService.DiscardPendingWrites();
+            itemsCacheService.ClearCurrentCache();
+            indexService.ClearAll();
+            autonumberService.Reset();
+            propertyKeys.Reset();
         }
     }
 }
