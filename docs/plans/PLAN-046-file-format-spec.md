@@ -37,7 +37,7 @@ model, a Rust core, the browser) to read the files XOD 2.0 writes, and to know w
 | `<file>.xpwnew` | password change in progress | a file under the new password, beside the one it replaces | 9 |
 | `<name>.xod.xpwlog` | password change in progress | the commit record of a password change | 9 |
 | `<name>.xod.lock` | open database | held by every open context: shared, or exclusively with `DatabaseOptions.LockDatabase`; never deleted | 9 |
-| `<name>.xod.<id>.xidxdirty` | context whose indexes are behind its pages | empty; left before a context's first page or table write since its indexes last caught up, deleted when they catch up | 9 |
+| `<name>.xod.<id>.xidxdirty` | a context that writes: whether its indexes are behind its pages | one byte while they are behind, empty once caught up; created at the context's first page or table write, held locked while it is open, deleted at its clean close | 9 |
 
 - **`<Table>`** is the class's `Type.FullName` (`MyApp.Shop.Customer.xtab`). Rows name the class by its
   short name (section 7).
@@ -369,9 +369,12 @@ A local `DateTime` stores the offset of the machine that wrote it. The text alon
 
 The pages are the truth. The `.xidx` maps each indexed property's **normalised key** to item codes. The
 library rebuilds it from the pages when it is missing or looks stale, and deletes every index during
-crash recovery. Readers may ignore it. A reader that uses it must not trust it while a `*.xidxdirty` marker is
-in the folder (section 9): an index may then be behind its pages. Without a marker (a database written by
-2.0.0 or 2.0.1), only the time check of ISS-043 is left.
+crash recovery. Readers may ignore it. A reader that uses it must not trust it while a `*.xidxdirty` marker
+that isn't empty and that no context holds is in the folder (section 9): a context stopped with its indexes
+behind its pages. A reader that can't tell whether a marker is held should not trust an index while any marker
+that isn't empty is there. The next release never loads an index of the layouts 2.0.0 and 2.0.1 write (`-3`
+and older, section 8.1) but rebuilds it; its time check (ISS-043) is left only for a `-4` index whose pages a
+writer without the marker (2.0.0, 2.0.1) changed afterwards.
 
 ### 8.1 Binary form (no database password)
 
@@ -539,13 +542,19 @@ in (`zone`, section 8.1), so a database opened in another zone rebuilds its inde
   and opens for reading only; if a write cut short is pending it is refused instead (it can't tell a crash's
   from a live one), and the migrator is refused whenever it can't hold the source (since PLAN-053). Beyond
   this, contexts without `LockDatabase` don't coordinate their writes (ISS-042).
-- **The index marker** `<database file>.<id>.xidxdirty` (since PLAN-054, ISS-043): a context creates its own,
-  empty, before its first write of a page or table file since its indexes last caught up, and deletes it when
-  they have (a flush or a close with no write of its own under way). An open that holds the database alone and
-  finds one drops every `.xidx` and then the markers: a context stopped with its indexes behind its pages.
-  While another context holds the database a marker may be live, so it is left (as a journal is). A context
-  without a hold can't drop the indexes: it reads no `.xidx` while a marker is there and rebuilds what it
-  needs from the pages, in memory.
+- **The index marker** `<database file>.<id>.xidxdirty` (since PLAN-054, ISS-043): a context creates its own
+  before its first write of a page or table file, and holds it open, sharing nothing (on Unix: flock
+  `LOCK_EX`), until it closes. Its length says where the context's indexes are: one byte while they are behind
+  its pages (from a page or table write until a flush with nothing of the context pending: no batch or
+  transaction open, no write waiting or failed, no write of another thread under way), empty once they have
+  caught up. A clean close deletes an empty marker; one still marked stays. A marker that isn't empty and that
+  no context holds (an open of it sharing reads and writes succeeds) is a context that stopped with its indexes
+  behind: no context trusts an index file while it is there, and an open that holds the database alone drops
+  every `.xidx` and then the markers. An index that open can't delete leaves the markers for the next such
+  open; a marker it can't delete stays. A marker its context holds is live and is left alone. Where the file
+  system takes no locks, a live marker reads as left behind: the indexes are rebuilt while it is marked, which
+  costs time, not rows. (Corrected 2026-11-12 by the review of `TASK-064`: this said the marker was created
+  empty and deleted on catching up, which the code never did.)
 - **A journal not renamed into place** (`transaction.xwal.tmp`) belongs to a commit that hadn't started: the
   open deletes it (since PLAN-051). A commit is refused while a journal or a staged one is in the folder.
 

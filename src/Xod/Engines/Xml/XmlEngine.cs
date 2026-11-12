@@ -377,6 +377,16 @@ namespace Xod.Engines.Xml
 
         public void Dispose()
         {
+            if (disposed)
+                return;
+            disposed = true;
+
+            // The close flushes under the engine-wide write lock, so no write of another thread is under way when its
+            // indexes are called caught up (ISS-043, FlushToDisk). A close from inside a read on this thread can't
+            // take it: it flushes without, and leaves its marker for the next open (the indexes rebuilt, no row lost).
+            bool locked = !rwLock.IsReadLockHeld;
+            if (locked)
+                rwLock.EnterWriteLock();
             try
             {
                 if (activeTransaction != null && activeTransaction.IsActive)
@@ -384,20 +394,30 @@ namespace Xod.Engines.Xml
                     activeTransaction.Rollback();
                     // The rollback's autonumber marks (ISS-083) wait for a flush, and this is the last one.
                     if (MayFlushAtClose())
-                        FlushToDisk(caughtUp: true);
+                        FlushToDisk();
                 }
                 else if (MayFlushAtClose())
                 {
-                    FlushToDisk(caughtUp: true);
+                    FlushToDisk();
                     indexService.FoldLargeLogs();
                 }
             }
             finally
             {
-                // A failed flush or rollback still surfaces to the caller, but files and locks are released.
-                DisposeResources();
+                try
+                {
+                    if (locked)
+                        rwLock.ExitWriteLock();
+                }
+                finally
+                {
+                    // A failed flush or rollback still surfaces to the caller, but files and locks are released.
+                    DisposeResources();
+                }
             }
         }
+
+        private bool disposed;
 
         // A context that writes nothing more (WritesRefused) writes nothing at its close either: each write would be
         // refused, and the close would throw for what the caller has already been told.

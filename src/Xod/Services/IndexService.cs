@@ -304,9 +304,39 @@ namespace Xod.Services
                 dirtyTypes.Clear();
             }
 
-            foreach (var type in toSave)
+            // A type leaves the set only once saved: one whose save fails, and those after it, stay to be saved by
+            // the next flush, their changes held in their logs until written (review of TASK-064: a failed save
+            // dropped its type, so the next flush called the indexes caught up, ISS-043).
+            int saved = 0;
+            try
             {
-                SaveToDisk(type);
+                foreach (var type in toSave)
+                {
+                    SaveToDisk(type);
+                    saved++;
+                }
+            }
+            finally
+            {
+                if (saved < toSave.Count)
+                {
+                    lock (syncLock)
+                    {
+                        dirtyTypes.UnionWith(toSave.Skip(saved));
+                    }
+                }
+            }
+        }
+
+        /// <summary>Every change this context recorded to an index is saved (ISS-043: XmlEngine.FlushToDisk).</summary>
+        internal bool AllSaved
+        {
+            get
+            {
+                lock (syncLock)
+                {
+                    return dirtyTypes.Count == 0;
+                }
             }
         }
 

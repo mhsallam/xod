@@ -6,6 +6,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Xunit;
 
 namespace Xod.Tests
@@ -160,6 +161,197 @@ namespace Xod.Tests
             using (var db = new XodContext(Path.Combine(dir, "crash.xod")))
                 FindsEveryRow(db, 27, 75);
             Assert.All(indexes, i => Assert.Equal(i.Item2, File.GetLastWriteTimeUtc(i.f)));
+        }
+        // Review of TASK-064 (F1): a writer that crashes while another context has the database open leaves a
+        // marker no context holds, which an open can't act on (it isn't alone). Every context then reads no index
+        // file while that marker is there: each index load asks whether a marked marker's context is still alive
+        // (a live context holds its marker locked, so a probe of it is refused). It used to trust the stale index.
+        [Fact]
+        public void A_writer_s_crash_while_another_context_has_the_database_open_leaves_no_index_trusted()
+        {
+            string dir = Seeded("crash-while-open");
+            string path = Path.Combine(dir, "crash.xod");
+            using (var holder = new XodContext(path))
+            {
+                Assert.Equal(25, holder.Count<CrashCustomer>());
+                var crash = XodCrashSafetyTests.RunWriterProcess("onebatch", dir, ("XOD_CRASH_AT_STEP", "batch-written"));
+                Assert.DoesNotContain("COMMITTED", crash.Output);
+                foreach (var index in Directory.GetFiles(dir, "*.xidx"))
+                    File.SetLastWriteTimeUtc(index, DateTime.UtcNow.AddMinutes(1));
+
+                using (var other = new XodContext(path))
+                    FindsEveryRow(other, 50, 150);
+                Assert.Single(Directory.GetFiles(dir, "*.xidxdirty"));
+            }
+            using (var alone = new XodContext(path))
+                FindsEveryRow(alone, 50, 150);
+            Assert.Empty(Directory.GetFiles(dir, "*.xidxdirty"));
+        }
+
+        // Review of TASK-064 (F3): a flush inside a transaction wrote its index changes while its pages waited in
+        // the transaction's batch, and called the indexes caught up; a crash before the commit then left an index
+        // holding the transaction's keys and not the rows' own, trusted. A batch still open keeps the mark.
+        [Fact]
+        public void A_flush_inside_a_transaction_keeps_the_indexes_marked_behind()
+        {
+            string dir = Path.Combine(tempRoot, "tx-flush");
+            var setup = XodCrashSafetyTests.RunWriterProcess("members", dir);
+            Assert.True(setup.ExitCode == 0, setup.Output);
+            var crash = XodCrashSafetyTests.RunWriterProcess("txflush", dir);
+            Assert.Contains("FLUSHED", crash.Output);
+            Assert.NotEqual(0, crash.ExitCode);
+
+            using var db = new XodContext(Path.Combine(dir, "crash.xod"));
+            // Never committed: the row holds e5, and its index must say so.
+            Assert.Equal("e5", db.Find<CrashMember>(m => m.Id == 5)?.Email);
+            Assert.NotNull(db.Find<CrashMember>(m => m.Email == "e5"));
+            Assert.Null(db.Find<CrashMember>(m => m.Email == "e5x"));
+            Assert.Null(db.Find<CrashMember>(m => m.Id == 400));
+            Assert.Throws<ReservedUniqueKeyException>(() => db.Insert(new CrashMember { Id = 1005, Email = "e5" }));
+            db.Insert(new CrashMember { Id = 400, Email = "e400" });
+        }
+
+        // Review of TASK-064 (F2): an index save that failed (its file held open elsewhere: another reader, a backup
+        // tool) left its type out of those still to save, so the next flush called the indexes caught up and the
+        // close deleted the mark. A type now stays to be saved until its save succeeds.
+        [Fact]
+        public void An_index_save_that_failed_is_made_by_the_next_flush()
+        {
+            string dir = Path.Combine(tempRoot, "index-save-failed");
+            var setup = XodCrashSafetyTests.RunWriterProcess("members", dir);
+            Assert.True(setup.ExitCode == 0, setup.Output);
+            string path = Path.Combine(dir, "crash.xod");
+            string index = Path.Combine(dir, typeof(CrashMember).FullName + ".xidx");
+            using (var db = new XodContext(path))
+            {
+                Assert.NotNull(db.Find<CrashMember>(m => m.Email == "e1"));
+                Exception failure;
+                using (new FileStream(index, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    failure = Record.Exception(() => db.InsertRange(Enumerable.Range(51, 10)
+                        .Select(i => new CrashMember { Id = i, Email = "e" + i }).ToList()));
+                }
+                if (OperatingSystem.IsWindows())
+                    Assert.NotNull(failure); // the file held open fails the save there
+                db.Flush();
+            }
+            using (var db = new XodContext(path))
+            {
+                for (int i = 51; i <= 60; i++)
+                {
+                    int id = i;
+                    string email = "e" + i;
+                    Assert.True(db.Find<CrashMember>(m => m.Id == id) != null, "member " + id + " not found by its key");
+                    Assert.True(db.Find<CrashMember>(m => m.Email == email) != null, "member " + id + " not found by its email");
+                }
+                Assert.Throws<ReservedUniqueKeyException>(() => db.Insert(new CrashMember { Id = 1055, Email = "e55" }));
+            }
+        }
+
+        // Review of TASK-064 (F4): an open alone that couldn't delete an index or a marker threw. An index it
+        // can't drop now leaves the markers in place, and every context reads no index file while a marker no
+        // context holds says the indexes may be behind; the next open alone drops them.
+        [Fact]
+        public void An_index_the_open_can_t_drop_is_not_trusted()
+        {
+            string dir = Seeded("index-held");
+            string path = Path.Combine(dir, "crash.xod");
+            var crash = XodCrashSafetyTests.RunWriterProcess("onebatch", dir, ("XOD_CRASH_AT_STEP", "batch-written"));
+            Assert.DoesNotContain("COMMITTED", crash.Output);
+            foreach (var index in Directory.GetFiles(dir, "*.xidx"))
+                File.SetLastWriteTimeUtc(index, DateTime.UtcNow.AddMinutes(1));
+            string marker = Assert.Single(Directory.GetFiles(dir, "*.xidxdirty"));
+
+            var hold = new FileStream(Path.Combine(dir, typeof(CrashCustomer).FullName + ".xidx"), FileMode.Open, FileAccess.Read, FileShare.Read);
+            XodContext db;
+            try
+            {
+                db = new XodContext(path); // alone: it drops the indexes, and can't delete the one held
+            }
+            finally
+            {
+                hold.Dispose();
+            }
+            using (db)
+                FindsEveryRow(db, 50, 150);
+            if (OperatingSystem.IsWindows())
+                Assert.True(File.Exists(marker), "the marker goes only with the indexes it marks");
+
+            using (var again = new XodContext(path))
+                FindsEveryRow(again, 50, 150);
+            Assert.Empty(Directory.GetFiles(dir, "*.xidxdirty"));
+        }
+
+        // Review of TASK-064 (F4): a marker the open can't delete (read-only, as in a copy taken off read-only
+        // media while a context had the database open) threw. An empty one costs nothing; a marked one still drops
+        // the indexes, and stays.
+        [Fact]
+        public void A_marker_the_open_can_t_delete_doesn_t_stop_it()
+        {
+            string dir = Seeded("marker-read-only");
+            string path = Path.Combine(dir, "crash.xod");
+            string marker = path + ".deadbeef" + ".xidxdirty";
+            File.WriteAllBytes(marker, Array.Empty<byte>());
+            File.SetAttributes(marker, FileAttributes.ReadOnly);
+            try
+            {
+                var indexes = Directory.GetFiles(dir, "*.xidx").Select(f => (f, File.GetLastWriteTimeUtc(f))).ToList();
+                using (var db = new XodContext(path))
+                    FindsEveryRow(db, 25, 75);
+                Assert.All(indexes, i => Assert.Equal(i.Item2, File.GetLastWriteTimeUtc(i.f)));
+
+                if (OperatingSystem.IsWindows())
+                {
+                    File.SetAttributes(marker, FileAttributes.Normal);
+                    File.WriteAllBytes(marker, new byte[] { 1 });
+                    File.SetAttributes(marker, FileAttributes.ReadOnly);
+                    using (var db = new XodContext(path))
+                        FindsEveryRow(db, 25, 75);
+                    Assert.True(File.Exists(marker));
+                }
+            }
+            finally
+            {
+                if (File.Exists(marker))
+                    File.SetAttributes(marker, FileAttributes.Normal);
+            }
+        }
+
+        // A live context's marker can't be opened by another (it shares nothing while held), which is how an index
+        // load tells it from one a crash left (IOService.ProbeMarker).
+        [Fact]
+        public void A_live_context_s_marker_reads_as_live()
+        {
+            string dir = Seeded("live-marker");
+            var probe = typeof(XodContext).Assembly.GetType("Xod.Services.IOService")!
+                .GetMethod("ProbeMarker", BindingFlags.NonPublic | BindingFlags.Static)!;
+            using var db = new XodContext(Path.Combine(dir, "crash.xod"));
+            db.Insert(new CrashCustomer { Name = "live", Orders = new() });
+            string marker = Assert.Single(Directory.GetFiles(dir, "*.xidxdirty"));
+            Assert.Equal("Live", probe.Invoke(null, new object[] { marker })!.ToString());
+        }
+
+        // A close from inside a read on its own thread can't take the write lock its flush needs to call the indexes
+        // caught up: it flushes without it, lets go of the database, and leaves its marker marked (the indexes are
+        // rebuilt by the next open alone), since it can't tell no write of another thread was under way.
+        [Fact]
+        public void A_close_from_inside_a_read_lets_go_and_leaves_the_indexes_marked()
+        {
+            string dir = Seeded("close-in-read");
+            string path = Path.Combine(dir, "crash.xod");
+            var db = new XodContext(path);
+            db.Insert(new CrashCustomer { Name = "one", Orders = new() });
+            _ = Record.Exception(() => db.QueryDelegate<CrashCustomer>(c =>
+            {
+                db.Dispose();
+                return true;
+            }).ToList());
+            string marker = Assert.Single(Directory.GetFiles(dir, "*.xidxdirty"));
+            Assert.Equal(1, new FileInfo(marker).Length);
+
+            using (var alone = new XodContext(path, options: new DatabaseOptions { LockDatabase = true }))
+                FindsEveryRow(alone, 26, 75);
+            Assert.Empty(Directory.GetFiles(dir, "*.xidxdirty"));
         }
     }
 }

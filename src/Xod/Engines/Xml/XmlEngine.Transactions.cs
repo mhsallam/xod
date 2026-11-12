@@ -28,7 +28,7 @@ namespace Xod.Engines.Xml
                 // Everything this context holds goes to disk first (with buffered durability, writes may wait in
                 // memory): the transaction's before-images then hold it, and a rollback or a failed commit, which
                 // forget every write still pending, forget only the transaction's.
-                FlushToDisk(caughtUp: true);
+                FlushToDisk();
                 var countersAtBegin = autonumberService.Highs();
                 ioService.BeginBatch();
                 transactionBatchOpen = true;

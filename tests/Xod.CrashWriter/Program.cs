@@ -5,6 +5,13 @@ using Xod;
 
 // Model names are global so the parent test process, which declares the same types, maps the files
 // the dying child wrote.
+// A unique key, for the index crash tests (ISS-043).
+public class CrashMember
+{
+    [PrimaryKey] public int Id { get; set; }
+    [UniqueKey] public string Email { get; set; }
+}
+
 public class CrashCustomer
 {
     public int Id { get; set; }
@@ -293,6 +300,36 @@ public static class Program
                 }
             }
             return 0;
+        }
+
+        // ISS-043 (review of TASK-064): fifty members with a unique key.
+        if (mode == "members")
+        {
+            using var seed = new XodContext(path, options: options);
+            var members = new List<CrashMember>();
+            for (int i = 1; i <= 50; i++)
+                members.Add(new CrashMember { Id = i, Email = "e" + i });
+            seed.InsertRange(members);
+            seed.Flush();
+            Console.WriteLine("MEMBERS");
+            return 0;
+        }
+
+        // A flush inside a transaction, then the process dies before the commit: the transaction's pages wait in
+        // its batch, while its index changes are written by the flush.
+        if (mode == "txflush")
+        {
+            var db = new XodContext(path, options: options);
+            db.Find<CrashMember>(m => m.Email == "e5");
+            var tx = db.BeginTransaction();
+            var five = db.Find<CrashMember>(m => m.Id == 5);
+            five.Email = "e5x";
+            db.Update(five);
+            db.Insert(new CrashMember { Id = 400, Email = "e400" });
+            db.Flush();
+            Console.WriteLine("FLUSHED");
+            Console.Out.Flush();
+            Environment.FailFast("killed after a flush inside a transaction");
         }
 
         if (mode == "count")

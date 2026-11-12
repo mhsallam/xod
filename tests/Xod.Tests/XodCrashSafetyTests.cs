@@ -7,6 +7,13 @@ using Xod;
 using Xunit;
 
 // Same global type names as tests/Xod.CrashWriter - the child process and this test read the same files.
+// A unique key, for the index crash tests (ISS-043).
+public class CrashMember
+{
+    [PrimaryKey] public int Id { get; set; }
+    [UniqueKey] public string Email { get; set; }
+}
+
 public class CrashCustomer
 {
     public int Id { get; set; }

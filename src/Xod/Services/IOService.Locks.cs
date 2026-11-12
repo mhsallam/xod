@@ -60,11 +60,9 @@ namespace Xod.Services
                 {
                     // Another context has the database open: what is pending may be its own, under way.
                 }
-                catch (UnauthorizedAccessException e) when (!WritesPending(root))
+                catch (UnauthorizedAccessException) when (!WritesPending(root))
                 {
-                    // Only index markers: what they say can be honoured without writing (ISS-043).
-                    _ = e;
-                    IndexFilesUntrusted = true;
+                    // Only index markers: each index load honours them without writing (IndexesLeftBehind, ISS-043).
                 }
                 catch (UnauthorizedAccessException e)
                 {

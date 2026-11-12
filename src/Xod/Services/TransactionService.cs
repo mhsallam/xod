@@ -210,6 +210,13 @@ namespace Xod.Services
         /// snapshot back (atomically, through <c>.tmp</c>); with <paramref name="dropIndexes"/> deletes every
         /// index file too, rebuilt from the pages when next needed. Idempotent, so a recovery interrupted part-way
         /// can run again.
+        /// <para>
+        /// It writes pages without the mutation hook that marks the indexes behind (ISS-043, IOService.IndexesBehind),
+        /// and needs none. In a rollback the context's marker is already set (the transaction's first page write set
+        /// it, and nothing empties it while the transaction's batch is open: XmlEngine.FlushToDisk) and stays until a
+        /// flush after the rollback, while the index files go back with the pages. At the open, recovery runs alone,
+        /// before any index is loaded, and drops the indexes itself.
+        /// </para>
         /// </summary>
         private static void RestoreBeforeImages(string root, IEnumerable<KeyValuePair<string, byte[]>> before, IEnumerable<string> created, bool dropIndexes)
         {

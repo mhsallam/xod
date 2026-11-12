@@ -90,6 +90,9 @@ namespace Xod
 
         // Each file replaced whole: a crash leaves every file in one format or the other, and a .tmp beside one,
         // which the next open deletes.
+        // Neither this nor ConvertInto passes the mutation hook that marks the indexes behind (ISS-043), and neither
+        // needs it: the migrator holds the source alone, after its recovery (which drops indexes a crash left behind),
+        // and converts every file, the indexes among them, with its content unchanged.
         private static int ConvertInPlace(List<string> files, StorageFormat targetFormat, string hashedPassword)
         {
             int converted = 0;

@@ -14,7 +14,7 @@ namespace Xod.Engines.Xml
             EnterWrite(rwLock.EnterWriteLock);
             try
             {
-                FlushToDisk(caughtUp: true);
+                FlushToDisk();
                 var stats = new DatabaseStatistics
                 {
                     DatabasePath = path,
@@ -133,7 +133,7 @@ namespace Xod.Engines.Xml
                     passwordSwitch.FinishPendingSwitch();
                     // Everything this context holds goes to disk first: the switch rewrites the files on disk,
                     // and nothing may be written over them afterwards that the switch didn't see.
-                    FlushToDisk(caughtUp: true);
+                    FlushToDisk();
                     propertyKeys.PasswordChanging(password, newPassword);
                     try
                     {
@@ -186,7 +186,7 @@ namespace Xod.Engines.Xml
             EnterWrite(rwLock.EnterWriteLock);
             try
             {
-                FlushToDisk(caughtUp: true);
+                FlushToDisk();
             }
             finally
             {
@@ -197,21 +197,24 @@ namespace Xod.Engines.Xml
         /// <summary>
         /// Writes everything this context holds to disk: buffered files, then the indexes. Under a password the
         /// index service saves an index through the buffered files, so those are flushed again after it; without
-        /// one it writes the index file itself. Pages go first: the index is a cache of them, and the open trusts
-        /// an index no older than its pages (ISS-043).
+        /// one it writes the index file itself. Pages go first: the index is a cache of them.
+        /// <para>
+        /// ISS-043: its indexes on disk then hold every row its pages do, and the marker that said otherwise is
+        /// emptied, only if nothing of this context can be behind: no write under way on another thread (this one
+        /// holds the engine-wide write lock, which every writer's lock excludes), no batch open (a transaction's pages
+        /// wait in its batch while its index changes are written), and nothing either service still has to write (a
+        /// write that failed stays to be made). Decided from that state, not by the caller: callers that said so were
+        /// wrong after a failed save and inside a transaction (review of TASK-064).
+        /// </para>
         /// </summary>
-        // caughtUp: no write of this context can be under way (its caller holds the engine-wide write lock, or the
-        // context is closing), so once this returns its indexes on disk hold every row its pages do, and the marker
-        // that said otherwise goes (ISS-043). Under the read lock another thread may be between a page write and
-        // its index change.
-        private void FlushToDisk(bool caughtUp)
+        private void FlushToDisk()
         {
             if (autonumberMarksPending)
                 RecordCountersInMarks();
             ioService.FlushBufferedFiles();
             indexService.FlushDirtyIndexes();
             ioService.FlushBufferedFiles();
-            if (caughtUp)
+            if (rwLock.IsWriteLockHeld && ioService.NothingPending && indexService.AllSaved)
                 ioService.IndexesCaughtUp();
         }
 
@@ -231,7 +234,7 @@ namespace Xod.Engines.Xml
             {
                 bool inTransaction = activeTransaction != null && activeTransaction.IsActive;
                 if (!inTransaction)
-                    FlushToDisk(caughtUp: true);
+                    FlushToDisk();
                 ioService.ClearCurrentCache();
                 itemsCacheService.ClearCurrentCache();
                 if (!inTransaction)

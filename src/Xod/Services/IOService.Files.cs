@@ -269,7 +269,8 @@ namespace Xod.Services
         /// Writes the file now, outside any batch, buffer or transaction: for a record that must outlast
         /// whatever is in progress (an AES256 data key: a stored key no value uses is harmless, values whose
         /// key was never stored are lost). A rollback doesn't undo it. Like every write here, it replaces the
-        /// file by a rename and doesn't flush it to the device.
+        /// file by a rename and doesn't flush it to the device. It passes no mutation hook: it writes the database
+        /// file, never a page or table, so the indexes are no further behind (ISS-043).
         /// </summary>
         internal void SaveNow(XFile file)
         {

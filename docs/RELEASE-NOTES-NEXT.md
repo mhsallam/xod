@@ -95,11 +95,21 @@ records it.
   does (ISS-095). A child inserted again with the key of one deleted before is listed again.
 
 - **Indexes after a crash** ([PLAN-054](plans/PLAN-054-indexes-left-behind-by-a-crash.md)): a context that
-  writes keeps a small file beside the database, `<database file>.<id>.xidxdirty`, while its indexes are
-  behind its pages, and deletes it when it closes. After a crash, the next open that has the database to itself
-  drops the indexes and rebuilds them from the pages as they are needed (the first queries take longer), rather
-  than trusting an index that may miss the last rows written. Don't delete these files while the database is
-  open.
+  writes keeps a small file beside the database, `<database file>.<id>.xidxdirty`, open while the context is,
+  which says whether its indexes are behind its pages; it deletes the file when it closes cleanly. After a
+  crash, whether or not other contexts had the database open, no context trusts the index files until the next
+  open that has the database to itself drops them; they are rebuilt from the pages as they are needed (the
+  first queries take longer), rather than trusted when they may miss the last rows written. Don't delete these
+  files while the database is open.
+- **A write that fails stays to be made** (ISS-098): a page write of `InsertRange`'s batch or of the buffer
+  (`DurabilityMode.Buffered`) that failed, for example on a page file another program held open, was dropped:
+  the context went on showing the rows, the disk never got them, and the indexes named rows the pages didn't
+  hold. It now stays to be written by the next flush (`Flush`, the next transaction, the close), or is dropped
+  by a rollback; an index save that failed is made by the next flush the same way. The call that failed still
+  throws.
+- **Closing a context waits** for reads and writes running on it in other threads, and takes its write lock
+  for its last flush. A context closed from inside one of its own reads still closes, and leaves its indexes to
+  be rebuilt by the next open.
 
 ## Version
 

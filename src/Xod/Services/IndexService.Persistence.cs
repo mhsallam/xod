@@ -21,17 +21,21 @@ namespace Xod.Services
                 return false;
 
             string indexFileName = GetIndexFileName(type);
-            if (!ioService.FileExists(indexFileName) || ioService.IndexFilesUntrusted)
+            // A context that stopped with its indexes behind its pages, while others had the database open, leaves
+            // them untrusted until an open alone drops them (ISS-043): asked at each load, as a crash can come at
+            // any time.
+            if (!ioService.FileExists(indexFileName) || ioService.IndexesLeftBehind())
                 return false;
 
             string indexFullPath = Path.Combine(ioService.RootDirectory, indexFileName);
             DateTime indexWriteTime = File.GetLastWriteTimeUtc(indexFullPath);
 
-            // Verify no .xpag file of this table is newer than the .xidx file (e.g. after an unclean
-            // process crash). A guess by time, kept for databases written by versions without the marker of
-            // ISS-043 (IOService.IndexesBehind): an index written just before a batch a crash kept from catching
-            // up is newer than its pages, and passes. The page names are read from the table document as text: opening it as a
-            // document here cost 9-21 ms on a 100k-row table, which was most of the index load.
+            // Verify no .xpag file of this table is newer than the .xidx file. A guess by time (only the first two
+            // and last two pages, and only by more than 50 ms), for what the marker of ISS-043 can't see: an index
+            // this version wrote whose pages a writer without the marker changed afterwards (XOD 2.0.0 or 2.0.1,
+            // which leave an index of this layout as it was). Indexes those versions write are never loaded (the
+            // layout check below) but rebuilt. The page names are read from the table document as text: opening it
+            // as a document here cost 9-21 ms on a 100k-row table, which was most of the index load.
             string tableFileName = $"{type.FullName}.xtab";
             string tableFullPath = Path.Combine(ioService.RootDirectory, tableFileName);
             if (File.Exists(tableFullPath))
@@ -630,8 +634,10 @@ namespace Xod.Services
             }
             catch
             {
-                // A failed append leaves a flush without its end record, which no load trusts; the
-                // caller writes a snapshot next.
+                // A failed append leaves a flush without its end record, which no load trusts; the caller writes a
+                // snapshot next, and the next save too if that one fails (the type stays to be saved,
+                // FlushDirtyIndexes): only a snapshot makes the file whole again.
+                log.MarkSnapshotDue();
                 return false;
             }
         }

@@ -39,7 +39,9 @@ namespace Xod.Services
         private readonly object syncLock = new object();
         private readonly Dictionary<string, FileCache> cachedFiles = new Dictionary<string, FileCache>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, RawPageBuffer> cachedRawPages = new Dictionary<string, RawPageBuffer>(StringComparer.OrdinalIgnoreCase);
-        private readonly List<System.Threading.Tasks.Task> pendingBatchWrites = new List<System.Threading.Tasks.Task>();
+        // Full pages a batch writes on their own while it goes on (IOService.RawPages), each with its page.
+        private readonly List<(System.Threading.Tasks.Task Write, string Page, RawPageBuffer Buffer)> pendingBatchWrites =
+            new List<(System.Threading.Tasks.Task Write, string Page, RawPageBuffer Buffer)>();
 
         private readonly string path;
         private readonly string root;
@@ -106,37 +108,102 @@ namespace Xod.Services
 
         internal void EndBatch()
         {
-            System.Threading.Tasks.Task[] tasksToWait = null;
-            lock (syncLock)
+            List<(System.Threading.Tasks.Task Write, string Page, RawPageBuffer Buffer)> writes = null;
+            try
             {
-                if (batchDepth > 0)
-                    batchDepth--;
-
-                if (batchDepth == 0)
+                lock (syncLock)
                 {
-                    if (pendingBatchWrites.Count > 0)
+                    if (batchDepth > 0)
+                        batchDepth--;
+
+                    if (batchDepth == 0)
                     {
-                        tasksToWait = pendingBatchWrites.ToArray();
-                        pendingBatchWrites.Clear();
-                    }
-                    if (dirtyBatchFiles.Count > 0)
-                    {
-                        var toFlush = dirtyBatchFiles.ToList();
-                        dirtyBatchFiles.Clear();
-                        FlushFilesList(toFlush);
-                    }
-                    if (dirtyBatchRawPages.Count > 0)
-                    {
-                        var rawToFlush = dirtyBatchRawPages.ToList();
-                        dirtyBatchRawPages.Clear();
-                        FlushRawPagesList(rawToFlush);
+                        if (pendingBatchWrites.Count > 0)
+                        {
+                            writes = pendingBatchWrites.ToList();
+                            pendingBatchWrites.Clear();
+                        }
+                        FlushPending(dirtyBatchFiles, dirtyBatchRawPages);
                     }
                 }
             }
-
-            if (tasksToWait != null && tasksToWait.Length > 0)
+            finally
             {
-                System.Threading.Tasks.Task.WaitAll(tasksToWait);
+                // Waited for even when the writes above failed: one of these that failed is made again too.
+                AwaitBatchWrites(writes);
+            }
+        }
+
+        /// <summary>
+        /// Writes what waits in a batch or in the buffer. When a write fails, whatever this call took stays to be
+        /// written, in the buffer (a batch is over by then): the next flush writes it (XmlEngine.FlushToDisk: Flush,
+        /// the next transaction, the close), a rollback drops it (DiscardPendingWrites). ISS-098: the sets were
+        /// emptied before the writes, so a write that failed was never made, though the context went on showing it.
+        /// Writing again a file that was written is harmless: each is written whole, or from where its last write
+        /// that succeeded ended (FlushRawPageToDisk). Called under syncLock.
+        /// </summary>
+        private void FlushPending(HashSet<XFile> files, HashSet<string> rawPages)
+        {
+            if (files.Count == 0 && rawPages.Count == 0)
+                return;
+            var toFlush = files.ToList();
+            var rawToFlush = rawPages.ToList();
+            files.Clear();
+            rawPages.Clear();
+            try
+            {
+                if (toFlush.Count > 0)
+                    FlushFilesList(toFlush);
+                if (rawToFlush.Count > 0)
+                    FlushRawPagesList(rawToFlush);
+            }
+            catch
+            {
+                dirtyBufferedFiles.UnionWith(toFlush);
+                dirtyBufferedRawPages.UnionWith(rawToFlush);
+                throw;
+            }
+        }
+
+        // A full page a batch wrote on its own counted as written when its write began (IOService.RawPages); one
+        // whose write failed is written whole by the next flush instead (ISS-098).
+        private void AwaitBatchWrites(List<(System.Threading.Tasks.Task Write, string Page, RawPageBuffer Buffer)> writes)
+        {
+            if (writes == null || writes.Count == 0)
+                return;
+            try
+            {
+                System.Threading.Tasks.Task.WaitAll(writes.Select(w => w.Write).ToArray());
+            }
+            catch (AggregateException)
+            {
+                lock (syncLock)
+                {
+                    foreach (var w in writes.Where(w => !w.Write.IsCompletedSuccessfully))
+                    {
+                        w.Buffer.DiskSyncedLength = -1;
+                        w.Buffer.DirtyStartOffset = 0;
+                        dirtyBufferedRawPages.Add(w.Page);
+                    }
+                }
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// No write of this context waits: no batch is open, and nothing waits in a batch or in the buffer, a write
+        /// that failed included (ISS-043: only then can its indexes be caught up with its pages, XmlEngine.FlushToDisk).
+        /// </summary>
+        internal bool NothingPending
+        {
+            get
+            {
+                lock (syncLock)
+                {
+                    return batchDepth == 0 && pendingBatchWrites.Count == 0 &&
+                        dirtyBatchFiles.Count == 0 && dirtyBufferedFiles.Count == 0 &&
+                        dirtyBatchRawPages.Count == 0 && dirtyBufferedRawPages.Count == 0;
+                }
             }
         }
 
@@ -152,7 +219,7 @@ namespace Xod.Services
                 {
                     if (pendingBatchWrites.Count > 0)
                     {
-                        tasksToWait = pendingBatchWrites.ToArray();
+                        tasksToWait = pendingBatchWrites.Select(w => w.Write).ToArray();
                         pendingBatchWrites.Clear();
                     }
                     dirtyBatchFiles.Clear();
@@ -170,18 +237,7 @@ namespace Xod.Services
         {
             lock (syncLock)
             {
-                if (dirtyBufferedFiles.Count > 0)
-                {
-                    var toFlush = dirtyBufferedFiles.ToList();
-                    dirtyBufferedFiles.Clear();
-                    FlushFilesList(toFlush);
-                }
-                if (dirtyBufferedRawPages.Count > 0)
-                {
-                    var rawToFlush = dirtyBufferedRawPages.ToList();
-                    dirtyBufferedRawPages.Clear();
-                    FlushRawPagesList(rawToFlush);
-                }
+                FlushPending(dirtyBufferedFiles, dirtyBufferedRawPages);
             }
         }
 

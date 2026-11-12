@@ -94,6 +94,10 @@ namespace Xod.Services
                     WriteRecord(record, JournalHeader + "\n"); // not a commit yet
 
                     // 1. Stage: each file under the new password, beside it. The files themselves are untouched.
+                    // The switch writes pages without the mutation hook that marks the indexes behind (ISS-043), and
+                    // needs none: it runs alone, after a flush, and replaces every file, the indexes among them, from
+                    // that state, so pages and indexes change together; a switch cut short is finished or undone
+                    // whole (FinishPendingSwitch, RecoverSwitch).
                     foreach (string file in files)
                     {
                         byte[] content = File.ReadAllBytes(file);

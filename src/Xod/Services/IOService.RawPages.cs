@@ -851,14 +851,14 @@ namespace Xod.Services
                         rawPage.IsNewFile = false;
                         rawPage.DiskSyncedLength = lenToWrite;
                         rawPage.DirtyStartOffset = int.MaxValue;
-                        pendingBatchWrites.Add(System.Threading.Tasks.Task.Run(() =>
+                        pendingBatchWrites.Add((System.Threading.Tasks.Task.Run(() =>
                         {
                             using (var fs = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.None))
                             {
                                 fs.Write(bytesToWrite, 0, lenToWrite);
                                 fs.Flush(flushToDisk: false);
                             }
-                        }));
+                        }), pageFileName, rawPage));
                     }
                     else
                     {
