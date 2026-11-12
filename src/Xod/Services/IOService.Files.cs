@@ -10,13 +10,18 @@ namespace Xod.Services
 {
     internal partial class IOService
     {
-        private void RecoverInterruptedWrites()
+        /// <summary>
+        /// Recovers what a crash left in the database folder <paramref name="root"/>: a password change, an atomic
+        /// write of a database file, a commit. Only with the database to the caller (or a folder nothing can write):
+        /// a context's open, and <see cref="XodMigrator"/> before it converts.
+        /// </summary>
+        internal static void RecoverInterruptedWrites(string root)
         {
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
                 return;
 
             // A password change that can't be finished stops the open: it would leave files under two passwords.
-            XodSecurityService.RecoverSwitch(root);
+            PasswordSwitch.RecoverSwitch(root);
 
             try
             {
@@ -345,15 +350,7 @@ namespace Xod.Services
                 : serializedBytes;
 
             file.LastSavedSize = payloadBytes.Length;
-
-            string tempPath = file.Path + ".tmp";
-            using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.None))
-            {
-                fs.Write(payloadBytes, 0, payloadBytes.Length);
-                fs.Flush(flushToDisk: false);
-            }
-
-            File.Move(tempPath, file.Path, overwrite: true);
+            WriteRawBytesAtomic(file.Path, payloadBytes, payloadBytes.Length);
         }
 
         private void FlushFilesList(List<XFile> toFlush)

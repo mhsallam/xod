@@ -53,6 +53,15 @@ namespace Xod
         public AutonumberDataTypeException() : base("Wrong auto number datatype. This feature can only be applied on numeric or Guid datatypes.") { }
     }
 
+    /// <summary>An <see cref="PropertyAttribute.IdentitySeed"/> or <see cref="PropertyAttribute.IdentityIncrement"/>
+    /// that can't number its property (not a whole number, outside the property's type, an increment below 1).
+    /// Thrown when the type is first used.</summary>
+    public class AutonumberSeedException : XodException
+    {
+        public AutonumberSeedException(string typeName, string propertyName, string reason)
+            : base($"The autonumber settings of '{typeName}.{propertyName}' can't be used: {reason}") { }
+    }
+
     public class ReservedPrimaryKeyException : XodException
     {
         public ReservedPrimaryKeyException() : base("The primary key value is reserved by another object.") { }

@@ -47,7 +47,6 @@ namespace Xod.Services
         private readonly PropertyService propertyService;
         private IXodStorageSerializer storageSerializer;
         private FileStream lockStream;
-        private string lockFilePath;
 
         private int batchDepth;
         private readonly bool bufferedDurability;

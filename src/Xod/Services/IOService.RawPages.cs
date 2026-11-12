@@ -1532,7 +1532,10 @@ namespace Xod.Services
             rawPage.DirtyStartOffset = int.MaxValue;
         }
 
-        private static void WriteRawBytesAtomic(string fullPath, byte[] bytes, int length)
+        /// <summary>Writes a whole file so that a crash leaves the old one or the new one: beside it as
+        /// <c>.tmp</c>, then moved over it (a <c>.tmp</c> left beside a file is deleted at the next open,
+        /// <see cref="RecoverInterruptedWrites"/>).</summary>
+        internal static void WriteRawBytesAtomic(string fullPath, byte[] bytes, int length)
         {
             string tempPath = fullPath + ".tmp";
             using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.None))

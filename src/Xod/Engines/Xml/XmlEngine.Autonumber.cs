@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Xml.Linq;
 using Xod.Services;
 
@@ -75,15 +76,18 @@ namespace Xod.Engines.Xml
             return high;
         }
 
-        private static decimal? AutonumberValueOf(Type type, PropertyInfoItem prop, XElement row)
+        private static decimal? AutonumberValueOf(Type type, PropertyInfoItem prop, XElement row) =>
+            decimal.TryParse(StoredText(type, prop, row), NumberStyles.Float, CultureInfo.InvariantCulture, out decimal v) ? v : null;
+
+        // The stored text of a property of a row (its <Row> element).
+        private static string StoredText(Type type, PropertyInfoItem prop, XElement row)
         {
             XElement entity = row?.Element(type.Name) ?? row?.Elements().FirstOrDefault();
             if (entity == null)
                 return null;
-            string text = prop.ValuePosition == ValuePosition.Attribute
+            return prop.ValuePosition == ValuePosition.Attribute
                 ? entity.Attribute(prop.PropertyName)?.Value
                 : entity.Element(prop.PropertyName)?.Value;
-            return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out decimal v) ? v : null;
         }
 
         private static decimal? ReadAutonumberMark(XFile tableFile, string propertyName)
@@ -93,6 +97,117 @@ namespace Xod.Engines.Xml
             return decimal.TryParse(mark?.Attribute("last")?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out decimal v)
                 ? v
                 : null;
+        }
+
+        private static readonly Func<object, object> ShallowCopy = (Func<object, object>)Delegate.CreateDelegate(
+            typeof(Func<object, object>), typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic));
+
+        /// <summary>
+        /// The item an update writes to one row, for every update path: the new item, or a shallow copy of it that
+        /// carries the row's own values where the update leaves them as they are, so that the checks, the index and
+        /// the counter see the row as it will be stored. The caller's new item is never changed: one new item may
+        /// serve several rows (an update by example) or several updates. A copy keeps the row's value for an
+        /// autonumber the new item leaves unset (ISS-075: the row lost its number), and for a key, unique, indexed
+        /// or autonumber value the update filter leaves out (the row keeps it, <see cref="KeepLeftOutValues"/>; the
+        /// index was rebuilt from the new item's value instead).
+        /// </summary>
+        private object ItemForRow(Type type, XElement oldRow, object newItem, UpdateFilter filter)
+        {
+            object rowItem = newItem;
+            foreach (var prop in AutonumberPropertiesOf(type))
+            {
+                if (UpdateWrites(filter, prop.PropertyName) && AutonumberService.IsUnset(prop, prop.GetValue(newItem)))
+                    KeepStoredValue(type, prop, oldRow, newItem, ref rowItem);
+            }
+
+            if (filter?.Properties != null)
+            {
+                foreach (var prop in propertyService.Properties(type.FullName))
+                {
+                    if ((prop.IsPrimaryKey || prop.IsUnique || prop.IsIndexed || prop.IsAutonumber) &&
+                        !prop.IsNotMapped && !UpdateWrites(filter, prop.PropertyName))
+                        KeepStoredValue(type, prop, oldRow, newItem, ref rowItem);
+                }
+            }
+            return rowItem;
+        }
+
+        // Whether an update with this filter writes the property (no filter: every property).
+        private static bool UpdateWrites(UpdateFilter filter, string propertyName) =>
+            filter?.Properties == null ||
+            (filter.Behavior == UpdateFilterBehavior.Skip) != filter.Properties.Contains(propertyName);
+
+        // The row's stored value, read as a read gives it, set on the row's item (copied from the new item first).
+        private void KeepStoredValue(Type type, PropertyInfoItem prop, XElement oldRow, object newItem, ref object rowItem)
+        {
+            string text = StoredText(type, prop, oldRow);
+            object value = string.IsNullOrEmpty(text)
+                ? Helpers.ValueHelper.DefaultOf(prop.PropertyType)
+                : ReadValue(prop, prop.PropertyType, text);
+            if (ReferenceEquals(rowItem, newItem))
+                rowItem = ShallowCopy(newItem);
+            prop.SetValue(rowItem, value);
+        }
+
+        /// <summary>
+        /// An update's autonumber values, once its checks have passed and before the row is written: a value the
+        /// update changes is seen by the counter, and the old one is recorded in the table's mark, as a delete
+        /// records it, so neither is handed out again, in this context or after reopening (ISS-059).
+        /// <paramref name="rowItem"/> is what <see cref="ItemForRow"/> gave: a value the update leaves as it was
+        /// is the row's, so it is no change.
+        /// </summary>
+        private void RecordAutonumberChanges(Type type, XElement oldRow, object rowItem)
+        {
+            bool changed = false;
+            foreach (var prop in AutonumberPropertiesOf(type))
+            {
+                if (!IsNumericAutonumber(prop))
+                    continue;
+                object current = prop.GetValue(rowItem);
+                if (AutonumberService.IsUnset(prop, current))
+                    continue;
+
+                decimal value = Convert.ToDecimal(current, CultureInfo.InvariantCulture);
+                decimal? old = AutonumberValueOf(type, prop, oldRow);
+                if (old == value)
+                    continue;
+                autonumberService.Observe(type, prop, value);
+                changed |= old.HasValue;
+            }
+
+            if (!changed)
+                return;
+            XFile tableFile = ioService.OpenFileOrCreate($"{type.FullName}.xtab", typeof(Table), openOnly: true);
+            if (tableFile != null && RaiseAutonumberMarks(type, tableFile, oldRow))
+                ioService.Save(tableFile);
+        }
+
+        /// <summary>
+        /// What an update filter leaves out keeps the old row's value: its elements and its attributes. One copy
+        /// for both update paths; values stored as attributes, an autonumber key among them, were dropped.
+        /// </summary>
+        private static void KeepLeftOutValues(XElement xOldRow, XElement xNewRow, UpdateFilter filter)
+        {
+            if (filter?.Properties == null)
+                return;
+
+            if (filter.Behavior == UpdateFilterBehavior.Skip)
+            {
+                foreach (var name in filter.Properties)
+                {
+                    xNewRow.Element(name)?.Remove();
+                    XElement old = xOldRow.Element(name);
+                    if (old != null)
+                        xNewRow.Add(new XElement(old));
+                    xNewRow.SetAttributeValue(name, xOldRow.Attribute(name)?.Value);
+                }
+                return;
+            }
+
+            foreach (var old in xOldRow.Elements().Where(e => !filter.Properties.Contains(e.Name.LocalName)))
+                xNewRow.Add(new XElement(old));
+            foreach (var old in xOldRow.Attributes().Where(a => !filter.Properties.Contains(a.Name.LocalName)))
+                xNewRow.SetAttributeValue(old.Name, old.Value);
         }
 
         /// <summary>Raises the table's marks to cover the row being deleted and everything this context

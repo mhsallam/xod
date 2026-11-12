@@ -84,10 +84,8 @@ namespace Xod.Services
                                 propInfoItem.IsAutonumber = propertyAtt.AutoNumber;
                                 propInfoItem.IsIndexed = propertyAtt.Indexed;
                                 propInfoItem.ValuePosition = propertyAtt.Position;
-                                propInfoItem.IdentityIncrement = propertyAtt.IdentityIncrement;
-                                propInfoItem.IdentitySeed = propertyAtt.IdentitySeed;
-                                propInfoItem.IntSeed = propertyAtt.IdentitySeed;
-                                propInfoItem.IntIncrement = propertyAtt.IdentityIncrement;
+                                propInfoItem.SeedSetting = propertyAtt.IdentitySeed;
+                                propInfoItem.IncrementSetting = propertyAtt.IdentityIncrement;
                             }
 
                             propInfoItem.IsRequired = atts.OfType<RequiredAttribute>().Any();
@@ -240,6 +238,11 @@ namespace Xod.Services
                             }
                         }
 
+                        // Autonumber seeds and increments, once every autonumber is known (the Id convention
+                        // above included).
+                        foreach (var p in typeProps.Where(p => p.IsAutonumber))
+                            ReadIdentitySettings(type, p);
+
                         // [Crypto] rules, checked once every key is known (the Id convention above included).
                         foreach (var p in typeProps.Where(p => p.Encryption != CryptoMethod.None))
                         {
@@ -281,6 +284,63 @@ namespace Xod.Services
                         LoadType(innerType);
                 }
             }
+        }
+
+        /// <summary>
+        /// The one reading of an autonumber's [Property(IdentitySeed, IdentityIncrement)] (ISS-047): each a whole
+        /// number, the seed 1 or more (0 means a value the item leaves unset) and within the whole numbers the
+        /// property's type holds exactly, the increment 1 or more; otherwise the type is refused when it loads. A
+        /// Guid autonumber is a new Guid each time, so it takes neither. Before, [Property(IdentitySeed = ...)]
+        /// didn't compile (the properties were dynamic, which C# refuses in an attribute); a subclass of the
+        /// attribute could set them, and they were read as int.
+        /// </summary>
+        private static void ReadIdentitySettings(Type type, PropertyInfoItem p)
+        {
+            Type t = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
+            if (t == typeof(Guid))
+            {
+                if (p.SeedSetting != null || p.IncrementSetting != null)
+                    throw new AutonumberSeedException(type.Name, p.PropertyName, "a Guid autonumber is a new Guid each time: it takes no IdentitySeed or IdentityIncrement.");
+                return;
+            }
+            if (!ValueHelper.IsNumeric(t))
+                return;
+
+            decimal Whole(object setting, string name)
+            {
+                if (setting == null)
+                    return 1;
+                decimal value;
+                try
+                {
+                    if (!ValueHelper.IsNumeric(setting.GetType()))
+                        throw new FormatException();
+                    value = Convert.ToDecimal(setting, System.Globalization.CultureInfo.InvariantCulture);
+                }
+                catch (Exception e) when (e is FormatException || e is InvalidCastException || e is OverflowException)
+                {
+                    throw new AutonumberSeedException(type.Name, p.PropertyName, $"{name} must be a whole number; it is {setting} ({setting.GetType().Name}).");
+                }
+                if (value != decimal.Truncate(value))
+                    throw new AutonumberSeedException(type.Name, p.PropertyName, $"{name} must be a whole number; it is {setting}.");
+                return value;
+            }
+
+            decimal seed = Whole(p.SeedSetting, nameof(PropertyAttribute.IdentitySeed));
+            decimal increment = Whole(p.IncrementSetting, nameof(PropertyAttribute.IdentityIncrement));
+            if (increment < 1)
+                throw new AutonumberSeedException(type.Name, p.PropertyName, $"{nameof(PropertyAttribute.IdentityIncrement)} must be 1 or more; it is {increment}.");
+
+            if (seed < 1)
+                throw new AutonumberSeedException(type.Name, p.PropertyName, $"{nameof(PropertyAttribute.IdentitySeed)} must be 1 or more (0 means a value the item leaves unset); it is {seed}.");
+            AutonumberService.WholeRange(t, out _, out decimal max);
+            if (seed > max)
+                throw new AutonumberSeedException(type.Name, p.PropertyName, $"{nameof(PropertyAttribute.IdentitySeed)} {seed} is beyond the whole numbers a {t.Name} holds exactly ({max}).");
+            if (increment > max)
+                throw new AutonumberSeedException(type.Name, p.PropertyName, $"{nameof(PropertyAttribute.IdentityIncrement)} {increment} is outside the range of {t.Name}.");
+
+            p.Seed = seed;
+            p.Increment = increment;
         }
 
         private static ScalarPropertyKind ClassifyScalarKind(Type propType)

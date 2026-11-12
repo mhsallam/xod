@@ -10,6 +10,7 @@ namespace Xod.Infra
         void Rollback();
     }
 
+    [Obsolete("Use XodContext.Secure, Loose and ChangePassword: the one way a database's password changes.")]
     public interface IXodSecurityService
     {
         event EventHandler Changed;

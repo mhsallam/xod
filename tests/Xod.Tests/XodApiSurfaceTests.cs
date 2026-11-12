@@ -31,25 +31,34 @@ namespace Xod.Tests
             throw new DirectoryNotFoundException("fixtures directory not found above " + AppContext.BaseDirectory);
         }
 
+        // A deprecation is part of the surface too: marking a member [Obsolete] changes the snapshot.
+        private static string Obsolete(MemberInfo member) =>
+            member.GetCustomAttribute<ObsoleteAttribute>(inherit: false) is ObsoleteAttribute o ? (o.IsError ? " [obsolete, error]" : " [obsolete]") : "";
+
+        // A type as the source writes it where that differs from the compiled one: dynamic compiles to object,
+        // so a change between the two (a source break for code that reads the value) would show no difference.
+        private static string TypeName(Type type, ICustomAttributeProvider declaredOn) =>
+            declaredOn.IsDefined(typeof(System.Runtime.CompilerServices.DynamicAttribute), false) ? "dynamic" : type.Name;
+
         private static string Describe(Type type)
         {
             var lines = new List<string>();
-            lines.Add($"type {type.FullName}" + (type.IsAbstract && type.IsSealed ? " (static)" : type.IsAbstract ? " (abstract)" : type.IsSealed ? " (sealed)" : ""));
+            lines.Add($"type {type.FullName}" + (type.IsAbstract && type.IsSealed ? " (static)" : type.IsAbstract ? " (abstract)" : type.IsSealed ? " (sealed)" : "") + Obsolete(type));
 
             foreach (var ctor in type.GetConstructors(BindingFlags.Public | BindingFlags.Instance))
-                lines.Add($"  ctor({string.Join(", ", ctor.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"))})");
+                lines.Add($"  ctor({string.Join(", ", ctor.GetParameters().Select(p => $"{TypeName(p.ParameterType, p)} {p.Name}"))})" + Obsolete(ctor));
 
             foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
-                lines.Add($"  prop {property.PropertyType.Name} {property.Name} {{{(property.CanRead ? " get;" : "")}{(property.CanWrite ? " set;" : "")} }}");
+                lines.Add($"  prop {TypeName(property.PropertyType, property)} {property.Name} {{{(property.CanRead ? " get;" : "")}{(property.CanWrite ? " set;" : "")} }}" + Obsolete(property));
 
             foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
-                lines.Add($"  field {field.FieldType.Name} {field.Name}");
+                lines.Add($"  field {TypeName(field.FieldType, field)} {field.Name}" + Obsolete(field));
 
             foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                          .Where(m => !m.IsSpecialName)
                          .OrderBy(m => m.Name, StringComparer.Ordinal))
             {
-                lines.Add($"  method {method.ReturnType.Name} {method.Name}({string.Join(", ", method.GetParameters().Select(p => p.ParameterType.Name))})");
+                lines.Add($"  method {TypeName(method.ReturnType, method.ReturnParameter)} {method.Name}({string.Join(", ", method.GetParameters().Select(p => TypeName(p.ParameterType, p)))})" + Obsolete(method));
             }
 
             return string.Join("\n", lines);

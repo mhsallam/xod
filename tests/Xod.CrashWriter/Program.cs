@@ -36,7 +36,7 @@ public static class Program
     {
         if (args.Length < 2)
         {
-            Console.Error.WriteLine("usage: Xod.CrashWriter <setup|onebatch|burst|count|pwsetup|pwchange|pwchange-twice|pwchange-then-write|bufferedflush|pwchange-buffered|txcommit|txfail|pwopen|pwopen-locked> <directory>");
+            Console.Error.WriteLine("usage: Xod.CrashWriter <setup|onebatch|burst|count|pwsetup|pwchange|pwchange-twice|pwchange-then-write|bufferedflush|pwchange-buffered|txcommit|txfail|pwopen|pwopen-locked|convert> <directory>");
             return 2;
         }
 
@@ -56,6 +56,16 @@ public static class Program
             options.Durability = DurabilityMode.Buffered;
         if (Environment.GetEnvironmentVariable("XOD_TEST_LOCK") == "1")
             options.LockDatabase = true;
+
+        // XodMigrator (ISS-072): the password database converted to Binary, into XOD_TEST_TARGET (the folder
+        // itself when unset).
+        if (mode == "convert")
+        {
+            string target = Environment.GetEnvironmentVariable("XOD_TEST_TARGET") ?? dir;
+            int converted = XodMigrator.ConvertDatabase(dir, target, StorageFormat.Binary, "first");
+            Console.WriteLine("CONVERTED " + converted);
+            return 0;
+        }
 
         if (mode == "setup")
         {

@@ -31,6 +31,17 @@ type Xod.AutonumberDataTypeException
   prop Int32 HResult { get; set; }
   prop String StackTrace { get; }
 
+type Xod.AutonumberSeedException
+  ctor(String typeName, String propertyName, String reason)
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }
+
 type Xod.CascadeOptions (sealed)
   field Int32 value__
   field CascadeOptions None
@@ -115,7 +126,7 @@ type Xod.DatabaseOptions
   prop StorageFormat StorageFormat { get; set; }
   prop Int32 PageSize { get; set; }
   prop Boolean EnableIndexing { get; set; }
-  prop Boolean EnableCompression { get; set; }
+  prop Boolean EnableCompression { get; set; } [obsolete]
   prop Boolean LockDatabase { get; set; }
   prop Int32 LockRetryTimeoutMs { get; set; }
   prop Int32 TransactionTimeoutMs { get; set; }
@@ -192,8 +203,8 @@ type Xod.Engines.Xml.XmlEngine
   method Boolean Delete(Type, Object, Boolean)
   method Void Dispose()
   method Boolean DropType(Type)
-  method Object Find(Type, Func`2, String)
-  method Object FindLast(Type, Func`2, String)
+  method Object Find(Type, dynamic, String)
+  method Object FindLast(Type, dynamic, String)
   method Object First(Type, String)
   method Void Flush()
   method DatabaseStatistics GetStatistics()
@@ -202,7 +213,7 @@ type Xod.Engines.Xml.XmlEngine
   method Int32 InsertRange(Type, IEnumerable`1, Boolean)
   method Object Last(Type, String)
   method Void Loose(String)
-  method IEnumerable`1 Query(Type, Func`2, String)
+  method IEnumerable`1 Query(Type, dynamic, String)
   method IEnumerable`1 QueryByExample(Type, Object, String)
   method IEnumerable`1 QueryByExample(Type, Object[], String)
   method IEnumerable`1 QueryExpression(Expression`1, String)
@@ -227,8 +238,8 @@ type Xod.GenericTypePropertyAttribute
   prop Object TypeId { get; }
 
 type Xod.Helpers.CryptoHelper (static)
-  method String DecryptProperty(String, String)
-  method String EncryptProperty(String, String)
+  method String DecryptProperty(String, String) [obsolete]
+  method String EncryptProperty(String, String) [obsolete]
   method String GenerateKey()
   method String GetMD5HashData(String)
   method String GetSHA1HashData(String)
@@ -250,7 +261,7 @@ type Xod.Helpers.ValueHelper (static)
   method Boolean IsScalarType(Type)
   method Object ParseScalar(Type, String)
 
-type Xod.Helpers.XodSecurityService
+type Xod.Helpers.XodSecurityService [obsolete]
   ctor(String path, String password)
   prop String Password { get; set; }
   prop String Path { get; set; }
@@ -270,8 +281,8 @@ type Xod.IXodEngine (abstract)
   method Int32 Count(Type)
   method Boolean Delete(Type, Object)
   method Boolean DropType(Type)
-  method Object Find(Type, Func`2, String)
-  method Object FindLast(Type, Func`2, String)
+  method Object Find(Type, dynamic, String)
+  method Object FindLast(Type, dynamic, String)
   method Object First(Type, String)
   method Void Flush()
   method DatabaseStatistics GetStatistics()
@@ -280,7 +291,7 @@ type Xod.IXodEngine (abstract)
   method Int32 InsertRange(Type, IEnumerable`1, Boolean)
   method Object Last(Type, String)
   method Void Loose(String)
-  method IEnumerable`1 Query(Type, Func`2, String)
+  method IEnumerable`1 Query(Type, dynamic, String)
   method IEnumerable`1 QueryByExample(Type, Object, String)
   method IEnumerable`1 QueryByExample(Type, Object[], String)
   method IEnumerable`1 QueryExpression(Expression`1, String)
@@ -358,7 +369,7 @@ type Xod.Infra.IXodContext (abstract)
   method Boolean Update(T, T, UpdateFilter)
   method Task`1 UpdateAsync(T, UpdateFilter, CancellationToken)
 
-type Xod.Infra.IXodSecurityService (abstract)
+type Xod.Infra.IXodSecurityService (abstract) [obsolete]
   prop String Password { get; set; }
   prop String Path { get; set; }
   method Void ChangePassword(String, String)

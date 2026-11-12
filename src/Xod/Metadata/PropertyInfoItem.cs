@@ -110,10 +110,12 @@ namespace Xod
         public bool IsIndexed { get; set; }
 
         public bool IsAutonumber { get; set; }
-        public dynamic IdentityIncrement { get; set; } = 1;
-        public dynamic IdentitySeed { get; set; } = 1;
-        public int IntSeed { get; set; } = 1;
-        public int IntIncrement { get; set; } = 1;
+        // The first number and the step of an autonumber, from [Property(IdentitySeed, IdentityIncrement)]
+        // (PropertyService.ReadIdentitySettings); checked when the type loads.
+        internal decimal Seed { get; set; } = 1;
+        internal decimal Increment { get; set; } = 1;
+        internal object SeedSetting { get; set; }
+        internal object IncrementSetting { get; set; }
 
         public ValuePosition ValuePosition { get; set; }
         public dynamic DefaultValue { get; set; }

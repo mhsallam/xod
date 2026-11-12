@@ -10,10 +10,11 @@ namespace Xod.Services
     /// Hands out autonumber values. Each (table, property) has one counter: the highest value the property
     /// has held, which starts from the table (<see cref="HighestUsedDelegate"/>: the larger of the mark the
     /// table records when rows are deleted, and its rows) and only rises, so a value isn't handed out again
-    /// after the row that held it is deleted, in this context or after reopening (ISS-052). Not covered:
-    /// an update that changes an autonumber value (ISS-059); two contexts writing one database at once
-    /// without <c>DatabaseOptions.LockDatabase</c>; and a crash between a delete's page write and its
-    /// mark write, since a batch flushes its files in no fixed order.
+    /// after the row that held it is deleted, in this context or after reopening (ISS-052), or after an update
+    /// changes it (ISS-059, XmlEngine.RecordAutonumberChanges). Not covered: two contexts writing one database at
+    /// once without <c>DatabaseOptions.LockDatabase</c>; a crash between a delete's or an update's page write and
+    /// its mark write, since a batch flushes its files in no fixed order; and a rollback, which resets the
+    /// counters, so a number handed out inside the rolled-back transaction is handed out again.
     /// </summary>
     internal class AutonumberService : IDisposable
     {
@@ -64,8 +65,35 @@ namespace Xod.Services
             }
         }
 
-        // A row arrived with its own value: later numbers start above it.
-        private void Observe(Type type, PropertyInfoItem prop, decimal value)
+        /// <summary>The one rule for an autonumber an item leaves unset: its type's default (0, or an empty Guid).
+        /// The typed paths of <see cref="Autonumber"/> compare with 0 and Guid.Empty directly, the same rule.</summary>
+        internal static bool IsUnset(PropertyInfoItem prop, object value) =>
+            value == null || value.Equals(ValueHelper.DefaultOf(prop.PropertyType));
+
+        /// <summary>The whole numbers an autonumber of type <paramref name="t"/> holds, each exactly: its
+        /// MinValue to MaxValue, but a float or a double only to 2^24 or 2^53 either way (beyond, two numbers
+        /// would be stored as one).</summary>
+        internal static void WholeRange(Type t, out decimal min, out decimal max)
+        {
+            if (t == typeof(float))
+            {
+                min = -16_777_216m;
+                max = 16_777_216m;
+                return;
+            }
+            if (t == typeof(double))
+            {
+                min = -9_007_199_254_740_992m;
+                max = 9_007_199_254_740_992m;
+                return;
+            }
+            min = Convert.ToDecimal(t.GetField("MinValue").GetValue(null), CultureInfo.InvariantCulture);
+            max = Convert.ToDecimal(t.GetField("MaxValue").GetValue(null), CultureInfo.InvariantCulture);
+        }
+
+        // A row arrived with its own value (an insert that gave one, an update that changed one): later numbers
+        // start above it.
+        internal void Observe(Type type, PropertyInfoItem prop, decimal value)
         {
             lock (syncLock)
             {
@@ -99,7 +127,7 @@ namespace Xod.Services
                 {
                     int cur = prop.IntGetter(item);
                     if (cur == 0)
-                        prop.IntSetter(item, checked((int)Issue(type, prop, prop.IntSeed, prop.IntIncrement)));
+                        prop.IntSetter(item, checked((int)Issue(type, prop, prop.Seed, prop.Increment)));
                     else
                         Observe(type, prop, cur);
                     continue;
@@ -109,7 +137,7 @@ namespace Xod.Services
                 {
                     long cur = prop.LongGetter(item);
                     if (cur == 0L)
-                        prop.LongSetter(item, checked((long)Issue(type, prop, prop.IntSeed, prop.IntIncrement)));
+                        prop.LongSetter(item, checked((long)Issue(type, prop, prop.Seed, prop.Increment)));
                     else
                         Observe(type, prop, cur);
                     continue;
@@ -135,8 +163,7 @@ namespace Xod.Services
                 exceptionService.Throw(new AutonumberDataTypeException());
 
             object currentVal = prop.GetValue(item);
-            object defaultVal = ValueHelper.DefaultOf(prop.PropertyType);
-            bool unset = currentVal == null || currentVal.Equals(defaultVal);
+            bool unset = IsUnset(prop, currentVal);
 
             if (underlying == typeof(Guid))
             {
@@ -147,9 +174,12 @@ namespace Xod.Services
 
             if (unset)
             {
-                decimal seed = Convert.ToDecimal(prop.IdentitySeed ?? 1, CultureInfo.InvariantCulture);
-                decimal increment = Convert.ToDecimal(prop.IdentityIncrement ?? 1, CultureInfo.InvariantCulture);
-                decimal next = Issue(type, prop, seed, increment);
+                decimal next = Issue(type, prop, prop.Seed, prop.Increment);
+                // Past the type's whole numbers no number is handed out, as an int's checked cast refuses one
+                // past its range: a float or double would store it as a number already handed out.
+                WholeRange(underlying, out _, out decimal max);
+                if (next > max)
+                    throw new OverflowException($"The next autonumber of {type.Name}.{prop.PropertyName}, {next}, is beyond the whole numbers a {underlying.Name} holds exactly ({max}).");
                 prop.SetValue(item, Convert.ChangeType(next, underlying, CultureInfo.InvariantCulture));
             }
             else

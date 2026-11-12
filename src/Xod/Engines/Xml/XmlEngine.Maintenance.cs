@@ -97,25 +97,23 @@ namespace Xod.Engines.Xml
         public void ChangePassword(string currentPassword, string newPassword) => SwitchPassword(
             () =>
             {
-                securityService.CheckCurrentPassword(currentPassword);
-                securityService.CheckCanSecure(newPassword, replacingCurrent: true);
+                passwordSwitch.CheckCurrentPassword(currentPassword);
+                passwordSwitch.CheckCanSecure(newPassword, replacingCurrent: true);
             },
-            Helpers.CryptoHelper.GetSHA256HashData(newPassword),
-            () => securityService.ChangePassword(currentPassword, newPassword));
+            Helpers.CryptoHelper.GetSHA256HashData(newPassword));
 
         public void Loose(string pwd) => SwitchPassword(
-            () => securityService.CheckCurrentPassword(pwd),
-            null,
-            () => securityService.Loose(pwd));
+            () => passwordSwitch.CheckCurrentPassword(pwd),
+            null);
 
         public void Secure(string pwd) => SwitchPassword(
-            () => securityService.CheckCanSecure(pwd),
-            Helpers.CryptoHelper.GetSHA256HashData(pwd),
-            () => securityService.Secure(pwd));
+            () => passwordSwitch.CheckCanSecure(pwd),
+            Helpers.CryptoHelper.GetSHA256HashData(pwd));
 
-        // Setting, changing and removing the password: the checks, the AES256 key, then the files (all or
-        // nothing, XodSecurityService), then this context follows the password the files are under.
-        private void SwitchPassword(Action check, string newPassword, Action switchFiles)
+        // The one way the password changes (the public XodSecurityService comes here through a context): the
+        // checks, the AES256 key, then the files (all or nothing, PasswordSwitch), then this context follows the
+        // password the files are under.
+        private void SwitchPassword(Action check, string newPassword)
         {
             rwLock.EnterWriteLock();
             try
@@ -130,21 +128,21 @@ namespace Xod.Engines.Xml
                 {
                     // A change this context made earlier that couldn't replace every file: finished before
                     // anything below reads the files, or this one is refused.
-                    securityService.FinishPendingSwitch();
+                    passwordSwitch.FinishPendingSwitch();
                     // Everything this context holds goes to disk first: the switch rewrites the files on disk,
                     // and nothing may be written over them afterwards that the switch didn't see.
                     FlushToDisk();
                     propertyKeys.PasswordChanging(password, newPassword);
                     try
                     {
-                        switchFiles();
+                        passwordSwitch.SwitchTo(newPassword);
                     }
                     finally
                     {
                         // The files' password is the security service's: the old one if the switch failed before
                         // its commit, the new one from the commit on (even when a file is replaced only at the
                         // next open).
-                        password = securityService.Password;
+                        password = passwordSwitch.Password;
                         ioService.Password = password;
                         ClearCache();
                     }

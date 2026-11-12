@@ -406,7 +406,8 @@ namespace Xod.Engines.Xml
 
                     if (ioService.TryGetRowFromRawPage(pageFileName, rowCode, out XElement rawRow, out int startOffset, out int byteLen))
                     {
-                        ValidateUniqueAndPrimaryConstraints(type, newItem, existingCodeToIgnore: itemCode);
+                        object rowItem = ItemForRow(type, rawRow, newItem, filter);
+                        ValidateUniqueAndPrimaryConstraints(type, rowItem, existingCodeToIgnore: itemCode);
 
                         var itemTrack = new ReadWriteTrack
                         {
@@ -417,31 +418,14 @@ namespace Xod.Engines.Xml
                         };
 
                         XElement xOldRow = rawRow.Element(type.Name);
-                        XElement xNewRow = Write(type, newItem, false, itemTrack, filter);
-                        if (filter?.Properties != null)
-                        {
-                            if (filter.Behavior == UpdateFilterBehavior.Skip)
-                            {
-                                foreach (var excProp in filter.Properties)
-                                {
-                                    XElement excPropElm = xOldRow.Element(excProp);
-                                    if (excPropElm != null)
-                                        xNewRow.Add(new XElement(excPropElm));
-                                    else
-                                        xNewRow.Element(excProp)?.Remove();
-                                }
-                            }
-                            else
-                            {
-                                foreach (var excPropElm in xOldRow.Elements().Where(s => !filter.Properties.Contains(s.Name.LocalName)))
-                                    xNewRow.Add(new XElement(excPropElm));
-                            }
-                        }
+                        RecordAutonumberChanges(type, rawRow, rowItem);
+                        XElement xNewRow = Write(type, rowItem, false, itemTrack, filter);
+                        KeepLeftOutValues(xOldRow, xNewRow, filter);
 
                         if (!xOldRow.ElementEquals(xNewRow))
                         {
                             indexService.RemoveRowElement(type, rawRow, itemCode, persist: false);
-                            indexService.IndexItem(type, newItem, itemCode);
+                            indexService.IndexItem(type, rowItem, itemCode);
                             var newRowWrapper = new XElement("Row", new XAttribute("code", rowCode), xNewRow);
                             ioService.SpliceRowInRawPage(pageFileName, startOffset, byteLen, newRowWrapper, rowCode, out _);
                         }
@@ -488,7 +472,8 @@ namespace Xod.Engines.Xml
                         ? $"{pageCode}.{rowCodeAtt.Value}"
                         : "";
 
-                    ValidateUniqueAndPrimaryConstraints(type, newItem, existingCodeToIgnore: itemCode);
+                    object rowItem = ItemForRow(type, row, newItem, filter);
+                    ValidateUniqueAndPrimaryConstraints(type, rowItem, existingCodeToIgnore: itemCode);
 
                     if (meta == null || !meta.IsStandalone)
                         itemsCacheService.Clear(type, rowCodeAtt?.Value);
@@ -502,26 +487,9 @@ namespace Xod.Engines.Xml
                     };
 
                     XElement xOldRow = row.Element(type.Name);
-                    XElement xNewRow = Write(type, newItem, false, itemTrack, filter);
-                    if (filter?.Properties != null)
-                    {
-                        if (filter.Behavior == UpdateFilterBehavior.Skip)
-                        {
-                            foreach (var excProp in filter.Properties)
-                            {
-                                XElement excPropElm = xOldRow.Element(excProp);
-                                if (excPropElm != null)
-                                    xNewRow.Add(new XElement(excPropElm));
-                                else
-                                    xNewRow.Element(excProp)?.Remove();
-                            }
-                        }
-                        else
-                        {
-                            foreach (var excPropElm in xOldRow.Elements().Where(s => !filter.Properties.Contains(s.Name.LocalName)))
-                                xNewRow.Add(new XElement(excPropElm));
-                        }
-                    }
+                    RecordAutonumberChanges(type, row, rowItem);
+                    XElement xNewRow = Write(type, rowItem, false, itemTrack, filter);
+                    KeepLeftOutValues(xOldRow, xNewRow, filter);
 
                     if (!row.Element(type.Name).ElementEquals(xNewRow))
                     {
@@ -529,7 +497,7 @@ namespace Xod.Engines.Xml
                         {
                             indexService.RemoveRowElement(type, row, itemCode, persist: false);
                             row.ReplaceNodes(xNewRow);
-                            indexService.IndexItem(type, newItem, itemCode);
+                            indexService.IndexItem(type, rowItem, itemCode);
                         }
                         else
                         {
@@ -570,7 +538,7 @@ namespace Xod.Engines.Xml
 
                             indexService.RemoveRowElement(type, row, itemCode, persist: false);
                             row.ReplaceNodes(xNewRow);
-                            indexService.IndexItem(type, newItem, itemCode);
+                            indexService.IndexItem(type, rowItem, itemCode);
 
                             var propRefProps = props.Where(s =>
                                 s.TypeCategory != PropertyTypeCategory.None &&
@@ -581,7 +549,7 @@ namespace Xod.Engines.Xml
                             foreach (var propRefProp in propRefProps)
                             {
                                 object oldRefItem = propRefProp.Property.GetValue(item);
-                                object newRefItem = propRefProp.Property.GetValue(newItem);
+                                object newRefItem = propRefProp.Property.GetValue(rowItem);
 
                                 if (propRefProp.ReferenceType == PropertyReferenceType.Parent)
                                 {

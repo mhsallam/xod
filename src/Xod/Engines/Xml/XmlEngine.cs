@@ -27,7 +27,7 @@ namespace Xod.Engines.Xml
 
         // Services
         private readonly IOService ioService;
-        private readonly XodSecurityService securityService;
+        private readonly PasswordSwitch passwordSwitch;
         private readonly PropertyService propertyService;
         private readonly AutonumberService autonumberService;
         private readonly PropertyKeyService propertyKeys;
@@ -121,7 +121,7 @@ namespace Xod.Engines.Xml
                 this.password = CryptoHelper.GetSHA256HashData(password);
 
             this.exceptionService = new ExceptionService(path);
-            this.securityService = new XodSecurityService(path, this.password);
+            this.passwordSwitch = new PasswordSwitch(path, this.password);
             this.ioService = new IOService(
                 path,
                 this.password,
@@ -136,7 +136,7 @@ namespace Xod.Engines.Xml
             this.ioService.BeforeFileMutate = f =>
             {
                 ThrowIfWritesRefused();
-                securityService.FinishPendingSwitch();
+                passwordSwitch.FinishPendingSwitch();
                 activeTransaction?.CaptureBeforeMutate(f);
             };
             this.ioService.HasActiveTransaction = () => activeTransaction != null && activeTransaction.IsActive;
@@ -269,8 +269,11 @@ namespace Xod.Engines.Xml
 
         private void EnterTableReadLock(Type type, out ReaderWriterLockSlim tableLock)
         {
+            // Before the lock: this loads the type, which may refuse it (its attributes), and a throw after the
+            // lock was taken would leave it held, since the caller's try starts after this returns.
+            bool standalone = IsStandaloneTable(type);
             rwLock.EnterReadLock();
-            if (IsStandaloneTable(type))
+            if (standalone)
             {
                 tableLock = GetTableLock(type);
                 tableLock.EnterReadLock();

@@ -17,6 +17,9 @@ namespace Xod
         public StorageFormat StorageFormat { get; set; } = StorageFormat.Xml;
         public int PageSize { get; set; } = 524288; // 512 KB default page size
         public bool EnableIndexing { get; set; } = true;
+        /// <summary>Has no effect: nothing has ever read it (ISS-048). For smaller files use
+        /// <see cref="StorageFormat.Binary"/>. To be removed in a major version.</summary>
+        [System.Obsolete("EnableCompression has no effect. For smaller files use StorageFormat.Binary.")]
         public bool EnableCompression { get; set; }
         public bool LockDatabase { get; set; } = false;
         public int LockRetryTimeoutMs { get; set; } = 0;

@@ -30,7 +30,6 @@ namespace Xod.Services
         /// </summary>
         private void OpenAndRecover(bool lockDatabase, int retryTimeoutMs)
         {
-            this.lockFilePath = this.path + ".lock";
             this.lockRetryTimeoutMs = retryTimeoutMs;
 
             if (lockDatabase)
@@ -39,7 +38,7 @@ namespace Xod.Services
                 this.exclusivePresence = true;
                 try
                 {
-                    RecoverInterruptedWrites();
+                    RecoverInterruptedWrites(root);
                 }
                 catch
                 {
@@ -49,7 +48,7 @@ namespace Xod.Services
                 return;
             }
 
-            if (RecoveryPending())
+            if (RecoveryPending(root))
             {
                 FileStream alone = null;
                 bool folderWritable = true;
@@ -69,13 +68,13 @@ namespace Xod.Services
                 if (alone != null)
                 {
                     using (alone)
-                        RecoverInterruptedWrites();
+                        RecoverInterruptedWrites(root);
                 }
                 else if (!folderWritable)
                 {
                     // Nothing can be written here, by this context or another: the recovery either finds nothing it
                     // must change, or stops the open (a commit or a password change half done can't be opened).
-                    RecoverInterruptedWrites();
+                    RecoverInterruptedWrites(root);
                 }
             }
 
@@ -95,13 +94,13 @@ namespace Xod.Services
 
         // What a crash may have left: a transaction journal (or one cut short), a password change, an atomic write
         // of a database file.
-        private bool RecoveryPending() =>
+        private static bool RecoveryPending(string root) =>
             Directory.EnumerateFiles(root).Any(f =>
                 f.EndsWith(".xwal", StringComparison.OrdinalIgnoreCase) ||
                 f.EndsWith(".xwal.tmp", StringComparison.OrdinalIgnoreCase) ||
                 (f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) && Helpers.DatabaseFiles.IsOfDatabase(f.Substring(0, f.Length - 4))) ||
-                f.EndsWith(Helpers.XodSecurityService.JournalSuffix, StringComparison.OrdinalIgnoreCase) ||
-                f.EndsWith(Helpers.XodSecurityService.StagedSuffix, StringComparison.OrdinalIgnoreCase));
+                f.EndsWith(PasswordSwitch.JournalSuffix, StringComparison.OrdinalIgnoreCase) ||
+                f.EndsWith(PasswordSwitch.StagedSuffix, StringComparison.OrdinalIgnoreCase));
 
         /// <summary>
         /// Lets go of the database. The lock file stays, whoever held it: on Unix a context that opened it just
@@ -116,12 +115,19 @@ namespace Xod.Services
             lockStream = null;
         }
 
-        // Shared: read access, others may read and write (on Unix .NET takes a shared advisory lock); exclusive:
-        // no sharing (an exclusive one). Either fails while the other kind is held, on a file system with locking
-        // (not when .NET's file locking is switched off: System.IO.DisableFileLocking). Creating the file needs
-        // the folder to be writable; an UnauthorizedAccessException says it isn't.
-        private FileStream OpenLockFile(bool exclusive, int retryTimeoutMs)
+        private FileStream OpenLockFile(bool exclusive, int retryTimeoutMs) => OpenLockFile(this.path, exclusive, retryTimeoutMs);
+
+        /// <summary>
+        /// The one place a database's lock file (<c>&lt;database file&gt;.lock</c>) is opened, by a context and by
+        /// <see cref="XodMigrator"/>. Shared: read access, others may read and write (on Unix .NET takes a shared
+        /// advisory lock); exclusive: no sharing (an exclusive one). Either fails while the other kind is held, on a
+        /// file system with locking (not when .NET's file locking is switched off: System.IO.DisableFileLocking),
+        /// with <see cref="DatabaseLockedException"/> once <paramref name="retryTimeoutMs"/> has passed. Creating the
+        /// file needs the folder to be writable; an UnauthorizedAccessException says it isn't.
+        /// </summary>
+        internal static FileStream OpenLockFile(string databasePath, bool exclusive, int retryTimeoutMs)
         {
+            string lockFilePath = databasePath + ".lock";
             var sw = System.Diagnostics.Stopwatch.StartNew();
             int delayMs = 5;
 
@@ -130,15 +136,15 @@ namespace Xod.Services
                 try
                 {
                     return exclusive
-                        ? new FileStream(this.lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)
-                        : new FileStream(this.lockFilePath, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite);
+                        ? new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)
+                        : new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite);
                 }
                 catch (IOException ex)
                 {
                     int remaining = retryTimeoutMs - (int)sw.ElapsedMilliseconds;
                     if (retryTimeoutMs <= 0 || remaining <= 0)
                     {
-                        throw new DatabaseLockedException(this.path, ex);
+                        throw new DatabaseLockedException(databasePath, ex);
                     }
 
                     System.Threading.Thread.Sleep(Math.Min(delayMs, remaining));
