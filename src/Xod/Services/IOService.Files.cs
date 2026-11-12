@@ -127,6 +127,27 @@ namespace Xod.Services
             return null;
         }
 
+        /// <summary>
+        /// A page as this context holds it, for reading only, without changing what is cached: its cached document, a
+        /// document made from a copy of its cached bytes, or the file. For a walk of a table's pages for its index
+        /// (IndexService.ForEachPageRow). Opened through <see cref="OpenFileOrCreate"/>, a page held as bytes is
+        /// taken out of that cache, and a writer that had found a row's offset in them before the walk then wrote to a
+        /// page no longer there (ISS-113). Null when the page doesn't exist.
+        /// </summary>
+        internal XFile PageForReading(string pageFileName)
+        {
+            string normalizedName = Path.GetFileName(pageFileName);
+            string filePath = Path.Combine(root, normalizedName);
+            lock (syncLock)
+            {
+                if (cachedFiles.TryGetValue(normalizedName, out var item))
+                    return item.File;
+                if (cachedRawPages.TryGetValue(normalizedName, out var rawPage) && rawPage?.Bytes != null)
+                    return new XFile(storageSerializer.Deserialize(rawPage.ToExactArray()), typeof(TablePage), filePath, password);
+                return File.Exists(filePath) ? LoadUnlocked(typeof(TablePage), filePath, password) : null;
+            }
+        }
+
         private static long SafeFileLength(string path)
         {
             try { return !string.IsNullOrEmpty(path) && File.Exists(path) ? new FileInfo(path).Length : 0; }

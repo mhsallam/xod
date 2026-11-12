@@ -134,7 +134,8 @@ function parseXml(s) {
 }
 
 // ---- index keys (section 8.3); the type comes from column-types.json until the manifest exists.
-// Keys v1 (2.0: XIDX2 markers -2/-3, a TableIndex document) and keys v2 (the next release: marker -4, TableIndex2).
+// Keys v1 (2.0: XIDX2 markers -2/-3, a TableIndex document) and keys v2 (the next release: marker -5, TableIndex2;
+// -4, the same without a generation, was written only by unreleased builds).
 function normKey(type, text, version) {
   if (text == null) return null;
   return version === 2 ? keyV2(type, text) : keyV1(type, text);
@@ -216,10 +217,14 @@ function readIndex(dir, file, unwrap) {
   const i32 = () => { const v = raw.readInt32LE(p); p += 4; return v; };
   const str = () => { const [s, np] = readString(raw, p); p = np; return s; };
   const marker = i32();
-  if (marker !== -4 && marker !== -3 && marker !== -2) throw new Error(file + ': an unframed snapshot (not produced by 2.0 or later)');
-  // -4 records what its keys assume about the writing machine: a hash of the local zone's rules for a
-  // type with an indexed DateTime, else empty (section 8.1). A reader in another zone rebuilds.
-  const zone = marker === -4 ? str() : '';
+  if (marker < -5 || marker > -2) throw new Error(file + ': an unframed snapshot (not produced by 2.0 or later)');
+  // -5 carries the snapshot's generation (int64, never 0, new at each snapshot): a reader that found its
+  // blocks in one snapshot tells another apart by it (section 8.1).
+  if (marker === -5 && raw.readBigInt64LE(p) === 0n) throw new Error(file + ': a generation of 0');
+  if (marker === -5) p += 8;
+  // -4 and -5 record what their keys assume about the writing machine: a hash of the local zone's rules for
+  // a type with an indexed DateTime, else empty (section 8.1). A reader in another zone rebuilds.
+  const zone = marker <= -4 ? str() : '';
   for (let n = i32(); n > 0; n--) {
     const prop = str(), entries = i32(), min = str(), max = str(), len = i32(), end = p + len;
     idx[prop] ??= {};
@@ -245,7 +250,7 @@ function readIndex(dir, file, unwrap) {
   }
   if (marker !== -2 && lastEnd !== raw.length) throw new Error(file + ': log not closed by an end-of-flush record');
   for (const b of Object.values(idx)) for (const [k, s] of Object.entries(b)) if (s.size === 0) delete b[k];
-  return { idx, form: 'binary', version: marker === -4 ? 2 : 1, zone };
+  return { idx, form: 'binary', version: marker <= -4 ? 2 : 1, zone, marker };
 }
 
 // ---- a whole database (sections 2, 5-7)
@@ -316,11 +321,13 @@ export function readDatabase(dir, password, columnTypes = {}, applicationKey = n
   // Every index must equal what the pages say.
   const indexProblems = [];
   const indexVersions = new Set();
+  const indexMarkers = new Set(); // the binary layouts met
   let indexEntries = 0;
   for (const xf of fs.readdirSync(dir).filter((f) => f.endsWith('.xidx')).sort()) {
     const table = xf.slice(0, -5);
-    const { idx, version } = readIndex(dir, xf, unwrap);
+    const { idx, version, marker } = readIndex(dir, xf, unwrap);
     indexVersions.add(version);
+    if (marker !== undefined) indexMarkers.add(marker);
     for (const [prop, got] of Object.entries(idx)) {
       const type = columnTypes[table]?.[prop];
       if (!type) { indexProblems.push(`${table}.${prop}: no type in column-types.json`); continue; }
@@ -337,7 +344,7 @@ export function readDatabase(dir, password, columnTypes = {}, applicationKey = n
       indexEntries += Object.keys(got).length;
     }
   }
-  return { database: { ...dbDoc.root.attrs }, content, secrets: secrets.sort(), indexEntries, indexProblems, indexVersions: [...indexVersions].sort() };
+  return { database: { ...dbDoc.root.attrs }, content, secrets: secrets.sort(), indexEntries, indexProblems, indexVersions: [...indexVersions].sort(), indexMarkers: [...indexMarkers].sort() };
 }
 
 // ---- [Crypto(AES256)] values (PLAN-046 section 7.6)
@@ -417,6 +424,7 @@ function main(args) {
         if (fx.secrets && JSON.stringify(r.secrets) !== JSON.stringify(fx.secrets))
           r.indexProblems.push('AES256 values read as ' + JSON.stringify(r.secrets) + ', not ' + JSON.stringify(fx.secrets));
         if (fresh && r.indexVersions.join() !== '2') r.indexProblems.push('index keys v' + r.indexVersions.join(', v') + '; the library in the tree writes v2 only');
+        if (fresh && r.indexMarkers.some((m) => m !== -5)) r.indexProblems.push('index markers ' + r.indexMarkers.join(', ') + '; the library in the tree writes -5 only');
         const expectPath = path.join(here, fx.expect);
         if (args[0] === '--write' && fx.name !== 'json' && fx.name !== 'binary' && fx.name !== 'password') fs.writeFileSync(expectPath, stable(r.content));
         const same = fs.existsSync(expectPath) && fs.readFileSync(expectPath, 'utf8').replace(/\r\n/g, '\n') === stable(r.content);

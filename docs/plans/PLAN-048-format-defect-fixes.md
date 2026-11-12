@@ -26,7 +26,8 @@
 - **Planner** (`IndexService.QueryPlan.cs`): ranges only for ordered kinds; a constant that can't be held
   exactly by the property's type matches nothing under `==` and leaves a range to the rows; NaN matches
   nothing; a user-defined operator or a conversion that would round is left to the rows.
-- **Versioning**: the binary index's marker is now `-4` and the password form's root `TableIndex2`. The
+- **Versioning**: the binary index's marker is now `-4` (`-5` since TASK-067, which adds a generation:
+  PLAN-055) and the password form's root `TableIndex2`. The
   library loads only those; any older index is rebuilt from the pages. 2.0 reads `-4` as a negative
   property count and `TableIndex2` as not an index, and rebuilds too.
 - **Uniqueness**: unique and primary-key checks use the same keys, so `0.000000001m` and `0.000000002m`

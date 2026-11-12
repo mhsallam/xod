@@ -557,6 +557,28 @@ namespace Xod.Services
             return false;
         }
 
+        // A row replaced (or removed, newRowElement null) in its page as a document, saved as any page is. Called under
+        // syncLock.
+        private void SpliceRowInPageUnlocked(string fullPath, string rowCode, XElement newRowElement, out bool hasRemainingRows)
+        {
+            XFile page = string.IsNullOrEmpty(rowCode) ? null : OpenFileOrCreate(fullPath, typeof(TablePage), openOnly: true);
+            XElement row = page?.GetRowByCode(rowCode);
+            if (row == null)
+                throw new InvalidOperationException("The row '" + rowCode + "' is no longer on the page '" + Path.GetFileName(fullPath) +
+                    "', so it can't be changed there.");
+            if (newRowElement == null)
+            {
+                page.RemoveRow(row);
+                hasRemainingRows = page.Rows().Any();
+            }
+            else
+            {
+                row.ReplaceNodes(newRowElement.Nodes());
+                hasRemainingRows = true;
+            }
+            Save(page);
+        }
+
         internal void SpliceRowInRawPage(string pageFileName, int startOffset, int oldByteLength, XElement newRowElement, out bool hasRemainingRows) =>
             SpliceRowInRawPage(pageFileName, startOffset, oldByteLength, newRowElement, null, out hasRemainingRows);
 
@@ -573,7 +595,13 @@ namespace Xod.Services
             lock (syncLock)
             {
                 if (!cachedRawPages.TryGetValue(normalizedName, out var rawPage) || rawPage?.Bytes == null)
+                {
+                    // The page left the bytes cache after its row was found there (opened as a document, or evicted):
+                    // the change is made to the page as it is held now. It used to return without writing, so an
+                    // update reported success and changed nothing (ISS-113).
+                    SpliceRowInPageUnlocked(fullPath, rowCode, newRowElement, out hasRemainingRows);
                     return;
+                }
 
                 if (newRowElement == null)
                 {

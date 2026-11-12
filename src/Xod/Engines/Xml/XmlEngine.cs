@@ -184,11 +184,7 @@ namespace Xod.Engines.Xml
                     return;
 
                 propertyService.LoadType(type);
-                var indexedProps = propertyService.Properties(type.FullName)
-                    .Where(p => p.IsIndexed || p.IsPrimaryKey || p.IsUnique)
-                    .ToList();
-
-                if (indexedProps.Count == 0)
+                if (!indexService.HasIndexedProperties(type))
                 {
                     indexService.MarkTypeHydrated(type);
                     return;
@@ -200,35 +196,11 @@ namespace Xod.Engines.Xml
                     return;
                 }
 
-                string tableFileName = $"{type.FullName}.xtab";
-                XFile tableFile = ioService.OpenFileOrCreate(tableFileName, typeof(Table), openOnly: true);
-                if (tableFile != null)
-                {
-                    foreach (var pageElm in tableFile.Pages())
-                    {
-                        string pageFileName = pageElm.Attribute("file")?.Value;
-                        if (string.IsNullOrEmpty(pageFileName) || !ioService.FileExists(pageFileName))
-                            continue;
-
-                        XFile pageFile = ioService.OpenFileOrCreate<TablePage>(pageFileName, openOnly: true);
-                        if (pageFile == null) continue;
-
-                        string pageCode = pageFile.GetFileCode();
-                        foreach (var row in pageFile.Rows())
-                        {
-                            indexService.IndexRowElement(type, row, pageCode);
-                        }
-                    }
-
-                    // The index now holds every row on the pages: whole, so it may be saved. Not by a context that
-                    // writes nothing (WritesRefused): a read would fail on the refused write. The index is a derived
-                    // cache, so it is only rebuilt again at the next open.
-                    indexService.MarkTypeHydrated(type);
-                    if (WritesRefused() == null)
-                        indexService.SaveToDisk(type);
-                }
-
-                indexService.MarkTypeHydrated(type);
+                // The index now holds every row on the pages: whole, so it may be saved. Not by a context that
+                // writes nothing (WritesRefused): a read would fail on the refused write. The index is a derived
+                // cache, so it is only rebuilt again at the next open.
+                if (indexService.BuildFromPages(type) && WritesRefused() == null)
+                    indexService.SaveBuilt(type);
             }
         }
 

@@ -107,6 +107,15 @@ records it.
   hold. It now stays to be written by the next flush (`Flush`, the next transaction, the close), or is dropped
   by a rollback; an index save that failed is made by the next flush the same way. The call that failed still
   throws.
+- **An index file another context rewrote** ([PLAN-055](plans/PLAN-055-index-files-replaced-or-held.md)):
+  a context reads an index's parts when it first needs them. When another context, in this process or another,
+  had rewritten the index file meanwhile, the read failed (`EndOfStreamException`) or could give wrong results.
+  Each index file now says which version of it this is, and a context that finds it changed reads the parts it
+  hasn't read yet from the table's pages instead, keeping everything else it holds.
+- **An index file another program holds** (ISS-042): a query no longer fails because the index it rebuilt can't
+  be saved over the file (it is rebuilt again at the next open; an unencrypted index only), and a write no longer
+  fails, after its row was written or deleted, because an index file it can't load, or a table's index once its
+  last row is deleted, can't be deleted (the file is not trusted, and is dropped later).
 - **Closing a context waits** for reads and writes running on it in other threads, and takes its write lock
   for its last flush. A context closed from inside one of its own reads still closes, and leaves its indexes to
   be rebuilt by the next open.
@@ -128,7 +137,8 @@ version rather than a patch. The owner decides.
 
 - Earlier unreleased fixes, each with its own behaviour notes: [PLAN-048](plans/PLAN-048-format-defect-fixes.md),
   [PLAN-049](plans/PLAN-049-property-encryption.md), [PLAN-050](plans/PLAN-050-password-change.md).
-- ISS-043: see [PLAN-054](plans/PLAN-054-indexes-left-behind-by-a-crash.md).
+- ISS-042: see [PLAN-055](plans/PLAN-055-index-files-replaced-or-held.md).
+- ISS-043, ISS-098: see [PLAN-054](plans/PLAN-054-indexes-left-behind-by-a-crash.md).
 - ISS-060, ISS-062 (mitigated), ISS-083 to ISS-088, ISS-091 (mitigated): see
   [PLAN-053](plans/PLAN-053-statement-undo-counters-stored-values-locks.md).
 - ISS-047, ISS-048 (mitigated), ISS-059, ISS-069, ISS-072, ISS-075, ISS-080 to ISS-082: see

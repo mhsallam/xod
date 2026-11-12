@@ -76,14 +76,15 @@ namespace Xod.Tests
         private static List<IndexLogRow> Rows(int start, int count) =>
             Enumerable.Range(start, count).Select(Row).ToList();
 
-        /// <summary>Reads where the snapshot of a framed (-4) .xidx file ends; the rest is the delta log.</summary>
+        /// <summary>Reads where the snapshot of a framed (-5) .xidx file ends; the rest is the delta log.</summary>
         private static (long SnapshotEnd, long Length) ReadLayout(string xidxPath)
         {
             byte[] bytes = File.ReadAllBytes(xidxPath);
             using var ms = new MemoryStream(bytes);
             using var r = new BinaryReader(ms, Encoding.UTF8);
             Assert.True(r.ReadBytes(Xidx2Header.Length).AsSpan().SequenceEqual(Xidx2Header));
-            Assert.Equal(-4, r.ReadInt32()); // framed snapshot, closed log flushes, keys v2
+            Assert.Equal(-5, r.ReadInt32()); // framed snapshot, closed log flushes, keys v2, a generation
+            Assert.NotEqual(0, r.ReadInt64()); // the snapshot's generation (ISS-042)
             r.ReadString();                  // zone stamp
             int props = r.ReadInt32();
             for (int p = 0; p < props; p++)
@@ -107,6 +108,7 @@ namespace Xod.Tests
             using var r = new BinaryReader(File.OpenRead(xidxPath), Encoding.UTF8);
             r.ReadBytes(Xidx2Header.Length);
             r.ReadInt32(); // marker
+            r.ReadInt64(); // generation
             r.ReadString(); // zone stamp
             int props = r.ReadInt32();
             for (int p = 0; p < props; p++)
@@ -168,7 +170,7 @@ namespace Xod.Tests
             string planted = CodeOf(path, "SKU-00000007");
             int markerAt = Xidx2Header.Length;
             byte[] bytes = File.ReadAllBytes(xidx);
-            BitConverter.GetBytes(oldMarker).CopyTo(bytes, markerAt); // the layouts are otherwise identical
+            BitConverter.GetBytes(oldMarker).CopyTo(bytes, markerAt); // a file of the old layout as far as the marker goes
             File.WriteAllBytes(xidx, bytes);
             using (var fs = new FileStream(xidx, FileMode.Append, FileAccess.Write))
             using (var w = new BinaryWriter(fs, Encoding.UTF8))
@@ -184,7 +186,7 @@ namespace Xod.Tests
                 db.InsertRange(Rows(5_000, 1_500));
             }
 
-            ReadLayout(xidx); // asserts marker -4
+            ReadLayout(xidx); // asserts marker -5
 
             using (var db = new XodContext(path))
             {
@@ -233,7 +235,8 @@ namespace Xod.Tests
             using var ms = new MemoryStream(bytes);
             using var r = new BinaryReader(ms, Encoding.UTF8);
             r.ReadBytes(Xidx2Header.Length);
-            Assert.Equal(-4, r.ReadInt32());
+            Assert.Equal(-5, r.ReadInt32());
+            r.ReadInt64(); // generation
             int zoneAt = (int)ms.Position;
             string zone = r.ReadString();
             Assert.Equal(16, zone.Length); // a type with an indexed DateTime is stamped
@@ -255,6 +258,7 @@ namespace Xod.Tests
             using var after = new BinaryReader(File.OpenRead(xidx), Encoding.UTF8);
             after.ReadBytes(Xidx2Header.Length);
             after.ReadInt32();
+            after.ReadInt64();
             Assert.Equal(zone, after.ReadString()); // rebuilt, and stamped with this machine's zone again
         }
 

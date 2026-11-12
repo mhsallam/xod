@@ -15,10 +15,21 @@ namespace Xod.Services
             return TryLoadFromDiskCore(type);
         }
 
+        // Set while a load replays its file (under syncLock): a block that can't be read then fails the load, which
+        // the caller follows with a rebuild from the pages, rather than reading blocks from the pages part way
+        // through the replay (HydrateUnreadFromPagesUnlocked).
+        private int loading;
+
+        // A block is read when first needed, at the offset found here (ReadIndexBlockBytes).
         private bool TryLoadFromDiskCore(Type type)
         {
             if (type == null || ioService == null)
                 return false;
+            lock (syncLock)
+            {
+                if (undeletedIndexFiles.Contains(type))
+                    return false;
+            }
 
             string indexFileName = GetIndexFileName(type);
             // A context that stopped with its indexes behind its pages, while others had the database open, leaves
@@ -145,6 +156,7 @@ namespace Xod.Services
                 lock (syncLock)
                 {
                     bool loaded = false;
+                    loading++;
                     try
                     {
                         using (source)
@@ -152,8 +164,9 @@ namespace Xod.Services
                             using var reader = new BinaryReader(source, Encoding.UTF8, leaveOpen: true);
 
                             int firstInt = reader.ReadInt32();
-                            if (firstInt == FramedSnapshotKeysV2)
+                            if (firstInt == SnapshotWithGeneration)
                             {
+                                long generation = reader.ReadInt64();
                                 if (reader.ReadString() != ZoneStampFor(type))
                                     return false; // built in another zone: rebuilt from the pages
                                 int propCount = reader.ReadInt32();
@@ -174,7 +187,7 @@ namespace Xod.Services
                                     propertyIndexes[indexKey] = new Dictionary<string, object>(StringComparer.Ordinal);
                                     if (entryCount > 0 && blockByteLen > 0)
                                     {
-                                        unhydratedBlocks[indexKey] = new UnhydratedIndexBlock
+                                        var block = new UnhydratedIndexBlock
                                         {
                                             RawBytes = rawBytes,
                                             FilePath = blockFilePath,
@@ -182,9 +195,12 @@ namespace Xod.Services
                                             ByteLength = blockByteLen,
                                             EntryCount = entryCount,
                                             MinKey = minKey,
-                                            MaxKey = maxKey
+                                            MaxKey = maxKey,
+                                            Type = type,
+                                            Generation = generation,
                                         };
                                         source.Position += blockByteLen;
+                                        unhydratedBlocks[indexKey] = block;
                                     }
                                 }
                             }
@@ -272,6 +288,7 @@ namespace Xod.Services
                     }
                     finally
                     {
+                        loading--;
                         // A load that stopped part way has filled some trees; the rebuild from the pages
                         // that follows must start from nothing.
                         if (!loaded)
@@ -355,33 +372,48 @@ namespace Xod.Services
         // rewritten since the block was located: within one context that cannot happen (a snapshot
         // hydrates every block first, an append moves nothing), but another context that rewrites the
         // file leaves these offsets pointing at other bytes (ISS-042).
+        //
+        // ISS-042: each snapshot carries a generation, and the read checks it in the same open as it reads the
+        // block, so it never reads another snapshot's bytes. Null when the file isn't the one the block was found in
+        // (replaced or deleted by another context) or can't be read now (held by another context's append, which
+        // shares nothing): the caller reads the type's unread blocks from the pages instead
+        // (HydrateUnreadFromPagesUnlocked). It used to read the other file's bytes at the old offset
+        // (EndOfStreamException, or wrong keys).
         private static byte[] ReadIndexBlockBytes(UnhydratedIndexBlock block)
         {
             var buffer = new byte[block.ByteLength];
             try
             {
                 using var fs = new FileStream(block.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536);
+                byte[] head = new byte[Xidx2HeaderBytes.Length + sizeof(int) + sizeof(long)];
+                if (ReadFully(fs, head, head.Length) != head.Length ||
+                    !head.AsSpan(0, Xidx2HeaderBytes.Length).SequenceEqual(Xidx2HeaderBytes) ||
+                    BitConverter.ToInt32(head, Xidx2HeaderBytes.Length) != SnapshotWithGeneration ||
+                    BitConverter.ToInt64(head, Xidx2HeaderBytes.Length + sizeof(int)) != block.Generation)
+                    return null;
                 fs.Position = block.Offset;
-                int read = 0;
-                while (read < buffer.Length)
-                {
-                    int n = fs.Read(buffer, read, buffer.Length - read);
-                    if (n <= 0) break;
-                    read += n;
-                }
-
-                if (read == buffer.Length)
-                    return buffer;
+                return ReadFully(fs, buffer, buffer.Length) == buffer.Length ? buffer : null;
             }
-            catch
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {
+                return null;
             }
-
-            var whole = File.ReadAllBytes(block.FilePath);
-            Buffer.BlockCopy(whole, block.Offset, buffer, 0, block.ByteLength);
-            return buffer;
         }
 
+        private static int ReadFully(Stream stream, byte[] buffer, int count)
+        {
+            int read = 0;
+            while (read < count)
+            {
+                int n = stream.Read(buffer, read, count - read);
+                if (n <= 0)
+                    break;
+                read += n;
+            }
+            return read;
+        }
+
+        // Null when the block's file was replaced (ReadIndexBlockBytes).
         private static Dictionary<string, object> DeserializePropertyBlock(UnhydratedIndexBlock block, int extraCapacity = 0)
         {
             var tree = new Dictionary<string, object>(Math.Max(16, block.EntryCount + extraCapacity), StringComparer.Ordinal);
@@ -390,6 +422,8 @@ namespace Xod.Services
             if (block.FilePath != null)
             {
                 bytes = ReadIndexBlockBytes(block);
+                if (bytes == null)
+                    return null;
                 offset = 0;
             }
             using var ms = new MemoryStream(bytes, offset, block.ByteLength, writable: false);
@@ -424,6 +458,11 @@ namespace Xod.Services
 
             propertyIndexes.TryGetValue(indexKey, out var deltaTree);
             var hydrated = DeserializePropertyBlock(block, deltaTree?.Count ?? 0);
+            if (hydrated == null)
+            {
+                HydrateUnreadFromPagesUnlocked(block.Type);
+                return;
+            }
             unhydratedBlocks.Remove(indexKey); // only once read: a failed read must not leave an empty tree
             if (deltaTree != null && deltaTree.Count > 0)
             {
@@ -494,6 +533,11 @@ namespace Xod.Services
             {
                 deserialized[i] = DeserializePropertyBlock(blocks[i], extraCaps[i]);
             });
+            if (deserialized.Any(d => d == null))
+            {
+                HydrateUnreadFromPagesUnlocked(type);
+                return;
+            }
 
             // Only once every block is read: a failed read must not leave empty trees behind.
             for (int i = 0; i < keysToHydrate.Count; i++)
@@ -559,13 +603,7 @@ namespace Xod.Services
             if (type == null || ioService == null)
                 return;
 
-            var meta = propertyService.GetMetadata(type);
-            var indexedProps = meta != null
-                ? meta.IndexedProperties
-                : propertyService.Properties(type.FullName)
-                    .Where(s => s.IsIndexed || s.IsPrimaryKey || s.IsUnique)
-                    .ToArray();
-
+            var indexedProps = IndexedProperties(type);
             if (indexedProps.Length == 0)
                 return;
 
@@ -610,8 +648,8 @@ namespace Xod.Services
                 Span<byte> hdrBuf = stackalloc byte[Xidx2HeaderBytes.Length + sizeof(int)];
                 if (fs.Read(hdrBuf) != hdrBuf.Length ||
                     !hdrBuf.Slice(0, Xidx2HeaderBytes.Length).SequenceEqual(Xidx2HeaderBytes) ||
-                    BitConverter.ToInt32(hdrBuf.Slice(Xidx2HeaderBytes.Length)) != FramedSnapshotKeysV2)
-                    return false; // not the layout this context loaded (another writer replaced it): snapshot
+                    BitConverter.ToInt32(hdrBuf.Slice(Xidx2HeaderBytes.Length)) != SnapshotWithGeneration)
+                    return false; // not the layout this context writes (an older build's, or another writer's): snapshot
 
                 // Appended at the end of whatever the file holds. Another context may have appended too
                 // (concurrent writers need DatabaseOptions.LockDatabase); appending keeps its records and
@@ -640,6 +678,20 @@ namespace Xod.Services
                 log.MarkSnapshotDue();
                 return false;
             }
+        }
+
+        // A snapshot's generation (ISS-042): random and never 0, so another snapshot of the same file has another.
+        private static long NewGeneration()
+        {
+            Span<byte> bytes = stackalloc byte[sizeof(long)];
+            long generation;
+            do
+            {
+                System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+                generation = BitConverter.ToInt64(bytes);
+            }
+            while (generation == 0);
+            return generation;
         }
 
         private void WriteFullSnapshotToDisk(Type type, PropertyInfoItem[] indexedProps, string indexFilePath, DeltaLog log)
@@ -720,7 +772,8 @@ namespace Xod.Services
             using (var writer = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: false))
             {
                 writer.Write(Xidx2HeaderBytes);
-                writer.Write(FramedSnapshotKeysV2);
+                writer.Write(SnapshotWithGeneration);
+                writer.Write(NewGeneration());
                 writer.Write(ZoneStampFor(indexedProps));
                 writer.Write(indexedProps.Length);
 
@@ -745,10 +798,142 @@ namespace Xod.Services
 
             if (useTempFile)
             {
-                File.Move(writePath, indexFilePath, overwrite: true);
+                try
+                {
+                    File.Move(writePath, indexFilePath, overwrite: true);
+                }
+                catch
+                {
+                    // Not left beside the file: a .tmp with no file beside it is moved into place at the next open
+                    // (IOService.RecoverInterruptedWrites), and this one would miss whatever changes after it.
+                    try { File.Delete(writePath); } catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
+                    throw;
+                }
             }
 
             log.SnapshotWritten(snapshotBytes);
+            // Replaced by what this context holds; not in a transaction, whose rollback puts the old file back.
+            if (!InTransaction)
+                undeletedIndexFiles.Remove(type);
+        }
+
+        /// <summary>
+        /// ISS-042: a block of the type's index can't be read from its file: the file isn't the one this context found
+        /// the block in (another context replaced it with a snapshot: a rebuild, a fold at its close) or can't be read
+        /// now (another context's append holds it). Every block of the type not yet read is built from the pages
+        /// instead, in one walk of them: the keys the pages hold (read through this context's cache, so with what it
+        /// has written and not yet saved), with the keys it added since the load. That is what the block held, as
+        /// the pages now hold it: no key is taken out of a block while it is unread (a removal reads a block before it
+        /// takes a key out of it, RemoveRowElement; RemoveItemCode reads them all), so every row whose key it held is
+        /// on the pages unless deleted since. Nothing else of the type's index changes: not the trees already read, nor the log of changes still
+        /// to save, nor whether the type is to be saved, so a caller in the middle of a change (a delete taking a
+        /// row's keys out, a flush writing a snapshot) goes on with what it began with. It used to load the type
+        /// again from the new file, from under such callers, which dropped their changes (review of TASK-067). The
+        /// changes are then saved as before: appended to whatever file is there, or written whole. While a load
+        /// replays its file, the load fails instead and its caller rebuilds the type. Called under syncLock.
+        /// </summary>
+        private void HydrateUnreadFromPagesUnlocked(Type type)
+        {
+            if (loading > 0)
+                throw new InvalidDataException("The index file of " + type.FullName + " was replaced while it was loaded.");
+
+            string prefix = type.FullName + "::";
+            var trees = new Dictionary<string, Dictionary<string, object>>(StringComparer.Ordinal);
+            foreach (var kvp in unhydratedBlocks)
+            {
+                if (kvp.Key.StartsWith(prefix, StringComparison.Ordinal))
+                    trees[kvp.Key] = new Dictionary<string, object>(Math.Max(16, kvp.Value.EntryCount), StringComparer.Ordinal);
+            }
+            if (trees.Count == 0)
+                return;
+
+            var props = IndexedProperties(type).Where(p => trees.ContainsKey(GetIndexKey(type, p.PropertyName))).ToArray();
+            ForEachPageRow(type, (row, pageCode) =>
+            {
+                foreach (var (key, normVal, itemCodePath) in RowKeys(type, row, pageCode, props))
+                    AddCodeToBucket(trees[key], normVal, itemCodePath);
+            });
+
+            // Only once the walk is done: one that fails leaves the blocks unread, as they were.
+            foreach (var (key, tree) in trees)
+            {
+                if (propertyIndexes.TryGetValue(key, out var added))
+                {
+                    foreach (var kvp in added)
+                    {
+                        if (kvp.Value is string singleCode)
+                            AddCodeToBucket(tree, kvp.Key, singleCode);
+                        else if (kvp.Value is HashSet<string> set)
+                        {
+                            foreach (var code in set)
+                                AddCodeToBucket(tree, kvp.Key, code);
+                        }
+                    }
+                }
+                unhydratedBlocks.Remove(key);
+                propertyIndexes[key] = tree;
+            }
+        }
+
+        /// <summary>
+        /// Every row of every page the table lists, with its page's code: the one walk of a table's pages for its
+        /// index (BuildFromPages, HydrateUnreadFromPagesUnlocked). It changes no page cache (IOService.PageForReading):
+        /// it can run in the middle of a write that holds a row's offset in a page's cached bytes (ISS-113). False when
+        /// the table has no file.
+        /// </summary>
+        private bool ForEachPageRow(Type type, Action<XElement, string> onRow)
+        {
+            XFile tableFile = ioService.OpenFileOrCreate($"{type.FullName}.xtab", typeof(Table), openOnly: true);
+            if (tableFile == null)
+                return false;
+
+            foreach (var pageElm in tableFile.Pages())
+            {
+                string pageFileName = pageElm.Attribute("file")?.Value;
+                if (string.IsNullOrEmpty(pageFileName) || !ioService.FileExists(pageFileName))
+                    continue;
+
+                // Read without moving it between the page caches (ISS-113).
+                XFile pageFile = ioService.PageForReading(pageFileName);
+                if (pageFile == null)
+                    continue;
+
+                string pageCode = pageFile.GetFileCode();
+                foreach (var row in pageFile.Rows())
+                    onRow(row, pageCode);
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Builds the type's index from its pages, the one place that does (the engine, for an index it can't load):
+        /// every row of every page the table lists, then the index counts as whole. False when the table has no file
+        /// (nothing to index).
+        /// </summary>
+        internal bool BuildFromPages(Type type)
+        {
+            bool found = ForEachPageRow(type, (row, pageCode) => IndexRowElement(type, row, pageCode));
+            MarkTypeHydrated(type);
+            return found;
+        }
+
+        /// <summary>
+        /// Saves an index just built from the pages, as a cache for the next open. A plain file that can't be written
+        /// (held open elsewhere, a folder that can't be written) is left as it was: whatever kept it from being loaded
+        /// still applies to it, so it isn't trusted later, and the next open builds the index again. It used to fail
+        /// the query that built it (ISS-042). Changes this context then records are saved by the flushes, which do
+        /// report a failure. An encrypted index is saved through the file service, which in a batch or with buffered
+        /// writes holds the save for its next flush: a failure then fails that flush (ISS-109).
+        /// </summary>
+        internal void SaveBuilt(Type type)
+        {
+            try
+            {
+                SaveToDisk(type);
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+            }
         }
 
         private void SaveEncryptedViaIOService(Type type, PropertyInfoItem[] indexedProps, string indexFilePath)

@@ -373,17 +373,19 @@ crash recovery. Readers may ignore it. A reader that uses it must not trust it w
 that isn't empty and that no context holds is in the folder (section 9): a context stopped with its indexes
 behind its pages. A reader that can't tell whether a marker is held should not trust an index while any marker
 that isn't empty is there. The next release never loads an index of the layouts 2.0.0 and 2.0.1 write (`-3`
-and older, section 8.1) but rebuilds it; its time check (ISS-043) is left only for a `-4` index whose pages a
+and older, section 8.1) but rebuilds it; its time check (ISS-043) is left only for a `-5` index whose pages a
 writer without the marker (2.0.0, 2.0.1) changed afterwards.
 
 ### 8.1 Binary form (no database password)
 
 ```
 "XIDX2:<TableIndex>\n"                 19 bytes, UTF-8
-int32 marker                           -4: snapshot + closed log, keys v2 (the next release)
+int32 marker                           -5: snapshot + closed log, keys v2, a generation (the next release)
+                                       -4: the same without a generation (unreleased builds only)
                                        -3: snapshot + closed log, keys v1 (2.0)
                                        -2: snapshot + log, keys v1; >= 0: unframed snapshot, keys v1 (older)
-string zone                            -4 only: what the keys assume about the writing machine
+int64 generation                       -5 only: never 0, new at each snapshot
+string zone                            -5 and -4 only: what the keys assume about the writing machine
 int32 propertyCount
 per property:
   string name | int32 entryCount | string minKey | string maxKey | int32 blockBytes
@@ -396,13 +398,18 @@ log, to end of file, per record:
 - `minKey`/`maxKey` are the ordinal minimum and maximum of the block's keys. The library uses them to
   load a block only when a lookup falls inside it.
 - Entries in a block are unordered.
-- With marker `-4` or `-3`, the log must end exactly after an op-3 record. If it doesn't, a flush was
-  cut short and the index isn't trusted.
-- **The next release loads only `-4`.** Every other marker holds keys v1 (section 8.3), which can give
-  wrong answers, so it rebuilds that table's index from the pages and writes `-4`. 2.0 reads `-4` as a
-  negative property count and rebuilds too, so moving between the two versions never trusts the other's
-  keys.
-- **`zone`** (marker `-4`): a local `DateTime` is stored with its offset and read back in the reading
+- With marker `-5`, `-4` or `-3`, the log must end exactly after an op-3 record. If it doesn't, a flush
+  was cut short and the index isn't trusted.
+- **The next release loads only `-5`.** `-3` and older hold keys v1 (section 8.3), which can give wrong
+  answers, and `-4` has no generation, so it rebuilds that table's index from the pages and writes `-5`.
+  2.0 reads `-5` as a negative property count and rebuilds too, so moving between the two versions never
+  trusts the other's keys.
+- **`generation`** (marker `-5`): a random non-zero number, new each time the file is written whole (a
+  snapshot); appends to the log keep it. The library reads a property's block only when first needed, at
+  the offset it found when it loaded the file, and checks the generation in that same read: another context
+  that wrote a snapshot meanwhile moved every block, and the library then loads the file again rather than
+  read other bytes (ISS-042). A reader that reads the whole file in one go may ignore it.
+- **`zone`** (markers `-5`, `-4`): a local `DateTime` is stored with its offset and read back in the reading
   machine's zone (section 7.5), so its key depends on that zone. For a type with an indexed `DateTime`
   property, `zone` is the first 8 bytes of SHA-256 over the local zone's serialized rules, in upper-case
   hex; for any other type it is empty. It is the rules, not the zone's name, so the file says nothing

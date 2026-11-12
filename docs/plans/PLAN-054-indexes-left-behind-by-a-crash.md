@@ -80,7 +80,7 @@ As reworked by `TASK-066`; what changed from `TASK-064` is said where it did.
   the index files by the same probe as any context. It used to be refused when anything was pending; markers
   alone don't refuse it.
 - **The time check** (`IndexService.TryLoadFromDiskCore`) stays, as a guess, for what no marker can say: an index
-  of this version's layout (`-4`) whose pages a writer without the marker (XOD 2.0.0 or 2.0.1) changed
+  of this version's layout (`-4`; `-5` since TASK-067, PLAN-055) whose pages a writer without the marker (XOD 2.0.0 or 2.0.1) changed
   afterwards. `TASK-064` said it stayed for databases written by those versions; their indexes (`-3` and older)
   are never loaded, but rebuilt (review, F6).
 - **Writers that don't pass the hook**, each argued at its site (review, F7): a rollback's restore of the files
@@ -199,7 +199,14 @@ this holds for a process crash, not a power cut, as PLAN-046 section 9 says.
 
 ## 6. Verdicts
 
-After the review and `TASK-066`:
+**Corrected after the review of `e62bc30` (2026-11-12, section 8): the verdicts below claimed more than the code.**
+ISS-043 is a **mitigation**: "caught up" is still inferred from the absence of pending writes, which can be absent
+while the index file doesn't cover the pages (a direct page write that failed, `ISS-099`; a forgotten transaction
+whose index file was written, `ISS-100`; a flush re-entered from a trigger, `ISS-101`), and a marker held by
+another program reads as live (`ISS-102`). ISS-098 is **fixed for batches and the buffer only**; the direct path,
+the default, is `ISS-099`.
+
+After the review and `TASK-066` (as first written):
 
 | Change | Verdict |
 | :--- | :--- |
@@ -209,7 +216,7 @@ After the review and `TASK-066`:
 ## 7. Remaining debt
 
 - **ISS-042** stays open: contexts without `LockDatabase` don't coordinate their writes, and one can rewrite an
-  index snapshot another has open.
+  index snapshot another has open. (Fixed by `TASK-067`, `PLAN-055`.)
 - After any crash of a context that had written, every index of the database is rebuilt on first use, in time
   proportional to the data; the marker doesn't name the tables. While a crash's marker waits for an open alone
   (other contexts keep the database open), every context rebuilds each index it loads, in memory.
@@ -217,3 +224,34 @@ After the review and `TASK-066`:
   writer skips the hook.
 - `InsertRange` whose batch write failed throws, and its rows are written by the next flush: the caller is told
   the write failed, though it will be made (as under `DurabilityMode.Buffered`).
+
+## 8. Review of `e62bc30` (2026-11-12)
+
+An independent reviewer (read-only; probes run from `git archive` copies, on Windows and in a Linux container as a
+non-root user) found that `TASK-066` doesn't fix all it claims. Filed, and to be fixed by `TASK-068`:
+
+- `ISS-099` (High): a direct page write that failed (no batch, no buffer: the default) left its change in the cache
+  and in no pending set; the next flush called the indexes caught up. Reproduced: a page held by a plain reader
+  (XOD's own loads use `File.ReadAllBytes`, which shares reading only) made inserts throw; the rows reached the
+  pages with the next write, the index didn't have them after a clean close, and a duplicate unique key was
+  accepted. Under JSON storage the index kept a row the page didn't.
+- `ISS-100` (Medium-high): a `Flush` inside a transaction writes the index files; a commit refused before its
+  journal (another context's journal present) or a rollback whose restore of them failed leaves them holding the
+  transaction's keys, and the context, having forgotten everything, calls them caught up at its next flush.
+- `ISS-101` (Medium): `Flush` or `Dispose` called from a trigger in the middle of a statement calls the indexes
+  caught up (`IsWriteLockHeld` is true in a recursive write; its documentation forbids it for control flow), before
+  the statement's page is saved.
+- `ISS-102` (Medium): `ProbeMarker` reads any `IOException` as a live marker, so a crash's marker that a backup
+  tool holds makes even an open alone trust a stale index (`caf4e39` dropped the indexes and failed the open).
+- `ISS-103` (Low): the close releases its write lock before letting go of the hold and the marker; a write of
+  another thread can land after them.
+- `ISS-104` (Low): where the file system takes no locks, recovery can run beside a live context and delete its
+  marker; the comment saying this "costs time, not rows" overstates.
+
+Verifying them (`tests/Xod.Tests/XodTrustedIndexTests.cs`, red against the tree) found one more, `ISS-107` (High): a
+delete inside a transaction that empties a page deletes the page file at once, so a commit refused before its
+journal loses those rows though nothing was committed.
+
+Its findings 7 (the first read failing on an index file the open couldn't drop) and 9 (`AbandonIndexFile`
+dropping the type from the dirty set before a deletion that can fail) are fixed by `TASK-067` (`PLAN-055`).
+

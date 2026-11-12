@@ -13,13 +13,15 @@ namespace Xod.Services
 
         // The int after the XIDX2 header. -2: framed property blocks, then a log of delta records.
         // -3: the same, and every flush appended to the log ends with DeltaLog.OpFlushEnd (PLAN-041).
-        // -4: the -3 layout holding keys v2 (IndexKeys). The only layout loaded: the others hold v1 keys,
-        // which are rounded and misordered (ISS-053, ISS-054, ISS-056, ISS-057), so their tables are
-        // rebuilt from the pages. A 2.0 library reads -4 as a negative property count and rebuilds too.
-        private const int FramedSnapshotKeysV2 = -4;
+        // -4: the -3 layout holding keys v2 (IndexKeys), written by builds before TASK-067 (never released).
+        // -5: the -4 layout with a generation (int64) after the marker, new at each snapshot (ISS-042). The only
+        // layout loaded: the others hold v1 keys, which are rounded and misordered (ISS-053, ISS-054, ISS-056,
+        // ISS-057), or no generation, so their tables are rebuilt from the pages. A 2.0 library reads -5 as a
+        // negative property count and rebuilds too.
+        private const int SnapshotWithGeneration = -5;
 
         /// <summary>
-        /// What an index's keys assume about the machine, written after the -4 marker (a <c>zone</c>
+        /// What an index's keys assume about the machine, written after the marker (a <c>zone</c>
         /// attribute in the document form) and compared on load: an index whose stamp differs is rebuilt
         /// from the pages. A local <c>DateTime</c> is stored with its offset and read back in the reading
         /// machine's zone, so its key (ticks, as C# compares) depends on that zone (ISS-057). For a type
@@ -52,12 +54,22 @@ namespace Xod.Services
             return stamped.Item2;
         }
 
-        private string ZoneStampFor(Type type)
+        private string ZoneStampFor(Type type) => ZoneStampFor(IndexedProperties(type));
+
+        internal bool HasIndexedProperties(Type type) => IndexedProperties(type).Length > 0;
+
+        // A transaction is open (its commit has not begun).
+        private bool InTransaction => ioService?.HasActiveTransaction != null && ioService.HasActiveTransaction();
+
+        // The properties the type's index holds keys for: its primary key, its unique keys and its indexed properties.
+        private PropertyInfoItem[] IndexedProperties(Type type)
         {
             var meta = propertyService.GetMetadata(type);
-            return ZoneStampFor(meta != null
+            return meta != null
                 ? meta.IndexedProperties
-                : propertyService.Properties(type.FullName).Where(s => s.IsIndexed || s.IsPrimaryKey || s.IsUnique));
+                : propertyService.Properties(type.FullName)
+                    .Where(s => s.IsIndexed || s.IsPrimaryKey || s.IsUnique)
+                    .ToArray();
         }
 
         /// <summary>The root of the document form of an index (written when the database has a password),
@@ -270,6 +282,12 @@ namespace Xod.Services
         // Set of types whose in-memory index has unpersisted changes
         private readonly HashSet<Type> dirtyTypes = new();
 
+        // Types whose index file this context couldn't load and then couldn't delete (AbandonIndexFile): the file
+        // misses what this context changed since, so it never loads it, and the file goes when a snapshot replaces
+        // it or a later deletion succeeds. Not cleared with the caches: it says what is on disk (ISS-042). Nor in a
+        // transaction: its rollback puts back the files it deleted or replaced.
+        private readonly HashSet<Type> undeletedIndexFiles = new();
+
         // Per type: the .xidx layout and its unsaved deltas (Op: 1=Add, 2=Remove, PropName, NormVal, ItemCode)
         private readonly Dictionary<Type, DeltaLog> deltaLogs = new();
 
@@ -298,11 +316,13 @@ namespace Xod.Services
             List<Type> toSave;
             lock (syncLock)
             {
-                if (dirtyTypes.Count == 0)
+                if (dirtyTypes.Count == 0 && undeletedIndexFiles.Count == 0)
                     return;
                 toSave = dirtyTypes.ToList();
                 dirtyTypes.Clear();
             }
+
+            DeleteUndeletedIndexFiles();
 
             // A type leaves the set only once saved: one whose save fails, and those after it, stay to be saved by
             // the next flush, their changes held in their logs until written (review of TASK-064: a failed save
@@ -328,16 +348,34 @@ namespace Xod.Services
             }
         }
 
-        /// <summary>Every change this context recorded to an index is saved (ISS-043: XmlEngine.FlushToDisk).</summary>
+        /// <summary>
+        /// Every change this context recorded to an index is saved, and no index file it couldn't delete is left
+        /// missing its changes (ISS-043: XmlEngine.FlushToDisk; ISS-042).
+        /// </summary>
         internal bool AllSaved
         {
             get
             {
                 lock (syncLock)
                 {
-                    return dirtyTypes.Count == 0;
+                    return dirtyTypes.Count == 0 && undeletedIndexFiles.Count == 0;
                 }
             }
+        }
+
+        // Another try at deleting the index files AbandonIndexFile couldn't (ISS-042). One that still can't be
+        // deleted stays, and keeps the indexes from counting as saved.
+        private void DeleteUndeletedIndexFiles()
+        {
+            List<Type> types;
+            lock (syncLock)
+            {
+                if (undeletedIndexFiles.Count == 0)
+                    return;
+                types = undeletedIndexFiles.ToList();
+            }
+            foreach (var type in types)
+                DeleteIndexFile(type);
         }
 
         /// <summary>
@@ -400,9 +438,40 @@ namespace Xod.Services
                 dirtyTypes.Remove(type);
             }
 
+            DeleteIndexFile(type);
+        }
+
+        /// <summary>
+        /// Deletes the type's index file, once this context no longer holds its index (AbandonIndexFile, Remove), or
+        /// tries again (DeleteUndeletedIndexFiles): the one deletion of an index file. One held open elsewhere stays,
+        /// missing what this context changes from now on. This context never loads it (TryLoadFromDiskCore), its
+        /// indexes don't count as saved while it is there (AllSaved), so a crash or close leaves its marker for the
+        /// next open alone to drop it (ISS-043), and each flush tries the deletion again. It used to fail the write
+        /// that got here, after the row was written or deleted (ISS-042).
+        /// </summary>
+        private void DeleteIndexFile(Type type)
+        {
             string indexFileName = GetIndexFileName(type);
-            if (ioService != null && ioService.FileExists(indexFileName))
-                ioService.Delete(indexFileName);
+            try
+            {
+                if (ioService != null && ioService.FileExists(indexFileName))
+                    ioService.Delete(indexFileName);
+            }
+            catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException)
+            {
+                lock (syncLock)
+                {
+                    undeletedIndexFiles.Add(type);
+                }
+                return;
+            }
+            // Not in a transaction: its rollback puts the file back. The next flush after the commit finds it gone.
+            if (InTransaction)
+                return;
+            lock (syncLock)
+            {
+                undeletedIndexFiles.Remove(type);
+            }
         }
 
         /// <summary>Drops everything this context holds for the type's index (not the file).</summary>
@@ -444,12 +513,7 @@ namespace Xod.Services
             if (type == null || item == null || string.IsNullOrEmpty(itemCodePath))
                 return;
 
-            var meta = propertyService.GetMetadata(type);
-            var indexedProps = meta != null
-                ? meta.IndexedProperties
-                : propertyService.Properties(type.FullName)
-                    .Where(s => s.IsIndexed || s.IsPrimaryKey || s.IsUnique)
-                    .ToArray();
+            var indexedProps = IndexedProperties(type);
 
             if (indexedProps.Length == 0)
                 return;
@@ -496,31 +560,14 @@ namespace Xod.Services
             if (type == null || rowElement == null || string.IsNullOrEmpty(pageCode))
                 return;
 
-            string rowCode = rowElement.Attribute("code")?.Value;
-            if (string.IsNullOrEmpty(rowCode)) return;
-
-            XElement entityElement = rowElement.Element(type.Name) ?? rowElement.Elements().FirstOrDefault();
-            if (entityElement == null) return;
-
-            string itemCodePath = $"{pageCode}.{rowCode}";
-            var indexedProps = propertyService.Properties(type.FullName)
-                .Where(s => s.IsIndexed || s.IsPrimaryKey || s.IsUnique)
-                .ToList();
-
+            var indexedProps = IndexedProperties(type);
             lock (syncLock)
             {
                 // A rebuild from the pages records no deltas: only a snapshot can persist it.
                 LogFor(type).MarkSnapshotDue();
 
-                foreach (var prop in indexedProps)
+                foreach (var (key, normVal, itemCodePath) in RowKeys(type, rowElement, pageCode, indexedProps))
                 {
-                    object parsed = ReadBackFromRow(prop, entityElement);
-                    if (parsed == null) continue;
-
-                    string normVal = NormalizeIndexValue(prop.PropertyType, parsed);
-                    if (normVal == null) continue; // NaN: no key, not indexed
-                    string key = GetIndexKey(type, prop.PropertyName);
-
                     if (!propertyIndexes.TryGetValue(key, out var tree))
                     {
                         tree = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -530,6 +577,36 @@ namespace Xod.Services
                     AddCodeToBucket(tree, normVal, itemCodePath);
                     RegisterReverseIndexEntry(itemCodePath, key, normVal);
                 }
+            }
+        }
+
+        /// <summary>
+        /// The keys a row on a page holds for the given properties, each with its index's key and the row's path: the
+        /// one reading of a row element for the index (a rebuild, IndexRowElement; blocks read from the pages,
+        /// HydrateUnreadFromPagesUnlocked). None for a row without a code or an entity.
+        /// </summary>
+        private static IEnumerable<(string IndexKey, string NormVal, string ItemCodePath)> RowKeys(
+            Type type, XElement rowElement, string pageCode, PropertyInfoItem[] props)
+        {
+            string rowCode = rowElement.Attribute("code")?.Value;
+            if (string.IsNullOrEmpty(rowCode))
+                yield break;
+
+            XElement entityElement = rowElement.Element(type.Name) ?? rowElement.Elements().FirstOrDefault();
+            if (entityElement == null)
+                yield break;
+
+            string itemCodePath = $"{pageCode}.{rowCode}";
+            foreach (var prop in props)
+            {
+                object parsed = ReadBackFromRow(prop, entityElement);
+                if (parsed == null)
+                    continue;
+
+                string normVal = NormalizeIndexValue(prop.PropertyType, parsed);
+                if (normVal == null)
+                    continue; // NaN: no key, not indexed
+                yield return (GetIndexKey(type, prop.PropertyName), normVal, itemCodePath);
             }
         }
 
@@ -561,12 +638,7 @@ namespace Xod.Services
                 return;
             }
 
-            var meta = propertyService.GetMetadata(type);
-            var indexedProps = meta != null
-                ? meta.IndexedProperties
-                : propertyService.Properties(type.FullName)
-                    .Where(s => s.IsIndexed || s.IsPrimaryKey || s.IsUnique)
-                    .ToArray();
+            var indexedProps = IndexedProperties(type);
 
             if (indexedProps.Length == 0 || !HoldsWholeIndex(type))
                 return;
@@ -647,11 +719,7 @@ namespace Xod.Services
                 ForgetTypeUnlocked(type);
             }
 
-            string indexFileName = GetIndexFileName(type);
-            if (ioService != null && ioService.FileExists(indexFileName))
-            {
-                ioService.Delete(indexFileName);
-            }
+            DeleteIndexFile(type);
         }
 
         internal void ClearAll()

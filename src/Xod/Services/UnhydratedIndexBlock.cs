@@ -11,5 +11,10 @@ namespace Xod.Services
         public int EntryCount;
         public string MinKey;
         public string MaxKey;
+        /// <summary>The table the block belongs to.</summary>
+        public System.Type Type;
+        /// <summary>The generation of the snapshot the block was found in (marker -5): a read from the file checks
+        /// it, since another context may have replaced the file meanwhile (ISS-042).</summary>
+        public long Generation;
     }
 }
