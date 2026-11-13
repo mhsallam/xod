@@ -627,8 +627,7 @@ namespace Xod.Engines.Xml
 
                         if (!xOldRow.ElementEquals(xNewRow))
                         {
-                            indexService.RemoveRowElement(type, rawRow, itemCode, persist: false);
-                            indexService.IndexItem(type, rowItem, itemCode);
+                            indexService.ReplaceRowKeys(type, rawRow, rowItem, itemCode);
                             var newRowWrapper = new XElement("Row", new XAttribute("code", rowCode), xNewRow);
                             ioService.SpliceRowInRawPage(pageFileName, startOffset, byteLen, newRowWrapper, rowCode, out _);
                         }
@@ -698,9 +697,8 @@ namespace Xod.Engines.Xml
                     {
                         if (meta != null && meta.IsStandalone)
                         {
-                            indexService.RemoveRowElement(type, row, itemCode, persist: false);
+                            indexService.ReplaceRowKeys(type, row, rowItem, itemCode);
                             row.ReplaceNodes(xNewRow);
-                            indexService.IndexItem(type, rowItem, itemCode);
                         }
                         else
                         {
@@ -739,9 +737,8 @@ namespace Xod.Engines.Xml
                                 Delete(delRefType, delRef);
                             }
 
-                            indexService.RemoveRowElement(type, row, itemCode, persist: false);
+                            indexService.ReplaceRowKeys(type, row, rowItem, itemCode);
                             row.ReplaceNodes(xNewRow);
-                            indexService.IndexItem(type, rowItem, itemCode);
 
                             var propRefProps = props.Where(s =>
                                 s.TypeCategory != PropertyTypeCategory.None &&

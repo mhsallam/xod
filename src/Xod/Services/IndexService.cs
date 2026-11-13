@@ -534,6 +534,9 @@ namespace Xod.Services
         /// <summary>Drops everything this context holds for the type's index (not the file).</summary>
         private void ForgetTypeUnlocked(Type type)
         {
+            // A change being applied would go on writing to the log and the trees dropped here (ISS-112).
+            if (applyingChange > 0)
+                throw new InvalidOperationException("The index of " + type.FullName + " would be dropped in the middle of a change to it.");
             string prefix = type.FullName + "::";
             var keys = propertyIndexes.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList();
             foreach (var k in keys)
@@ -579,36 +582,44 @@ namespace Xod.Services
             lock (syncLock)
             {
                 bool trackReverse = reverseHydratedTypes.Contains(type.FullName);
-                var log = LogFor(type);
-
-                for (int i = 0; i < indexedProps.Length; i++)
+                applyingChange++; // adds only: no block to read first
+                try
                 {
-                    var prop = indexedProps[i];
-                    string normVal = GetNormalizedPropertyValue(prop, item);
-                    if (normVal == null) continue;
+                    var log = LogFor(type);
 
-                    if (holdsIndex)
+                    for (int i = 0; i < indexedProps.Length; i++)
                     {
-                        string key = GetIndexKey(type, prop.PropertyName);
+                        var prop = indexedProps[i];
+                        string normVal = GetNormalizedPropertyValue(prop, item);
+                        if (normVal == null) continue;
 
-                        if (!propertyIndexes.TryGetValue(key, out var tree))
+                        if (holdsIndex)
                         {
-                            tree = new Dictionary<string, object>(StringComparer.Ordinal);
-                            propertyIndexes[key] = tree;
+                            string key = GetIndexKey(type, prop.PropertyName);
+
+                            if (!propertyIndexes.TryGetValue(key, out var tree))
+                            {
+                                tree = new Dictionary<string, object>(StringComparer.Ordinal);
+                                propertyIndexes[key] = tree;
+                            }
+
+                            AddCodeToBucket(tree, normVal, itemCodePath);
+
+                            if (trackReverse)
+                            {
+                                RegisterReverseIndexEntry(itemCodePath, key, normVal);
+                            }
+
+                            log.Record(DeltaLog.OpAdd, prop.PropertyName, normVal, itemCodePath);
                         }
-
-                        AddCodeToBucket(tree, normVal, itemCodePath);
-
-                        if (trackReverse)
-                        {
-                            RegisterReverseIndexEntry(itemCodePath, key, normVal);
-                        }
-
-                        log.Record(DeltaLog.OpAdd, prop.PropertyName, normVal, itemCodePath);
                     }
+                    if (holdsIndex)
+                        dirtyTypes.Add(type);
                 }
-                if (holdsIndex)
-                    dirtyTypes.Add(type);
+                finally
+                {
+                    applyingChange--;
+                }
             }
         }
 
@@ -700,41 +711,162 @@ namespace Xod.Services
             if (indexedProps.Length == 0 || !HoldsWholeIndex(type))
                 return;
 
+            var oldKeys = new string[indexedProps.Length];
+            var indexKeys = new string[indexedProps.Length];
             lock (syncLock)
             {
-                var log = LogFor(type);
-
+                // First the row's keys and every block they are in, then the change. A key is never taken out of a
+                // block not yet read (a block read later merges additions only), and a block that can't be read is
+                // built from the pages (HydrateUnreadFromPagesUnlocked) while they still hold the row. Nothing after
+                // these reads reads a block, and nothing may drop the type's log or trees while the change is
+                // applied (applyingChange): it used to go to a log no flush writes (ISS-112).
                 for (int i = 0; i < indexedProps.Length; i++)
                 {
-                    var prop = indexedProps[i];
-                    object parsed = ReadBackFromRow(prop, entityElement);
-                    if (parsed == null)
+                    object parsed = ReadBackFromRow(indexedProps[i], entityElement);
+                    oldKeys[i] = parsed == null ? null : NormalizeIndexValue(indexedProps[i].PropertyType, parsed); // NaN: never indexed
+                    if (oldKeys[i] == null)
                         continue;
+                    indexKeys[i] = GetIndexKey(type, indexedProps[i].PropertyName);
+                    EnsurePropertyHydratedUnlocked(indexKeys[i]);
+                }
 
-                    string normVal = NormalizeIndexValue(prop.PropertyType, parsed);
-                    if (normVal == null) continue; // NaN: never indexed
-                    string key = GetIndexKey(type, prop.PropertyName);
-
-                    EnsurePropertyHydratedUnlocked(key);
-                    if (propertyIndexes.TryGetValue(key, out var tree))
+                applyingChange++;
+                try
+                {
+                    var log = LogFor(type);
+                    for (int i = 0; i < indexedProps.Length; i++)
                     {
-                        RemoveCodeFromBucket(tree, normVal, itemCodePath);
+                        if (oldKeys[i] == null)
+                            continue;
+                        if (propertyIndexes.TryGetValue(indexKeys[i], out var tree))
+                            RemoveCodeFromBucket(tree, oldKeys[i], itemCodePath);
+                        log.Record(DeltaLog.OpRemove, indexedProps[i].PropertyName, oldKeys[i], itemCodePath);
                     }
 
-                    log.Record(DeltaLog.OpRemove, prop.PropertyName, normVal, itemCodePath);
-                }
+                    if (reverseHydratedTypes.Contains(type.FullName))
+                    {
+                        codeToIndexEntries.Remove(itemCodePath);
+                    }
 
-                if (reverseHydratedTypes.Contains(type.FullName))
+                    dirtyTypes.Add(type);
+                }
+                finally
                 {
-                    codeToIndexEntries.Remove(itemCodePath);
+                    applyingChange--;
                 }
-
-                dirtyTypes.Add(type);
             }
 
             if (persist)
             {
                 SaveToDisk(type);
+            }
+        }
+
+        /// <summary>
+        /// The one way an update changes a row's keys: from those of the stored row to those of the item written.
+        /// Only a property whose key differs is taken out and put back, in memory, in the reverse index and in the
+        /// delta log. An update that changes no indexed value records nothing, so the log doesn't grow and no
+        /// snapshot, a rewrite of the whole index under the engine's write lock, falls due (ISS-044, PLAN-056).
+        /// The stored row's key is the one RemoveRowElement takes out and the item's the one IndexItem puts in:
+        /// the same rule (GetNormalizedPropertyValue), so equal keys mean the index needs no change.
+        /// </summary>
+        internal void ReplaceRowKeys(Type type, XElement oldRowElement, object newItem, string itemCodePath)
+        {
+            if (type == null || newItem == null || string.IsNullOrEmpty(itemCodePath))
+                return;
+
+            XElement entityElement = oldRowElement?.Element(type.Name) ?? oldRowElement?.Elements().FirstOrDefault();
+            if (entityElement == null)
+            {
+                // No stored keys to compare with: every key is replaced.
+                RemoveRowElement(type, oldRowElement, itemCodePath);
+                IndexItem(type, newItem, itemCodePath);
+                return;
+            }
+
+            var meta = propertyService.GetMetadata(type);
+            var indexedProps = meta != null
+                ? meta.IndexedProperties
+                : propertyService.Properties(type.FullName)
+                    .Where(s => s.IsIndexed || s.IsPrimaryKey || s.IsUnique)
+                    .ToArray();
+
+            if (indexedProps.Length == 0 || !HoldsWholeIndex(type))
+                return;
+
+            var oldKeys = new string[indexedProps.Length];
+            var newKeys = new string[indexedProps.Length];
+            var indexKeys = new string[indexedProps.Length]; // set for the keys that move
+            lock (syncLock)
+            {
+                // First the keys, and the blocks of the old keys that move, then the change (as in RemoveRowElement).
+                bool changed = false;
+                for (int i = 0; i < indexedProps.Length; i++)
+                {
+                    var prop = indexedProps[i];
+                    object parsed = ReadBackFromRow(prop, entityElement);
+                    oldKeys[i] = parsed == null ? null : NormalizeIndexValue(prop.PropertyType, parsed);
+                    newKeys[i] = GetNormalizedPropertyValue(prop, newItem);
+                    if (string.Equals(oldKeys[i], newKeys[i], StringComparison.Ordinal))
+                        continue;
+
+                    changed = true;
+                    indexKeys[i] = GetIndexKey(type, prop.PropertyName);
+                    // A block read later merges only additions: an old key comes out of the whole tree.
+                    if (oldKeys[i] != null)
+                        EnsurePropertyHydratedUnlocked(indexKeys[i]);
+                }
+
+                if (!changed)
+                    return;
+
+                applyingChange++;
+                try
+                {
+                    var log = LogFor(type);
+                    for (int i = 0; i < indexedProps.Length; i++)
+                    {
+                        string key = indexKeys[i];
+                        if (key == null)
+                            continue; // unchanged
+
+                        string propertyName = indexedProps[i].PropertyName;
+                        if (oldKeys[i] != null)
+                        {
+                            if (propertyIndexes.TryGetValue(key, out var oldTree))
+                                RemoveCodeFromBucket(oldTree, oldKeys[i], itemCodePath);
+                            log.Record(DeltaLog.OpRemove, propertyName, oldKeys[i], itemCodePath);
+                        }
+
+                        if (newKeys[i] != null)
+                        {
+                            if (!propertyIndexes.TryGetValue(key, out var tree))
+                            {
+                                tree = new Dictionary<string, object>(StringComparer.Ordinal);
+                                propertyIndexes[key] = tree;
+                            }
+                            AddCodeToBucket(tree, newKeys[i], itemCodePath);
+                            log.Record(DeltaLog.OpAdd, propertyName, newKeys[i], itemCodePath);
+                        }
+                    }
+
+                    if (reverseHydratedTypes.Contains(type.FullName))
+                    {
+                        // The row's entries, as IndexItem registers them: every key it has now.
+                        codeToIndexEntries.Remove(itemCodePath);
+                        for (int i = 0; i < indexedProps.Length; i++)
+                        {
+                            if (newKeys[i] != null)
+                                RegisterReverseIndexEntry(itemCodePath, indexKeys[i] ?? GetIndexKey(type, indexedProps[i].PropertyName), newKeys[i]);
+                        }
+                    }
+
+                    dirtyTypes.Add(type);
+                }
+                finally
+                {
+                    applyingChange--;
+                }
             }
         }
 
@@ -744,22 +876,30 @@ namespace Xod.Services
 
             lock (syncLock)
             {
-                EnsureReverseIndexBuilt(type);
-                if (codeToIndexEntries.TryGetValue(itemCodePath, out var entries))
+                EnsureReverseIndexBuilt(type); // reads every block first: a load, if any, happens here
+                applyingChange++;
+                try
                 {
-                    foreach (var (indexKey, normVal) in entries)
+                    if (codeToIndexEntries.TryGetValue(itemCodePath, out var entries))
                     {
-                        if (propertyIndexes.TryGetValue(indexKey, out var tree))
+                        foreach (var (indexKey, normVal) in entries)
                         {
-                            RemoveCodeFromBucket(tree, normVal, itemCodePath);
+                            if (propertyIndexes.TryGetValue(indexKey, out var tree))
+                            {
+                                RemoveCodeFromBucket(tree, normVal, itemCodePath);
+                            }
                         }
+                        codeToIndexEntries.Remove(itemCodePath);
                     }
-                    codeToIndexEntries.Remove(itemCodePath);
+
+                    LogFor(type).Record(DeltaLog.OpRemove, null, null, itemCodePath);
+
+                    dirtyTypes.Add(type);
                 }
-
-                LogFor(type).Record(DeltaLog.OpRemove, null, null, itemCodePath);
-
-                dirtyTypes.Add(type);
+                finally
+                {
+                    applyingChange--;
+                }
             }
 
             if (persist)
@@ -783,6 +923,8 @@ namespace Xod.Services
         {
             lock (syncLock)
             {
+                if (applyingChange > 0)
+                    throw new InvalidOperationException("The indexes would be dropped in the middle of a change to one of them.");
                 propertyIndexes.Clear();
                 unhydratedBlocks.Clear();
                 codeToIndexEntries.Clear();

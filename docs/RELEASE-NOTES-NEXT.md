@@ -98,7 +98,7 @@ records it.
   a reopen either, unless the process stops before the context's next flush. A table dropped inside a
   transaction that is rolled back keeps its numbering.
 - **Scalar values read back as written**: an empty string reads back as `""` (it read as null), `Guid.Empty`, a
-  default date, a zero interval and a type default under another `[DefaultValue]` read back as stored, and a
+  default date and a zero interval read back as stored (`[DefaultValue]` has no effect, ISS-118), and a
   null reads back as null where a new instance holds something else, whichever way the row is written (an
   insert with or without `lazyLoad`, an update, a key filled in from a relationship). The files gain two forms,
   an empty element or attribute and an element marked `nil="true"`. XOD 2.0.0 and 2.0.1 read an empty or
@@ -173,6 +173,16 @@ records it.
   under way when the context closed fails with `ObjectDisposedException` instead of landing after the close
   (ISS-103). A crash's marker file that another program holds no longer keeps stale indexes trusted at an open
   that has the database to itself (ISS-102); while another context has the database open it still does (ISS-119).
+- **An update records only the index keys it changes**
+  ([PLAN-056](plans/PLAN-056-reads-that-scale-and-writes-that-dont-stall-them.md)). An update used to record every
+  indexed property's key again, changed or not. The index file grew with every update, and once its log outgrew
+  its last full copy, a flush rewrote the whole index while every reader waited. An update that changes no
+  indexed value now writes nothing to the index. And a page whose row grew keeps its row map, which the next
+  read used to rebuild. Under a steady writer that means fewer garbage collections and no index rewrites from
+  updates alone (measured in a private copy, section 6.4; not committed benchmark evidence). One side effect
+  (ISS-114): if the table file was written after the index (a non-indexed autonumber, a rollback's counters),
+  the open's check by time can rebuild a correct index from the pages. The result is correct; that open is
+  slower.
 
 ## Version
 

@@ -14,6 +14,11 @@ namespace Xod.Services
         public bool IsPooled;
         public int RowCount = -1;
         public int AccessCount;
+        /// <summary>
+        /// Row code to (offset, length), for every row of the page, or null. A reader builds it whole from the bytes
+        /// (EnsureRowIndex); a writer keeps it current only through the Row* methods below, which never leave it
+        /// holding part of the page's rows: a reader that doesn't find a row in the map looks no further.
+        /// </summary>
         public Dictionary<string, (int Offset, int Length)> RowIndex;
 
         public ReadOnlySpan<byte> Span => Bytes.AsSpan(0, Length);
@@ -36,6 +41,92 @@ namespace Xod.Services
             byte[] copy = new byte[Length];
             Buffer.BlockCopy(Bytes, 0, copy, 0, Length);
             return copy;
+        }
+
+        // The writers of the row map. The page's writer calls them under the table's write lock, which keeps out the
+        // readers of that table, not a reader of another type that loads this type's rows (ISS-108): that reader
+        // can meet the map, as it can the bytes, while the writer changes them.
+
+        /// <summary>The row was deleted: its bytes blanked in place.</summary>
+        public void RowRemoved(string rowCode)
+        {
+            var map = RowIndex;
+            if (map == null)
+                return;
+            if (string.IsNullOrEmpty(rowCode))
+            {
+                RowIndex = null; // the row isn't named: its entry can't be taken out, so a reader rebuilds the map
+                return;
+            }
+            map.Remove(rowCode);
+        }
+
+        /// <summary>The row was written again in its own bytes, no longer than before (the rest padded).</summary>
+        public void RowRewritten(string rowCode, int startOffset, int newLength)
+        {
+            var map = RowIndex;
+            if (map == null)
+                return;
+            if (string.IsNullOrEmpty(rowCode))
+            {
+                RowIndex = null;
+                return;
+            }
+            map[rowCode] = (startOffset, newLength);
+        }
+
+        /// <summary>
+        /// A row was appended. A page whose map no reader has built keeps none: a map of the new row alone would
+        /// hide the page's other rows from every reader (it used to make one).
+        /// </summary>
+        public void RowAppended(string rowCode, int startOffset, int length)
+        {
+            var map = RowIndex;
+            if (map == null)
+                return;
+            if (string.IsNullOrEmpty(rowCode))
+            {
+                RowIndex = null;
+                return;
+            }
+            map[rowCode] = (startOffset, length);
+        }
+
+        /// <summary>
+        /// The row at <paramref name="startOffset"/> grew by <paramref name="growth"/> bytes to
+        /// <paramref name="newLength"/>, and every row after it moved by as much. Dropping the map instead made the
+        /// page's next reader rebuild it whole: a dictionary and a string for each row of the page (ISS-044,
+        /// PLAN-056).
+        /// </summary>
+        public void RowGrew(string rowCode, int startOffset, int newLength, int growth)
+        {
+            var map = RowIndex;
+            if (map == null)
+                return;
+            if (string.IsNullOrEmpty(rowCode))
+            {
+                RowIndex = null; // the row isn't named: its own entry can't be put right, so a reader rebuilds the map
+                return;
+            }
+
+            int count = map.Count;
+            string[] codes = System.Buffers.ArrayPool<string>.Shared.Rent(count);
+            try
+            {
+                map.Keys.CopyTo(codes, 0);
+                for (int i = 0; i < count; i++)
+                {
+                    ref var location = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrNullRef(map, codes[i]);
+                    if (location.Offset > startOffset)
+                        location.Offset += growth;
+                }
+            }
+            finally
+            {
+                System.Buffers.ArrayPool<string>.Shared.Return(codes, clearArray: true);
+            }
+
+            map[rowCode] = (startOffset, newLength);
         }
 
         public void InvalidateRowIndex()

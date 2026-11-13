@@ -20,6 +20,11 @@ namespace Xod.Services
         // through the replay (HydrateUnreadFromPagesUnlocked).
         private int loading;
 
+        // Set while a change to an index is applied (under syncLock), after it read every block it needs: nothing may
+        // drop the type's log or trees then (ForgetTypeUnlocked and ClearAll refuse), or the change would go to a log
+        // no flush writes (ISS-112, PLAN-056 section 6.5).
+        private int applyingChange;
+
         // A block is read when first needed, at the offset found here (ReadIndexBlockBytes).
         private bool TryLoadFromDiskCore(Type type)
         {

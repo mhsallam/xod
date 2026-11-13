@@ -612,10 +612,7 @@ namespace Xod.Services
                     if (startOffset < rawPage.DirtyStartOffset)
                         rawPage.DirtyStartOffset = startOffset;
 
-                    if (rawPage.RowIndex != null && !string.IsNullOrEmpty(rowCode))
-                    {
-                        rawPage.RowIndex.Remove(rowCode);
-                    }
+                    rawPage.RowRemoved(rowCode);
 
                     if (rawPage.RowCount > 0)
                         rawPage.RowCount--;
@@ -635,14 +632,11 @@ namespace Xod.Services
                     if (startOffset < rawPage.DirtyStartOffset)
                         rawPage.DirtyStartOffset = startOffset;
 
-                    if (rawPage.RowIndex != null && !string.IsNullOrEmpty(rowCode))
-                    {
-                        rawPage.RowIndex[rowCode] = (startOffset, replacementBytes.Length);
-                    }
+                    rawPage.RowRewritten(rowCode, startOffset, replacementBytes.Length);
                 }
                 else
                 {
-                    // Row expanded: shift tail bytes and invalidate index
+                    // Row expanded: shift the tail bytes, and the row map with them
                     int oldPageLen = rawPage.Length;
                     int newPageLen = oldPageLen - oldByteLength + replacementBytes.Length;
                     int tailSrcOffset = startOffset + oldByteLength;
@@ -678,7 +672,7 @@ namespace Xod.Services
                     if (startOffset < rawPage.DirtyStartOffset)
                         rawPage.DirtyStartOffset = startOffset;
 
-                    rawPage.RowIndex = null;
+                    rawPage.RowGrew(rowCode, startOffset, replacementBytes.Length, replacementBytes.Length - oldByteLength);
                 }
 
                 // An emptied page is deleted by its caller (Delete), which drops what is pending of it. Direct: written
@@ -824,8 +818,7 @@ namespace Xod.Services
                     rawPage.DirtyStartOffset = insertPos;
 
                 rawPage.Length = newLength;
-                rawPage.RowIndex ??= new Dictionary<string, (int, int)>(256, StringComparer.Ordinal);
-                rawPage.RowIndex[itemCode] = (insertPos, rowByteLen);
+                rawPage.RowAppended(itemCode, insertPos, rowByteLen);
 
                 // A hint (ChangeHint): not a write to make of the table file.
                 XAttribute countAttr = page.Attribute("count");
