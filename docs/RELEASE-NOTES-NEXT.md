@@ -112,13 +112,32 @@ records it.
   had rewritten the index file meanwhile, the read failed (`EndOfStreamException`) or could give wrong results.
   Each index file now says which version of it this is, and a context that finds it changed reads the parts it
   hasn't read yet from the table's pages instead, keeping everything else it holds.
-- **An index file another program holds** (ISS-042): a query no longer fails because the index it rebuilt can't
-  be saved over the file (it is rebuilt again at the next open; an unencrypted index only), and a write no longer
+- **An index file another program holds** (ISS-042, ISS-109): a query no longer fails because the index it rebuilt
+  can't be saved over the file; it is rebuilt again at the next open. With a password, that save is made at once
+  or not at all: it used to wait, and then failed the later writes, flushes and the close. A write no longer
   fails, after its row was written or deleted, because an index file it can't load, or a table's index once its
   last row is deleted, can't be deleted (the file is not trusted, and is dropped later).
 - **Closing a context waits** for reads and writes running on it in other threads, and takes its write lock
   for its last flush. A context closed from inside one of its own reads still closes, and leaves its indexes to
   be rebuilt by the next open.
+- **A write that fails without a transaction or a buffer stays to be made** (ISS-099, [PLAN-057](plans/PLAN-057-review-of-task-066-direct-writes-triggers-transactions.md)):
+  in the default mode a page or table write that failed (a page file another program held open) was dropped, as
+  ISS-098 was for batches and the buffer. A statement's writes are now made when it ends, after its index
+  changes; one that fails throws and stays to be written by the next flush. One gap remains (ISS-120): an insert
+  into a table with no references whose write fails throws, but its row is still written by the next flush, so
+  retrying it is refused as a duplicate key.
+- **Transactions and files** ([PLAN-057](plans/PLAN-057-review-of-task-066-direct-writes-triggers-transactions.md)): no index file is written while a transaction is open,
+  `Flush` inside it included; the commit writes them after its pages and a rollback forgets them (ISS-100). A
+  page file that a transaction's delete emptied is set aside as `<file>.xdel` until the commit has written its
+  files, rather than deleted at once, so its rows come back when the commit is refused, rolled back or cut short
+  by a crash (ISS-107): they were lost. Don't delete `.xdel` files while the database is open; the next open
+  alone clears them.
+- **Triggers, closes and markers** ([PLAN-057](plans/PLAN-057-review-of-task-066-direct-writes-triggers-transactions.md)): a `Flush` from inside a write (a trigger) leaves
+  the indexes to be checked rather than calling them caught up mid-statement, and closing a context from inside
+  one of its own writes is refused with `InvalidOperationException` (ISS-101). A write on another thread that was
+  under way when the context closed fails with `ObjectDisposedException` instead of landing after the close
+  (ISS-103). A crash's marker file that another program holds no longer keeps stale indexes trusted at an open
+  that has the database to itself (ISS-102); while another context has the database open it still does (ISS-119).
 
 ## Version
 

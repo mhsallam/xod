@@ -52,10 +52,19 @@ namespace Xod.Services
 
         private int batchDepth;
         private readonly bool bufferedDurability;
-        private readonly HashSet<XFile> dirtyBatchFiles = new HashSet<XFile>();
-        private readonly HashSet<XFile> dirtyBufferedFiles = new HashSet<XFile>();
+        private readonly PendingFiles dirtyBatchFiles = new PendingFiles();
+        private readonly PendingFiles dirtyBufferedFiles = new PendingFiles();
         private readonly HashSet<string> dirtyBatchRawPages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> dirtyBufferedRawPages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Direct mode (no batch, no buffer): what each statement under way saved, by its thread, a subset of the two
+        // sets above, written when it ends (WriteSaved). What changed without a save waits for the next flush.
+        private readonly StatementSaves saved = new StatementSaves();
+
+        // ISS-107: the files a transaction deleted, set aside under "<file>.xdel" until it ends (full paths, Delete):
+        // deleted once its commit has written its files (EndBatch), put back when it is rolled back or its commit is
+        // refused (DiscardBatch), and by the next open alone after a crash (RecoverInterruptedWrites).
+        internal const string SetAsideSuffix = ".xdel";
+        private readonly List<string> setAside = new List<string>();
 
         internal Func<Type, XDocument> ItemWriterDelegate { get; set; }
         internal Action<string> BeforeFileMutate { get; set; }
@@ -109,6 +118,7 @@ namespace Xod.Services
         internal void EndBatch()
         {
             List<(System.Threading.Tasks.Task Write, string Page, RawPageBuffer Buffer)> writes = null;
+            List<string> aside = null;
             try
             {
                 lock (syncLock)
@@ -123,6 +133,7 @@ namespace Xod.Services
                             writes = pendingBatchWrites.ToList();
                             pendingBatchWrites.Clear();
                         }
+                        aside = TakeSetAside();
                         FlushPending(dirtyBatchFiles, dirtyBatchRawPages);
                     }
                 }
@@ -132,6 +143,61 @@ namespace Xod.Services
                 // Waited for even when the writes above failed: one of these that failed is made again too.
                 AwaitBatchWrites(writes);
             }
+
+            // Once every file of the batch is written: until then its commit can still be undone, from its journal,
+            // which holds these files' bytes. One that can't be deleted fails the commit, which is then undone; one
+            // left by a failed write is deleted by the next open alone, its file put back by the journal.
+            DeleteSetAside(aside);
+        }
+
+        private List<string> TakeSetAside()
+        {
+            if (setAside.Count == 0)
+                return null;
+            var taken = setAside.ToList();
+            setAside.Clear();
+            return taken;
+        }
+
+        private static void DeleteSetAside(List<string> aside)
+        {
+            if (aside == null)
+                return;
+            Exception first = null;
+            foreach (string file in aside)
+            {
+                try
+                {
+                    File.Delete(file + SetAsideSuffix);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                {
+                    first ??= e;
+                }
+            }
+            if (first != null)
+                throw new IOException("A file the transaction deleted couldn't be deleted at its commit: " + first.Message, first);
+        }
+
+        // Each put back where it was; one that can't be is left for the next open alone (RecoverInterruptedWrites).
+        private static void PutBackSetAside(List<string> aside)
+        {
+            if (aside == null)
+                return;
+            Exception first = null;
+            foreach (string file in aside)
+            {
+                try
+                {
+                    File.Move(file + SetAsideSuffix, file, overwrite: false);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                {
+                    first ??= e;
+                }
+            }
+            if (first != null)
+                throw new IOException("A file the transaction deleted couldn't be put back: " + first.Message, first);
         }
 
         /// <summary>
@@ -142,7 +208,7 @@ namespace Xod.Services
         /// Writing again a file that was written is harmless: each is written whole, or from where its last write
         /// that succeeded ended (FlushRawPageToDisk). Called under syncLock.
         /// </summary>
-        private void FlushPending(HashSet<XFile> files, HashSet<string> rawPages)
+        private void FlushPending(PendingFiles files, HashSet<string> rawPages)
         {
             if (files.Count == 0 && rawPages.Count == 0)
                 return;
@@ -159,9 +225,38 @@ namespace Xod.Services
             }
             catch
             {
-                dirtyBufferedFiles.UnionWith(toFlush);
+                dirtyBufferedFiles.PutBack(toFlush);
                 dirtyBufferedRawPages.UnionWith(rawToFlush);
                 throw;
+            }
+            saved.Written(toFlush, rawToFlush);
+        }
+
+        /// <summary>
+        /// ISS-099: in direct mode (no batch, no buffer) what a statement saved is written when the statement ends
+        /// (XmlEngine.ExitTableWriteLock), after its index changes, not at each save in its middle: a write that failed
+        /// there threw before the index was changed, and left the cache (and soon the disk) ahead of the index: the
+        /// row on its page, its key not in the index. Each is written, and only then no longer pending; one that fails
+        /// stays, to be written at the next statement's end or flush, and the call that ended the statement throws.
+        /// </summary>
+        internal void WriteSaved()
+        {
+            lock (syncLock)
+            {
+                if (IsBatchOrBuffered)
+                    return;
+                // Only what this thread's statement saved (StatementSaves).
+                var (files, rawPages) = saved.OfThisThread();
+                if (files.Count == 0 && rawPages.Count == 0)
+                    return;
+                FaultInjection.Step("statement-saving");
+                if (files.Count > 0)
+                    FlushFilesList(files);
+                if (rawPages.Count > 0)
+                    FlushRawPagesList(rawPages);
+                saved.Written(files, rawPages);
+                dirtyBufferedFiles.Written(files);
+                dirtyBufferedRawPages.ExceptWith(rawPages);
             }
         }
 
@@ -210,6 +305,7 @@ namespace Xod.Services
         internal void DiscardBatch()
         {
             System.Threading.Tasks.Task[] tasksToWait = null;
+            List<string> aside = null;
             lock (syncLock)
             {
                 if (batchDepth > 0)
@@ -224,6 +320,7 @@ namespace Xod.Services
                     }
                     dirtyBatchFiles.Clear();
                     dirtyBatchRawPages.Clear();
+                    aside = TakeSetAside();
                 }
             }
 
@@ -231,6 +328,9 @@ namespace Xod.Services
             {
                 try { System.Threading.Tasks.Task.WaitAll(tasksToWait); } catch { }
             }
+
+            // The files the batch deleted come back (ISS-107): nothing of it was committed.
+            PutBackSetAside(aside);
         }
 
         internal void FlushBufferedFiles()
@@ -281,6 +381,7 @@ namespace Xod.Services
                 dirtyBufferedFiles.Clear();
                 dirtyBatchRawPages.Clear();
                 dirtyBufferedRawPages.Clear();
+                saved.Clear();
                 ClearCurrentCache();
             }
         }

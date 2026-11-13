@@ -100,12 +100,14 @@ namespace Xod.Services
         internal static bool RecoveryPending(string root) =>
             WritesPending(root) || Directory.EnumerateFiles(root, "*" + IndexesBehindSuffix).Any();
 
-        // A transaction journal (or one cut short), a password change, an atomic write of a database file.
+        // A transaction journal (or one cut short), a password change, an atomic write of a database file, a file a
+        // transaction set aside (ISS-107).
         private static bool WritesPending(string root) =>
             Directory.EnumerateFiles(root).Any(f =>
                 f.EndsWith(".xwal", StringComparison.OrdinalIgnoreCase) ||
                 f.EndsWith(".xwal.tmp", StringComparison.OrdinalIgnoreCase) ||
                 (f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) && Helpers.DatabaseFiles.IsOfDatabase(f.Substring(0, f.Length - 4))) ||
+                (f.EndsWith(SetAsideSuffix, StringComparison.OrdinalIgnoreCase) && Helpers.DatabaseFiles.IsOfDatabase(f.Substring(0, f.Length - SetAsideSuffix.Length))) ||
                 f.EndsWith(PasswordSwitch.JournalSuffix, StringComparison.OrdinalIgnoreCase) ||
                 f.EndsWith(PasswordSwitch.StagedSuffix, StringComparison.OrdinalIgnoreCase));
 
@@ -164,7 +166,9 @@ namespace Xod.Services
                     // UnauthorizedAccessException: Interop.IOErrors.cs, release/9.0). Not another's lock.
                     throw new UnauthorizedAccessException("The database's lock file '" + lockFilePath + "' can't be created: " + ex.Message, ex);
                 }
-                catch (IOException ex)
+                // Held by another context (or program): waited for, then reported as locked. Any other failure is
+                // reported as itself (HeldByAnother; it used to read as another's lock, review of TASK-068).
+                catch (IOException ex) when (HeldByAnother(ex))
                 {
                     int remaining = retryTimeoutMs - (int)sw.ElapsedMilliseconds;
                     if (retryTimeoutMs <= 0 || remaining <= 0)
@@ -189,7 +193,9 @@ namespace Xod.Services
         /// no lock (an NFS client and a lock file this user can only read), so nothing keeps others out: the hold is let
         /// go and refused as if another context held the database, which is the safe reading. Not where the caller
         /// switched .NET's file locking off (System.IO.DisableFileLocking, read as the runtime reads it): that says
-        /// nothing else opens the database, and is taken at its word, as before.
+        /// nothing else opens the database, and is taken at its word, as before. Only a refusal for the sharing proves
+        /// the hold (HeldByAnother); any other failure of the probe (too many open files) proves nothing, and is
+        /// refused like an open that succeeded (review of TASK-068: every IOException counted as proof).
         /// </summary>
         private static void ProveExclusive(FileStream exclusive, string lockFilePath, string databasePath)
         {
@@ -200,13 +206,19 @@ namespace Xod.Services
             {
                 probe = new FileStream(lockFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             }
-            catch (IOException)
+            catch (IOException e) when (HeldByAnother(e))
             {
-                return; // refused: the hold is exclusive
+                return; // refused for the sharing: the hold is exclusive
             }
             catch (UnauthorizedAccessException)
             {
                 return; // refused too (Windows reports a denied share this way for some files)
+            }
+            catch (IOException e)
+            {
+                exclusive.Dispose();
+                throw new DatabaseLockedException(databasePath, new IOException("The exclusive hold on '" + lockFilePath +
+                    "' can't be proven: " + e.Message, e));
             }
             probe.Dispose();
             exclusive.Dispose();

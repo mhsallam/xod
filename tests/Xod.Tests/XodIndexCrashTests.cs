@@ -211,6 +211,43 @@ namespace Xod.Tests
             db.Insert(new CrashMember { Id = 400, Email = "e400" });
         }
 
+        // ISS-107: a transaction's delete that empties a page sets the page aside until the commit; a crash before
+        // the commit leaves it aside, and the next open puts it back: nothing was committed.
+        [Fact]
+        public void A_crash_before_a_commit_keeps_the_rows_its_deletes_took()
+        {
+            string dir = Path.Combine(tempRoot, "tx-delete");
+            var setup = XodCrashSafetyTests.RunWriterProcess("members", dir);
+            Assert.True(setup.ExitCode == 0, setup.Output);
+            var crash = XodCrashSafetyTests.RunWriterProcess("txdelete", dir);
+            Assert.Contains("DELETED", crash.Output);
+            Assert.NotEqual(0, crash.ExitCode);
+
+            using (var db = new XodContext(Path.Combine(dir, "crash.xod")))
+            {
+                Assert.Equal(50, db.Count<CrashMember>());
+                Assert.NotNull(db.Find<CrashMember>(m => m.Email == "e50"));
+            }
+            Assert.Empty(Directory.GetFiles(dir, "*.xdel"));
+        }
+
+        // ISS-099's change writes a statement's pages when it ends. A row that adds a page saved the table's index
+        // at once, before its page: a crash in between left an index holding a key whose row was never written, and
+        // no marker (no page written yet), so the next open trusted it and refused the key.
+        [Fact]
+        public void A_crash_before_a_statement_s_pages_are_written_leaves_no_key_in_the_index()
+        {
+            string dir = Path.Combine(tempRoot, "first-row");
+            var crash = XodCrashSafetyTests.RunWriterProcess("firstrow", dir, ("XOD_CRASH_AT_STEP", "statement-saving"));
+            Assert.DoesNotContain("INSERTED", crash.Output);
+            Assert.NotEqual(0, crash.ExitCode);
+
+            using var db = new XodContext(Path.Combine(dir, "crash.xod"));
+            Assert.Empty(db.QueryDelegate<CrashMember>(m => m.Email != null));
+            Assert.Null(db.Find<CrashMember>(m => m.Email == "e1"));
+            db.Insert(new CrashMember { Id = 1, Email = "e1" });
+        }
+
         // Review of TASK-064 (F2): an index save that failed (its file held open elsewhere: another reader, a backup
         // tool) left its type out of those still to save, so the next flush called the indexes caught up and the
         // close deleted the mark. A type now stays to be saved until its save succeeds.

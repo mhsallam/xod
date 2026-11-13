@@ -25,6 +25,8 @@ namespace Xod.Services
         private readonly object indexesBehindLock = new object();
         private FileStream indexesBehindMarker;
         private volatile bool indexesBehind;
+        // The marker and the hold are let go (CloseIndexesMarker, at the close): no file is written after.
+        private volatile bool released;
 
         /// <summary>
         /// Called before every file mutation (XmlEngine's BeforeFileMutate): the first write of a page or table file
@@ -37,7 +39,19 @@ namespace Xod.Services
         /// </summary>
         internal void NoteFileMutation(string filePath)
         {
-            if (indexesBehind || !IsTableOrPage(filePath))
+            // ISS-103: once the context has let go of its marker and its hold (Dispose), no file of it is written: a
+            // write under way when a close came from inside a read (which takes no write lock) used to land after it,
+            // in a database another context may then hold alone, and leave a new marker no context closes (review of
+            // TASK-068). Every page, table and index write passes here first (the engine's BeforeFileMutate).
+            if (released)
+                throw new ObjectDisposedException(nameof(XodContext), "The database context is closed.");
+            // An index file too, when written while writes of this context still wait (a statement's pages, written
+            // when it ends, ISS-099; a batch's; a write that failed): it may then hold keys whose rows the disk
+            // doesn't, which an open after a crash must not trust any more than an index behind its pages. A row
+            // that added a page saved its table's index before the statement's page was written, with no mark yet
+            // when it was the first write since the indexes caught up, so a crash between left a key with no row,
+            // trusted. Written with nothing waiting (a flush, after its pages), an index needs no mark.
+            if (indexesBehind || !(IsTableOrPage(filePath) || (IsIndex(filePath) && !NothingPending)))
                 return;
             lock (indexesBehindLock)
             {
@@ -58,7 +72,7 @@ namespace Xod.Services
         {
             lock (indexesBehindLock)
             {
-                if (!indexesBehind)
+                if (!indexesBehind || released)
                     return;
                 indexesBehindMarker.SetLength(0);
                 indexesBehind = false;
@@ -74,6 +88,7 @@ namespace Xod.Services
         {
             lock (indexesBehindLock)
             {
+                released = true;
                 if (indexesBehindMarker == null)
                     return;
                 string marker = indexesBehindMarker.Name;
@@ -91,6 +106,9 @@ namespace Xod.Services
             }
         }
 
+        private static bool IsIndex(string filePath) =>
+            filePath != null && filePath.EndsWith(".xidx", StringComparison.OrdinalIgnoreCase);
+
         private static bool IsTableOrPage(string filePath) =>
             filePath != null &&
             (filePath.EndsWith(".xpag", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xtab", StringComparison.OrdinalIgnoreCase));
@@ -104,13 +122,17 @@ namespace Xod.Services
         }
 
         /// <summary>
-        /// What a marker says. Live: its context holds it, so it is open (a probe that opens it with a share of
-        /// read and write is refused: on Windows by the sharing check, on Unix because flock LOCK_SH can't pass the
-        /// holder's LOCK_EX). Otherwise its context is gone: Behind if the marker isn't empty, CaughtUp if it is. A
-        /// marker that can't be opened at all (its permissions) can't be told apart, and counts as Behind unless it
-        /// is empty. Where the file system takes no locks (an NFS client without lock support; .NET's file locking
-        /// switched off), a live context's marker reads as gone: the indexes are then rebuilt while it is marked,
-        /// which costs time, not rows.
+        /// What a marker says. Live: something holds it (a probe that opens it with a share of read and write is
+        /// refused for the sharing: on Windows by the sharing check, on Unix because flock LOCK_SH can't pass the
+        /// holder's LOCK_EX); its context, or another program holding a dead context's marker, which no probe tells
+        /// apart (an open alone decides that: <see cref="DropIndexesLeftBehind"/>). Otherwise its context is gone:
+        /// Behind if the marker isn't empty, CaughtUp if it is. A marker that can't be opened for another reason (its
+        /// permissions, too many open files) can't be told apart, and counts as Behind unless it is empty, the reading
+        /// that trusts nothing (ISS-102: every IOException read as Live, so a crash's marker a backup tool held kept a
+        /// stale index trusted). Where the file system takes no locks (an NFS client without lock support; .NET's file
+        /// locking switched off), a live context's marker reads as gone, and other contexts rebuild the indexes they
+        /// load while it is marked; an open that takes such a database for its own can also drop a live context's
+        /// marker (ISS-104).
         /// </summary>
         private static MarkerState ProbeMarker(string marker)
         {
@@ -127,23 +149,48 @@ namespace Xod.Services
             {
                 return MarkerState.Gone;
             }
-            catch (IOException)
+            catch (IOException e) when (HeldByAnother(e))
             {
                 return MarkerState.Live;
             }
-            catch (UnauthorizedAccessException)
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {
-                try
-                {
-                    return new FileInfo(marker).Length == 0 ? MarkerState.CaughtUp : MarkerState.Behind;
-                }
-                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
-                {
-                    return MarkerState.Behind;
-                }
+                return MarkerIsEmpty(marker) ? MarkerState.CaughtUp : MarkerState.Behind;
             }
             using (probe)
                 return probe.Length == 0 ? MarkerState.CaughtUp : MarkerState.Behind;
+        }
+
+        // Its length, read from the folder (no open, so a holder doesn't refuse it); false when even that fails.
+        private static bool MarkerIsEmpty(string marker)
+        {
+            try
+            {
+                return new FileInfo(marker).Length == 0;
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// The open was refused because another handle holds the file: Windows' sharing or lock violation
+        /// (ERROR_SHARING_VIOLATION 0x20, ERROR_LOCK_VIOLATION 0x21, as HRESULTs from Win32Marshal.MakeHRFromErrorCode);
+        /// on Unix the one flock failure .NET throws for, EWOULDBLOCK, whose HResult is the raw errno
+        /// (SafeFileHandle.Unix.cs, Interop.IOErrors.cs GetExceptionForIoErrno, dotnet/runtime release/8.0 and 9.0):
+        /// 11 on Linux (asm-generic errno-base.h, EAGAIN); 35 on macOS and the BSDs (EAGAIN there; not confirmed
+        /// against Apple's headers). A value that doesn't match reads the marker as not held, so as Behind unless
+        /// empty: indexes rebuilt, never a stale one trusted.
+        /// </summary>
+        private static bool HeldByAnother(IOException e)
+        {
+            int code = e.HResult;
+            if (OperatingSystem.IsWindows())
+                return code == unchecked((int)0x80070020) || code == unchecked((int)0x80070021);
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsAndroid())
+                return code == 11;
+            return code == 35;
         }
 
         private static string[] Markers(string root) => Directory.GetFiles(root, "*" + IndexesBehindSuffix);
@@ -185,7 +232,11 @@ namespace Xod.Services
         /// marker in place, so no context trusts an index file while it is there and the next open alone tries
         /// again; a marker that can't be deleted stays (an empty one costs nothing; a marked one keeps the index files
         /// untrusted, each rebuilt from the pages when needed, until it can be). A marker still held is a live
-        /// context's (a password change gives up its shared hold before it takes the database alone) and is left.
+        /// context's or another program's, and is left; with the database to itself, though, no context's marker can be
+        /// live but for one in a password change that gave up its shared hold to take the database alone, so a held
+        /// marker that isn't empty drops the indexes too (ISS-102: one a backup tool held kept a crash's stale index
+        /// trusted). Dropping is always safe: the indexes are rebuilt from the pages; the marker stays until it can be
+        /// probed.
         /// </summary>
         private static void DropIndexesLeftBehind(string root)
         {
@@ -194,8 +245,13 @@ namespace Xod.Services
             foreach (string marker in Markers(root))
             {
                 var state = ProbeMarker(marker);
-                if (state == MarkerState.Live || state == MarkerState.Gone)
+                if (state == MarkerState.Gone)
                     continue;
+                if (state == MarkerState.Live)
+                {
+                    behind |= !MarkerIsEmpty(marker);
+                    continue;
+                }
                 behind |= state == MarkerState.Behind;
                 left.Add(marker);
             }

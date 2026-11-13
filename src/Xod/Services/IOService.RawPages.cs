@@ -603,6 +603,7 @@ namespace Xod.Services
                     return;
                 }
 
+                RawPagePendingUnlocked(normalizedName, fullPath);
                 if (newRowElement == null)
                 {
                     // Fast in-place tombstone: overwrite deleted row with whitespace padding without shifting bytes
@@ -680,24 +681,10 @@ namespace Xod.Services
                     rawPage.RowIndex = null;
                 }
 
-                if (!hasRemainingRows)
-                    return;
-
-                if (batchDepth > 0)
-                {
-                    BeforeFileMutate?.Invoke(fullPath);
-                    dirtyBatchRawPages.Add(normalizedName);
-                }
-                else if (bufferedDurability)
-                {
-                    dirtyBufferedRawPages.Add(normalizedName);
-                }
-                else
-                {
-                    BeforeFileMutate?.Invoke(fullPath);
-                    bool inTx = HasActiveTransaction != null && HasActiveTransaction();
-                    FlushRawPageToDisk(fullPath, rawPage, inTx);
-                }
+                // An emptied page is deleted by its caller (Delete), which drops what is pending of it. Direct: written
+                // when the statement ends (WriteSaved, ISS-099).
+                if (hasRemainingRows && !IsBatchOrBuffered)
+                    saved.AddRawPage(normalizedName);
             }
         }
 
@@ -815,6 +802,7 @@ namespace Xod.Services
                         return false;
                 }
 
+                RawPagePendingUnlocked(pageFileName, Path.Combine(root, pageFileName));
                 int newLength = insertPos + rowByteLen + XmlPageTrailerBytes.Length;
                 if (newLength > rawPage.Bytes.Length)
                 {
@@ -839,19 +827,30 @@ namespace Xod.Services
                 rawPage.RowIndex ??= new Dictionary<string, (int, int)>(256, StringComparer.Ordinal);
                 rawPage.RowIndex[itemCode] = (insertPos, rowByteLen);
 
+                // A hint (ChangeHint): not a write to make of the table file.
                 XAttribute countAttr = page.Attribute("count");
-                if (rawPage.RowCount >= 0)
+                bool outerHint = !table.HintChanging;
+                table.HintChanging = true;
+                try
                 {
-                    rawPage.RowCount++;
-                    if (countAttr != null)
+                    if (rawPage.RowCount >= 0)
+                    {
+                        rawPage.RowCount++;
+                        if (countAttr != null)
+                            countAttr.Value = rawPage.RowCount.ToString();
+                        else
+                            page.SetAttributeValue("count", rawPage.RowCount);
+                    }
+                    else if (countAttr != null && int.TryParse(countAttr.Value, out int currentCount))
+                    {
+                        rawPage.RowCount = currentCount + 1;
                         countAttr.Value = rawPage.RowCount.ToString();
-                    else
-                        page.SetAttributeValue("count", rawPage.RowCount);
+                    }
                 }
-                else if (countAttr != null && int.TryParse(countAttr.Value, out int currentCount))
+                finally
                 {
-                    rawPage.RowCount = currentCount + 1;
-                    countAttr.Value = rawPage.RowCount.ToString();
+                    if (outerHint)
+                        table.HintChanging = false;
                 }
 
                 if (IsBatchOrBuffered)
@@ -899,8 +898,8 @@ namespace Xod.Services
                 }
                 else
                 {
-                    BeforeFileMutate?.Invoke(fullPath);
-                    FlushRawPageToDisk(fullPath, rawPage, isInTransaction);
+                    // Direct: written when the statement ends, after the row is indexed (WriteSaved, ISS-099).
+                    saved.AddRawPage(pageFileName);
                 }
 
                 pageElement = page;
@@ -1535,6 +1534,25 @@ namespace Xod.Services
                     rawPage?.ReleasePooledBuffer();
                 }
             }
+        }
+
+        /// <summary>
+        /// The raw page counterpart of <see cref="FilePendingUnlocked"/>: called before a cached raw page changes, so a
+        /// change that fails part way, or whose write fails, is still a write to make (ISS-099). Called under syncLock.
+        /// </summary>
+        private void RawPagePendingUnlocked(string pageFileName, string fullPath)
+        {
+            if (batchDepth > 0)
+            {
+                // The hook first, then the batch (FilePendingUnlocked says why).
+                if (!dirtyBatchRawPages.Contains(pageFileName))
+                {
+                    BeforeFileMutate?.Invoke(fullPath);
+                    dirtyBatchRawPages.Add(pageFileName);
+                }
+                return;
+            }
+            dirtyBufferedRawPages.Add(pageFileName);
         }
 
         private void FlushRawPagesList(List<string> pageNames)

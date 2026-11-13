@@ -54,8 +54,38 @@ namespace Xod.Services
             // half done would let in writes that the journal would later undo.
             XodTransaction.RecoverWalJournalIfPresent(root);
 
+            // After the journal, which puts back what a commit that got past it had deleted.
+            PutBackSetAsideFiles(root);
+
             // Last: the indexes of a context that stopped before they caught up with its pages (ISS-043).
             DropIndexesLeftBehind(root);
+        }
+
+        /// <summary>
+        /// ISS-107: the files a transaction set aside (deleted, <c>&lt;file&gt;.xdel</c>) that it didn't get to delete
+        /// or put back. One whose file is there again (a journal's undo put it back) is deleted; one whose file isn't
+        /// is put back: its transaction never committed (a commit deletes them before its journal goes). One that
+        /// can't be put back stops the open, as a journal that can't be undone does: the index files still name its
+        /// rows.
+        /// </summary>
+        private static void PutBackSetAsideFiles(string root)
+        {
+            foreach (string aside in Directory.GetFiles(root, "*" + SetAsideSuffix))
+            {
+                string target = aside.Substring(0, aside.Length - SetAsideSuffix.Length);
+                try
+                {
+                    if (File.Exists(target))
+                        File.Delete(aside);
+                    else
+                        File.Move(aside, target, overwrite: false);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                {
+                    throw new XodException("A file a transaction deleted before a crash can't be put back (" + e.Message +
+                        "). The database opens once it can be; " + Path.GetFileName(aside) + " is kept.", e);
+                }
+            }
         }
 
         internal bool FileExists(string fileName)
@@ -104,6 +134,7 @@ namespace Xod.Services
                     {
                         dirtyBufferedFiles.Add(file);
                     }
+                    saved.RawPageBecameFile(normalizedName, file);
                 }
                 else if (File.Exists(filePath))
                 {
@@ -113,8 +144,11 @@ namespace Xod.Services
                 {
                     XDocument doc = ItemWriterDelegate(type);
                     file = new XFile(doc, type, filePath, password);
+                    // A new database's file is on disk when the open returns, in every mode: another open must find
+                    // it, and a record another context writes into it at once (an AES256 key, SaveNow) must not be
+                    // overwritten later by this context's copy waiting to be written (review of TASK-068).
                     if (preSave)
-                        Save(file);
+                        SaveNow(file);
                 }
 
                 if (file != null)
@@ -192,6 +226,78 @@ namespace Xod.Services
                 CostBytes = cost
             };
             cachedFileBytes += cost;
+            Watch(file);
+        }
+
+        /// <summary>
+        /// ISS-099: a cached file is pending (a write still to make) from the moment its document changes, not from
+        /// its save: the engine changes a page or table in the cache before it saves it, and a statement that failed
+        /// in between (or a direct write that failed) left the change in the cache and in no set, so a flush called
+        /// the indexes caught up while the cache held rows the disk didn't. The document reports every change in its
+        /// tree (XObject.Changed), so no caller has to remember to.
+        /// </summary>
+        private void Watch(XFile file)
+        {
+            if (file.Watched || file.Document == null)
+                return;
+            file.Watched = true;
+            file.Document.Changed += (_, _) =>
+            {
+                lock (syncLock)
+                {
+                    if (!file.HintChanging)
+                        FilePendingUnlocked(file);
+                }
+            };
+        }
+
+        /// <summary>
+        /// Changes a cached file's hints without making it a write to make: a page's row count in the table file,
+        /// exact on disk only as of the file's last write (PLAN-046 section 6, ISS-055), which an insert raises in
+        /// the cache and readers don't need exact (only a full page's count is used, and the table file is saved when
+        /// a page fills). It goes to disk with the file's next write. Every other change is a write to make (Watch).
+        /// Made one, the count had each flush write the table file again: twice the time of an insert with a flush
+        /// after each (PLAN-057 section 4).
+        /// </summary>
+        internal void ChangeHint(XFile file, Action change)
+        {
+            lock (syncLock)
+            {
+                bool outer = !file.HintChanging;
+                file.HintChanging = true;
+                try
+                {
+                    change();
+                }
+                finally
+                {
+                    if (outer)
+                        file.HintChanging = false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// The one place a change to a cached file becomes a write still to make: the batch's while one is open (the
+        /// mutation hook runs as it joins: a transaction keeps the file's bytes before it), else the set written by
+        /// the next flush, or at once by the save in direct mode (<see cref="Save"/>). Raw pages: <see cref="RawPagePendingUnlocked"/>.
+        /// </summary>
+        private void FilePendingUnlocked(XFile file)
+        {
+            if (batchDepth > 0)
+            {
+                // The hook first (a transaction keeps the file's bytes before it), and the file joins the batch only
+                // once that is done: a capture that failed (another program holds the file) used to leave it in the
+                // batch with nothing to put back, and no later change tried again, so a commit undone after writing
+                // it kept the transaction's rows (review of TASK-068). Now the next change tries again.
+                if (!dirtyBatchFiles.Contains(file))
+                {
+                    BeforeFileMutate?.Invoke(file.Path);
+                    dirtyBatchFiles.Add(file);
+                }
+                return;
+            }
+            dirtyBufferedFiles.Add(file);
         }
 
         private bool EvictLeastActiveCacheEntry()
@@ -268,21 +374,11 @@ namespace Xod.Services
             lock (syncLock)
             {
                 CacheSavedUnlocked(file);
-
-                if (batchDepth > 0)
-                {
-                    BeforeFileMutate?.Invoke(file.Path);
-                    dirtyBatchFiles.Add(file);
-                    return;
-                }
-
-                if (bufferedDurability)
-                {
-                    dirtyBufferedFiles.Add(file);
-                    return;
-                }
-
-                FlushFileToDisk(file);
+                // Pending whether or not its document was watched when it changed (a file read without the cache).
+                FilePendingUnlocked(file);
+                // Direct: written when the statement ends (WriteSaved, ISS-099).
+                if (!IsBatchOrBuffered)
+                    saved.AddFile(file);
             }
         }
 
@@ -302,6 +398,33 @@ namespace Xod.Services
             {
                 CacheSavedUnlocked(file);
                 FlushFileToDiskCore(file);
+            }
+        }
+
+        /// <summary>
+        /// Writes a cache file now, or not at all: an index just built from the pages for a read
+        /// (IndexService.SaveBuilt). A failure throws to the caller, which gives the save up, and nothing of it waits
+        /// to be written: queued (Save), a file another program holds failed every later write and the close (review
+        /// of TASK-068). It passes the mutation hook, as any index write does (it may hold keys of rows not yet
+        /// written: NoteFileMutation), and is cached only once written. When a write of the file already waits, this
+        /// document takes its place instead, to be written with the rest (Save): giving that up would drop what the
+        /// waiting one carries.
+        /// </summary>
+        internal void SaveCacheNow(XFile file)
+        {
+            if (file?.Document == null)
+                return;
+
+            lock (syncLock)
+            {
+                if (dirtyBatchFiles.Contains(file) || dirtyBufferedFiles.Contains(file))
+                {
+                    Save(file);
+                    return;
+                }
+                BeforeFileMutate?.Invoke(file.Path);
+                FlushFileToDiskCore(file);
+                CacheSavedUnlocked(file);
             }
         }
 
@@ -523,10 +646,11 @@ namespace Xod.Services
             lock (syncLock)
             {
                 BeforeFileMutate?.Invoke(fullPath);
-                dirtyBatchFiles.RemoveWhere(f => string.Equals(Path.GetFileName(f.Path), normalizedName, StringComparison.OrdinalIgnoreCase));
-                dirtyBufferedFiles.RemoveWhere(f => string.Equals(Path.GetFileName(f.Path), normalizedName, StringComparison.OrdinalIgnoreCase));
+                dirtyBatchFiles.Remove(normalizedName);
+                dirtyBufferedFiles.Remove(normalizedName);
                 dirtyBatchRawPages.Remove(normalizedName);
                 dirtyBufferedRawPages.Remove(normalizedName);
+                saved.Remove(normalizedName);
                 cachedFiles.Remove(normalizedName);
                 if (cachedRawPages.TryGetValue(normalizedName, out var oldRawPage))
                 {
@@ -535,7 +659,19 @@ namespace Xod.Services
                 }
                 if (File.Exists(fullPath))
                 {
-                    File.Delete(fullPath);
+                    // ISS-107: inside a transaction the file is set aside, not deleted: its batch holds the rest of
+                    // the transaction's changes (the table that listed this page), and a rollback, or a commit refused
+                    // before its journal, puts nothing back but what it set aside. Deleted at once, a page a delete
+                    // emptied was lost though nothing was committed.
+                    if (batchDepth > 0 && HasActiveTransaction != null && HasActiveTransaction())
+                    {
+                        File.Move(fullPath, fullPath + SetAsideSuffix, overwrite: true);
+                        setAside.Add(fullPath);
+                    }
+                    else
+                    {
+                        File.Delete(fullPath);
+                    }
                 }
             }
         }

@@ -20,6 +20,12 @@ namespace Xod.Engines.Xml
         // reads it holds rwLock in some mode, which the write lock excludes. The statement undo asks it (ISS-062),
         // since ReaderWriterLockSlim.IsWriteLockHeld is for asserts and debugging only, per its documentation.
         private int globalWriteDepth;
+
+        // How many times the thread holding rwLock's write lock has taken it, through EnterExclusive and the close:
+        // the one pair that takes and lets go of it. Only that thread changes it, and every reader of it holds rwLock
+        // in some mode, which the write lock excludes, so on any other thread it reads 0 (ISS-101: FlushToDisk read
+        // ReaderWriterLockSlim.IsWriteLockHeld, which its documentation reserves for asserts and debugging).
+        private int exclusiveDepth;
         private readonly ConcurrentDictionary<string, ReaderWriterLockSlim> tableLocks = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, bool> standaloneTableCache = new(StringComparer.Ordinal);
         private readonly SemaphoreSlim transactionGate = new SemaphoreSlim(1, 1);
@@ -225,7 +231,7 @@ namespace Xod.Engines.Xml
         {
             // Before the lock: this loads the type, which may refuse it (its attributes).
             bool standalone = IsStandaloneTable(type);
-            rwLock.EnterReadLock();
+            EnterRead();
             if (standalone)
             {
                 tableLock = GetTableLock(type);
@@ -234,6 +240,17 @@ namespace Xod.Engines.Xml
             else
             {
                 tableLock = null;
+            }
+        }
+
+        // The engine-wide read lock (refused once closed, ISS-103).
+        private void EnterRead()
+        {
+            rwLock.EnterReadLock();
+            if (disposed)
+            {
+                rwLock.ExitReadLock();
+                throw Closed();
             }
         }
 
@@ -305,6 +322,32 @@ namespace Xod.Engines.Xml
             return null;
         }
 
+        /// <summary>Takes the engine-wide write lock (refused from inside a read on this thread, and once closed).</summary>
+        private void EnterExclusive()
+        {
+            EnterWrite(rwLock.EnterWriteLock);
+            if (disposed)
+            {
+                rwLock.ExitWriteLock();
+                throw Closed();
+            }
+            exclusiveDepth++;
+        }
+
+        private void ExitExclusive()
+        {
+            exclusiveDepth--;
+            rwLock.ExitWriteLock();
+        }
+
+        // This thread holds the engine-wide write lock and is inside none of its own writes, so no write of this
+        // context is under way, on this thread or another (ISS-101).
+        private bool NoWriteUnderWay => exclusiveDepth > 0 && globalWriteDepth == 0;
+
+        // ISS-103: a context's entry points refuse once it is closed. Asked after the lock is taken: a call that
+        // waited for it while the close held it finds the context closed.
+        private static ObjectDisposedException Closed() => new ObjectDisposedException(nameof(XodContext), "The database context is closed.");
+
         private void EnterTableWriteLock(Type type, out ReaderWriterLockSlim tableLock, out bool usedGlobalWriteLock)
         {
             ThrowIfWritesRefused();
@@ -313,7 +356,7 @@ namespace Xod.Engines.Xml
                 IsStandaloneTable(type))
             {
                 usedGlobalWriteLock = false;
-                rwLock.EnterReadLock();
+                EnterRead();
                 var table = GetTableLock(type);
                 EnterSecond(() => EnterWrite(table.EnterWriteLock), rwLock.ExitReadLock);
                 tableLock = table;
@@ -321,7 +364,7 @@ namespace Xod.Engines.Xml
             else
             {
                 usedGlobalWriteLock = true;
-                EnterWrite(rwLock.EnterWriteLock);
+                EnterExclusive();
                 globalWriteDepth++;
                 tableLock = null;
             }
@@ -331,34 +374,74 @@ namespace Xod.Engines.Xml
         {
             try
             {
-                tableLock?.ExitWriteLock();
+                // The statement's end (the outermost write: a trigger's nests one deeper): in direct mode what it saved
+                // and its owner didn't write (Create, UpdateItem) is written now, after its index changes (ISS-099).
+                // Before the locks go, so no write of another thread comes between. Not by a context that writes
+                // nothing more: its cache may not be what the disk should hold (ISS-091).
+                if ((!usedGlobalWriteLock || globalWriteDepth == 1) && WritesRefused() == null)
+                    ioService.WriteSaved();
             }
             finally
             {
-                if (usedGlobalWriteLock)
+                try
                 {
-                    globalWriteDepth--;
-                    rwLock.ExitWriteLock();
+                    tableLock?.ExitWriteLock();
                 }
-                else
+                finally
                 {
-                    rwLock.ExitReadLock();
+                    if (usedGlobalWriteLock)
+                    {
+                        globalWriteDepth--;
+                        ExitExclusive();
+                    }
+                    else
+                    {
+                        rwLock.ExitReadLock();
+                    }
                 }
             }
         }
 
         public void Dispose()
         {
-            if (disposed)
+            if (disposed || closing)
                 return;
-            disposed = true;
 
             // The close flushes under the engine-wide write lock, so no write of another thread is under way when its
             // indexes are called caught up (ISS-043, FlushToDisk). A close from inside a read on this thread can't
-            // take it: it flushes without, and leaves its marker for the next open (the indexes rebuilt, no row lost).
-            bool locked = !rwLock.IsReadLockHeld;
-            if (locked)
+            // take it (a read lock isn't upgraded: EnterWriteLock throws LockRecursionException, per its
+            // documentation): it flushes without it, and leaves its marker for the next open (the indexes rebuilt, no
+            // row lost). It used to ask ReaderWriterLockSlim.IsReadLockHeld, reserved for asserts (ISS-101).
+            bool locked;
+            try
+            {
                 rwLock.EnterWriteLock();
+                locked = true;
+            }
+            catch (LockRecursionException)
+            {
+                locked = false;
+            }
+            // A second close that waited for the lock while the first closed returns (review of TASK-068: it closed
+            // again, after the hold was let go).
+            if (locked && disposed)
+            {
+                rwLock.ExitWriteLock();
+                return;
+            }
+            if (locked)
+                exclusiveDepth++;
+            // From inside one of its own writes (a trigger), refused before anything is done: its flush would call the
+            // indexes caught up in the middle of the statement, before the statement's page is saved, and the lock
+            // couldn't be let go under the statement (ISS-101).
+            if (locked && globalWriteDepth > 0)
+            {
+                ExitExclusive();
+                throw new InvalidOperationException("A database context can't be closed from inside one of its own writes (a trigger, " +
+                    "for example): close it once the write has returned.");
+            }
+            closing = true;
+
             try
             {
                 if (activeTransaction != null && activeTransaction.IsActive)
@@ -376,20 +459,27 @@ namespace Xod.Engines.Xml
             }
             finally
             {
+                // ISS-103: the hold and the marker go while the write lock is still held, so no write of another
+                // thread lands after them; one that waited for the lock then finds the context closed (EnterExclusive,
+                // EnterRead). Marked closed only here: the close's own rollback takes the lock again. A failed flush or
+                // rollback still surfaces to the caller, but files and locks are let go.
+                disposed = true;
                 try
                 {
-                    if (locked)
-                        rwLock.ExitWriteLock();
+                    DisposeResources();
                 }
                 finally
                 {
-                    // A failed flush or rollback still surfaces to the caller, but files and locks are released.
-                    DisposeResources();
+                    if (locked)
+                        ExitExclusive();
                 }
             }
         }
 
-        private bool disposed;
+        // Set by the close, under the write lock when it can take it; read by every entry once it has its lock.
+        private volatile bool disposed;
+        // The close is under way (on the thread that holds the lock, or inside a read): a second close returns.
+        private bool closing;
 
         // A context that writes nothing more (WritesRefused) writes nothing at its close either: each write would be
         // refused, and the close would throw for what the caller has already been told.
@@ -410,14 +500,11 @@ namespace Xod.Engines.Xml
                 }
                 finally
                 {
+                    // The locks and the transaction gate aren't disposed: the close may hold rwLock, and another
+                    // thread may still wait on any of them (it then finds the context closed); disposing a lock held
+                    // or waited on throws (SynchronizationLockException). What they hold beyond memory is the wait
+                    // handles they create under contention, SafeHandles the finalizer releases.
                     autonumberService?.Dispose();
-                    transactionGate?.Dispose();
-                    foreach (var kvp in tableLocks)
-                    {
-                        kvp.Value?.Dispose();
-                    }
-                    tableLocks.Clear();
-                    rwLock?.Dispose();
                 }
             }
         }

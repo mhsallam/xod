@@ -17,6 +17,11 @@ namespace Xod
 
         public long LastSavedSize { get; set; }
 
+        // IOService watches the document of a file it caches, once (ISS-099).
+        internal bool Watched;
+        // A change to the file's hints is under way (IOService.ChangeHint): not a write to make.
+        internal bool HintChanging;
+
         public XFile(XDocument document, Type type, string path, string password = null)
         {
             this.document = document;

@@ -11,7 +11,7 @@ namespace Xod.Engines.Xml
         {
             // The engine-wide write lock: the flush writes files (the counters' marks among them), which a read lock
             // doesn't cover (review of TASK-063: another thread's write to a table could run beside it).
-            EnterWrite(rwLock.EnterWriteLock);
+            EnterExclusive();
             try
             {
                 FlushToDisk();
@@ -92,7 +92,7 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                rwLock.ExitWriteLock();
+                ExitExclusive();
             }
         }
 
@@ -117,7 +117,7 @@ namespace Xod.Engines.Xml
         // password the files are under.
         private void SwitchPassword(Action check, string newPassword)
         {
-            EnterWrite(rwLock.EnterWriteLock);
+            EnterExclusive();
             try
             {
                 // A rollback would restore files as they were before the switch, under the old password.
@@ -156,7 +156,7 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                rwLock.ExitWriteLock();
+                ExitExclusive();
             }
         }
 
@@ -183,14 +183,14 @@ namespace Xod.Engines.Xml
 
         public void Flush()
         {
-            EnterWrite(rwLock.EnterWriteLock);
+            EnterExclusive();
             try
             {
                 FlushToDisk();
             }
             finally
             {
-                rwLock.ExitWriteLock();
+                ExitExclusive();
             }
         }
 
@@ -200,11 +200,12 @@ namespace Xod.Engines.Xml
         /// one it writes the index file itself. Pages go first: the index is a cache of them.
         /// <para>
         /// ISS-043: its indexes on disk then hold every row its pages do, and the marker that said otherwise is
-        /// emptied, only if nothing of this context can be behind: no write under way on another thread (this one
-        /// holds the engine-wide write lock, which every writer's lock excludes), no batch open (a transaction's pages
-        /// wait in its batch while its index changes are written), and nothing either service still has to write (a
-        /// write that failed stays to be made). Decided from that state, not by the caller: callers that said so were
-        /// wrong after a failed save and inside a transaction (review of TASK-064).
+        /// emptied, only if nothing of this context can be behind: no write under way (this thread holds the
+        /// engine-wide write lock, which every writer's lock excludes, and is inside none of its own writes: a flush
+        /// from a trigger comes in the middle of a statement, ISS-101), no batch open (a transaction's pages wait in
+        /// its batch), and nothing either service still has to write (a write that failed stays to be made). Decided
+        /// from that state, not by the caller: callers that said so were wrong after a failed save and inside a
+        /// transaction (review of TASK-064).
         /// </para>
         /// </summary>
         private void FlushToDisk()
@@ -214,7 +215,7 @@ namespace Xod.Engines.Xml
             ioService.FlushBufferedFiles();
             indexService.FlushDirtyIndexes();
             ioService.FlushBufferedFiles();
-            if (rwLock.IsWriteLockHeld && ioService.NothingPending && indexService.AllSaved)
+            if (NoWriteUnderWay && ioService.NothingPending && indexService.AllSaved)
                 ioService.IndexesCaughtUp();
         }
 
@@ -229,7 +230,7 @@ namespace Xod.Engines.Xml
         /// </summary>
         private void DropCaches()
         {
-            EnterWrite(rwLock.EnterWriteLock);
+            EnterExclusive();
             try
             {
                 bool inTransaction = activeTransaction != null && activeTransaction.IsActive;
@@ -242,7 +243,7 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                rwLock.ExitWriteLock();
+                ExitExclusive();
             }
         }
 

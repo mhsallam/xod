@@ -126,7 +126,12 @@ namespace Xod.Engines.Xml
             bool statement = BeginStatement();
             try
             {
-                return CreateRow(type, item, shallowWrite, writeTrack);
+                string code = CreateRow(type, item, shallowWrite, writeTrack);
+                // What the statement saved is written inside its undo: a write that fails takes its rows back, as a
+                // failure in its middle does (ISS-062, ISS-099).
+                if (statement)
+                    ioService.WriteSaved();
+                return code;
             }
             catch (Exception failure) when (statement)
             {
@@ -273,15 +278,15 @@ namespace Xod.Engines.Xml
 
                         if (tablePageElement != null)
                         {
-                            XAttribute countAttr = tablePageElement.Attribute("count");
-                            if (countAttr != null && int.TryParse(countAttr.Value, out int currentCount))
+                            // A hint, not a write to make of the table file (IOService.ChangeHint).
+                            ioService.ChangeHint(tableFile, () =>
                             {
-                                countAttr.Value = (currentCount + 1).ToString();
-                            }
-                            else
-                            {
-                                tablePageElement.SetAttributeValue("count", pageFile.Rows().Count());
-                            }
+                                XAttribute countAttr = tablePageElement.Attribute("count");
+                                if (countAttr != null && int.TryParse(countAttr.Value, out int currentCount))
+                                    countAttr.Value = (currentCount + 1).ToString();
+                                else
+                                    tablePageElement.SetAttributeValue("count", pageFile.Rows().Count());
+                            });
 
                             if (ioService.IsBatchOrBuffered)
                                 tableModified = true;
@@ -499,7 +504,10 @@ namespace Xod.Engines.Xml
             bool statement = BeginStatement();
             try
             {
-                return UpdateRows(type, item, newItem, track, filter);
+                bool updated = UpdateRows(type, item, newItem, track, filter);
+                if (statement)
+                    ioService.WriteSaved();
+                return updated;
             }
             catch (Exception failure) when (statement)
             {
@@ -1153,7 +1161,9 @@ namespace Xod.Engines.Xml
         public bool DropType(Type type)
         {
             ThrowIfWritesRefused();
-            EnterWrite(rwLock.EnterWriteLock);
+            EnterExclusive();
+            // A statement, like any write (ISS-101): a flush from its triggers comes in its middle.
+            globalWriteDepth++;
             try
             {
                 var trigger = new TriggerEventArgs
@@ -1195,7 +1205,16 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                rwLock.ExitWriteLock();
+                try
+                {
+                    if (WritesRefused() == null)
+                        ioService.WriteSaved();
+                }
+                finally
+                {
+                    globalWriteDepth--;
+                    ExitExclusive();
+                }
             }
         }
         private bool DeleteByItemCode(Type type, string itemCode, bool isCascade, bool cascadeChildren = true)

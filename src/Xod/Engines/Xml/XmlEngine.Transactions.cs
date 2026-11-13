@@ -22,7 +22,7 @@ namespace Xod.Engines.Xml
                 throw new TransactionException($"Timed out after {timeoutMs}ms waiting to acquire transaction lock.");
             }
 
-            EnterSecond(() => EnterWrite(rwLock.EnterWriteLock), () => transactionGate.Release());
+            EnterSecond(EnterExclusive, () => transactionGate.Release());
             try
             {
                 // Everything this context holds goes to disk first (with buffered durability, writes may wait in
@@ -38,14 +38,14 @@ namespace Xod.Engines.Xml
                     root,
                     exclusive: action =>
                     {
-                        EnterWrite(rwLock.EnterWriteLock);
+                        EnterExclusive();
                         try
                         {
                             action();
                         }
                         finally
                         {
-                            rwLock.ExitWriteLock();
+                            ExitExclusive();
                         }
                     },
                     onCommit: () =>
@@ -66,7 +66,18 @@ namespace Xod.Engines.Xml
                             if (transactionBatchOpen)
                             {
                                 transactionBatchOpen = false;
-                                ioService.DiscardBatch();
+                                try
+                                {
+                                    ioService.DiscardBatch();
+                                }
+                                catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException)
+                                {
+                                    // A file the transaction deleted is still set aside (ISS-107): the index files
+                                    // name its rows, which this context can't read. Put back by the next open alone.
+                                    transactionFault = "A rollback couldn't put back a file its transaction had deleted (" + e.Message +
+                                        "); it is put back when the database is next opened by a context that has it to itself. Until then this context refuses writes.";
+                                    throw;
+                                }
                             }
                             restoreFiles();
                         }
@@ -97,7 +108,7 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                rwLock.ExitWriteLock();
+                ExitExclusive();
             }
         }
     }

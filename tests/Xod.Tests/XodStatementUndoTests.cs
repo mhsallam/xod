@@ -177,6 +177,8 @@ namespace Xod.Tests
             FileStream held = null;
             using (var db = new XodContext(path))
             {
+                // On disk before the statement: a statement's own writes are made when it ends (ISS-099).
+                db.Insert(new UndoTag { Name = "seed" });
                 db.AfterAction += (_, e) =>
                 {
                     if (e.Item is UndoTag t && t.Name == "refused")
@@ -197,13 +199,13 @@ namespace Xod.Tests
                 {
                     held?.Dispose();
                 }
-                Assert.Equal(db.Select<UndoTag>().Count(), db.Query<UndoTag>(t => t.Id == 1).Count());
+                Assert.Equal(db.Select<UndoTag>().Count(t => t.Name == "refused"), db.Query<UndoTag>(t => t.Id == 2).Count());
                 // What the context holds may not be what the disk holds: it writes nothing more.
                 Assert.Contains("Reopen", Assert.ThrowsAny<XodException>(() => db.Insert(new UndoTag { Name = "after" })).Message);
             }
             using (var db = new XodContext(path))
             {
-                Assert.Equal(db.Select<UndoTag>().Count(), db.Query<UndoTag>(t => t.Id == 1).Count());
+                Assert.Equal(db.Select<UndoTag>().Count(t => t.Name == "refused"), db.Query<UndoTag>(t => t.Id == 2).Count());
                 db.Insert(new UndoTag { Name = "after reopening" });
             }
         }

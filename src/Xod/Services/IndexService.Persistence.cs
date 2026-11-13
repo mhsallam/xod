@@ -598,7 +598,9 @@ namespace Xod.Services
             reverseHydratedTypes.Add(type.FullName);
         }
 
-        internal void SaveToDisk(Type type)
+        // builtCache: the index was just built from the pages for a read (SaveBuilt); an encrypted one is then written
+        // now or not at all, as a plain one is (IOService.SaveCacheNow).
+        internal void SaveToDisk(Type type, bool builtCache = false)
         {
             if (type == null || ioService == null)
                 return;
@@ -615,11 +617,24 @@ namespace Xod.Services
                 return;
             }
 
+            // ISS-100: no index file is written while a transaction is open: it would hold the transaction's keys
+            // while its pages wait in its batch, and a commit refused before its journal (another commit's there)
+            // put nothing back, so after the rollback the next flush called that file caught up. The type stays to
+            // be saved, by the commit once its pages are written (a rollback forgets it with the rest).
+            if (InTransaction)
+            {
+                lock (syncLock)
+                {
+                    dirtyTypes.Add(type);
+                }
+                return;
+            }
+
             string indexFilePath = Path.Combine(ioService.RootDirectory, GetIndexFileName(type));
 
             if (!string.IsNullOrEmpty(ioService.Password))
             {
-                SaveEncryptedViaIOService(type, indexedProps, indexFilePath);
+                SaveEncryptedViaIOService(type, indexedProps, indexFilePath, builtCache);
                 return;
             }
 
@@ -922,21 +937,26 @@ namespace Xod.Services
         /// (held open elsewhere, a folder that can't be written) is left as it was: whatever kept it from being loaded
         /// still applies to it, so it isn't trusted later, and the next open builds the index again. It used to fail
         /// the query that built it (ISS-042). Changes this context then records are saved by the flushes, which do
-        /// report a failure. An encrypted index is saved through the file service, which in a batch or with buffered
-        /// writes holds the save for its next flush: a failure then fails that flush (ISS-109).
+        /// report a failure. An encrypted index is written now or not at all too (IOService.SaveCacheNow), unless a
+        /// write of it already waits: queued for the statement's end or the next flush, a held file failed every later
+        /// write and the close (review of TASK-068; with buffered writes, ISS-109).
         /// </summary>
         internal void SaveBuilt(Type type)
         {
+            // A cache, saved now or not at all: in a transaction it would be held for the commit (SaveToDisk), and an
+            // index file another program holds would then fail a commit that only read the table.
+            if (InTransaction)
+                return;
             try
             {
-                SaveToDisk(type);
+                SaveToDisk(type, builtCache: true);
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {
             }
         }
 
-        private void SaveEncryptedViaIOService(Type type, PropertyInfoItem[] indexedProps, string indexFilePath)
+        private void SaveEncryptedViaIOService(Type type, PropertyInfoItem[] indexedProps, string indexFilePath, bool builtCache = false)
         {
             XDocument doc;
             lock (syncLock)
@@ -974,7 +994,10 @@ namespace Xod.Services
             }
 
             var xFile = new XFile(doc, typeof(Table), indexFilePath, ioService.Password);
-            ioService.Save(xFile);
+            if (builtCache)
+                ioService.SaveCacheNow(xFile);
+            else
+                ioService.Save(xFile);
             lock (syncLock)
             {
                 LogFor(type).SnapshotWritten(-1); // an encrypted file is never appended to

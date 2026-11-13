@@ -315,6 +315,27 @@ public static class Program
             return 0;
         }
 
+        // ISS-107: a transaction deletes every member (their pages emptied), then the process dies before the commit.
+        if (mode == "txdelete")
+        {
+            var db = new XodContext(path, options: options);
+            var tx = db.BeginTransaction();
+            foreach (var member in db.Select<CrashMember>())
+                db.Delete(member);
+            Console.WriteLine("DELETED");
+            Console.Out.Flush();
+            Environment.FailFast("killed before a commit");
+        }
+
+        // A table's first row, written with no batch and no buffer (a test sets where the process dies).
+        if (mode == "firstrow")
+        {
+            using var db = new XodContext(path, options: options);
+            db.Insert(new CrashMember { Id = 1, Email = "e1" });
+            Console.WriteLine("INSERTED");
+            return 0;
+        }
+
         // A flush inside a transaction, then the process dies before the commit: the transaction's pages wait in
         // its batch, while its index changes are written by the flush.
         if (mode == "txflush")
