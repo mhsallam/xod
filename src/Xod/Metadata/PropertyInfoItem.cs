@@ -112,8 +112,8 @@ namespace Xod
         public bool IsAutonumber { get; set; }
         // The first number and the step of an autonumber, from [Property(IdentitySeed, IdentityIncrement)]
         // (PropertyService.ReadIdentitySettings); checked when the type loads.
-        internal decimal Seed { get; set; } = 1;
-        internal decimal Increment { get; set; } = 1;
+        internal decimal Seed { get; set; } = PropertyAttribute.DefaultIdentity;
+        internal decimal Increment { get; set; } = PropertyAttribute.DefaultIdentity;
         internal object SeedSetting { get; set; }
         internal object IncrementSetting { get; set; }
 

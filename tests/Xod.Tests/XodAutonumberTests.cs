@@ -97,6 +97,62 @@ namespace Xod.Tests
         [Property(AutoNumber = true, IdentitySeed = 5)] public Guid Token { get; set; }
     }
 
+    // ISS-117: a setting given is refused on a Guid even when it is the default's value; a setting not given isn't.
+    public class GuidDefaultIncrementTicket
+    {
+        [PrimaryKey] public string Key { get; set; }
+        [Property(AutoNumber = true, IdentityIncrement = 1)] public Guid Token { get; set; }
+    }
+
+    public class GuidTokenTicket
+    {
+        [PrimaryKey] public string Key { get; set; }
+        [Property(AutoNumber = true)] public Guid Token { get; set; }
+    }
+
+    // A Guid Id is an autonumber by convention; the attribute only places it.
+    public class GuidAttributeKeyed
+    {
+        [Property(Position = ValuePosition.Attribute)] public Guid Id { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class GuidNullSeedTicket
+    {
+        [PrimaryKey] public string Key { get; set; }
+        [Property(AutoNumber = true, IdentitySeed = null)] public Guid Token { get; set; }
+    }
+
+    public class NullableGuidTicket
+    {
+        [PrimaryKey] public string Key { get; set; }
+        [Property(AutoNumber = true)] public Guid? Token { get; set; }
+    }
+
+    // 2.0.x's only way to set a seed: a subclass of the attribute that sets it in its constructor. Its settings are
+    // given, as named arguments are: honoured on a number, refused on a Guid.
+    public class SeededNumberAttribute : PropertyAttribute
+    {
+        public SeededNumberAttribute()
+        {
+            AutoNumber = true;
+            IdentitySeed = 1000;
+            IdentityIncrement = 5;
+        }
+    }
+
+    public class SubclassSeededTicket
+    {
+        [PrimaryKey] public string Key { get; set; }
+        [SeededNumber] public int Number { get; set; }
+    }
+
+    public class SubclassSeededGuidTicket
+    {
+        [PrimaryKey] public string Key { get; set; }
+        [SeededNumber] public Guid Token { get; set; }
+    }
+
     // No key: an update by example changes every row that matches.
     public class SequencedTag
     {
@@ -482,7 +538,59 @@ namespace Xod.Tests
         {
             string path = NewDatabase("guid-seed");
             using var db = new XodContext(path);
-            Assert.Contains("Guid", Assert.Throws<AutonumberSeedException>(() => db.Insert(new GuidSeedTicket { Key = "a" })).Message);
+            const string refusal = "takes no IdentitySeed";
+            Assert.Contains(refusal, Assert.Throws<AutonumberSeedException>(() => db.Insert(new GuidSeedTicket { Key = "a" })).Message);
+            Assert.Contains(refusal, Assert.Throws<AutonumberSeedException>(() => db.Insert(new GuidDefaultIncrementTicket { Key = "a" })).Message);
+            Assert.Contains(refusal, Assert.Throws<AutonumberSeedException>(() => db.Insert(new SubclassSeededGuidTicket { Key = "a" })).Message);
+        }
+
+        // A subclass that sets the seed and the increment in its constructor numbers as 2.0.x numbered it.
+        [Fact]
+        public void A_seed_a_subclass_of_the_attribute_sets_is_honoured()
+        {
+            string path = NewDatabase("subclass-seed");
+            using var db = new XodContext(path);
+            Assert.Equal(1000, db.Insert(new SubclassSeededTicket { Key = "a" }).Number);
+            Assert.Equal(1005, db.Insert(new SubclassSeededTicket { Key = "b" }).Number);
+        }
+
+        // ISS-117: [Property] without a seed or an increment, on a Guid autonumber, declared or by convention, was
+        // refused as if it gave both (the attribute's constructor set them to 1). XOD 2.0.0 accepts both.
+        [Fact]
+        public void A_guid_autonumber_with_a_property_attribute_and_no_seed_is_accepted()
+        {
+            string path = NewDatabase("guid-plain");
+            using (var db = new XodContext(path))
+            {
+                Guid a = db.Insert(new GuidTokenTicket { Key = "a" }).Token;
+                Guid b = db.Insert(new GuidTokenTicket { Key = "b" }).Token;
+                Assert.NotEqual(Guid.Empty, a);
+                Assert.NotEqual(a, b);
+
+                Guid id = db.Insert(new GuidAttributeKeyed { Name = "n" }).Id;
+                Assert.NotEqual(Guid.Empty, id);
+
+                // A null setting is no setting.
+                Assert.NotEqual(Guid.Empty, db.Insert(new GuidNullSeedTicket { Key = "a" }).Token);
+                Guid? nullable = db.Insert(new NullableGuidTicket { Key = "a" }).Token;
+                Assert.True(nullable.HasValue && nullable.Value != Guid.Empty);
+            }
+            using (var db = new XodContext(path))
+            {
+                Assert.Equal(2, db.Select<GuidTokenTicket>().Select(t => t.Token).Distinct().Count());
+                var row = Assert.Single(db.Select<GuidAttributeKeyed>());
+                Assert.Equal("n", row.Name);
+                Assert.Equal("n", db.Find<GuidAttributeKeyed>(r => r.Id == row.Id).Name);
+            }
+        }
+
+        // What 2.0.x code reads from the attribute is unchanged: 1 when the model gives no seed or increment.
+        [Fact]
+        public void The_property_attribute_reads_one_for_a_seed_or_increment_not_given()
+        {
+            var attribute = new PropertyAttribute { AutoNumber = true };
+            Assert.Equal(1, attribute.IdentitySeed);
+            Assert.Equal(1, attribute.IdentityIncrement);
         }
 
         // A type refused when it loads, first used by a read, leaves the context usable: the read lock was taken

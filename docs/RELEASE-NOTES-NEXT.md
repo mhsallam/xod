@@ -39,8 +39,11 @@ records it.
   IdentityIncrement = 5)]` ([PLAN-052](plans/PLAN-052-autonumbers-password-service-migrator.md)).
   - A type whose settings can't number the property is refused when it is first used, with
     `AutonumberSeedException` (new): a seed below 1, an increment below 1, a value that isn't a whole number,
-    a seed beyond the property's type, a seed or increment on a Guid autonumber. Before, a subclass of the
-    attribute could set them and got repeated or overflowing numbers.
+    a seed beyond the property's type, a seed or increment given on a Guid autonumber. Before, only a subclass
+    of the attribute could set them: a number autonumber took them and could get repeated or overflowing
+    numbers, and a Guid autonumber ignored them. **A subclass that sets either one in its constructor, even to
+    1, now makes a Guid autonumber it marks refused**; one that sets neither, and `[Property]` without them,
+    are accepted on a Guid as before (ISS-117).
   - A float or double autonumber stops at 2^24 or 2^53 with `OverflowException`, as an int stops at its range,
     instead of handing out a number twice.
   - `IdentitySeed` and `IdentityIncrement` are now `object`, not `dynamic`: binary compatible, but code that
@@ -192,10 +195,29 @@ version rather than a patch. The owner decides.
 
 ## Site pages to update with the release
 
-- `attributes.md` and `migrating.md`: `IdentitySeed` and `IdentityIncrement` can be set (they say they can't).
-- `options.md`: `EnableCompression` is obsolete.
-- `storage.md`, `cli.md` and `exceptions.md`: the migrator's refusals and `DatabaseLockedException`.
-- Wherever `XodSecurityService` is shown (none found on 2026-11-12).
+Drafted on 2026-11-13 in `xod-site`. The work is uncommitted and not deployed, and was checked against the tree as of that day.
+
+- **Docs:** 17 pages in `src/pages/docs` and a new `upgrading.md`, the checklist for a 2.0.x application, with
+  its entry in `src/content/docs-nav.ts`. Each claim was checked in the code, and the behaviour claims were
+  probed on the tree and on v2.0.0. An independent review followed, and its findings were fixed.
+- **What's new or different is labelled `**Next release:**`,** next to what 2.0.x does. At the release, replace
+  the label with the version number. Recheck the pages against any engine change made after 2026-11-13.
+  The failed-write text (`transactions.md`, `limits.md`, `upgrading.md`) was rechecked against `c0fd701`
+  (TASK-070: an `Insert` taken back; `InsertRange`, `Update` and `Delete` still made, ISS-125).
+- **The pages describe a `Guid` autonumber as working,** which holds now that ISS-117 is fixed (committed
+  2026-11-14).
+- **The pages also correct older statements that were wrong in 2.0.x too:**
+  - durability against a power cut;
+  - "ACID", "write-ahead journal" and "streamed" reads;
+  - what the file extensions do;
+  - the getting-started file sample;
+  - "optional" cascade delete.
+- **Landing page (`src/pages/index.astro`)**, approved by the owner on 2026-11-13:
+  - "ACID" is gone from the title, the description, the headline, the lede and the chip;
+  - "crash-safe writes when power is cut" now says a commit cut short by a process crash is undone at the
+    next open;
+  - the code samples use `Orders = new() { … }`, since the old form threw `NullReferenceException`;
+  - "indexed query, not a table scan" became "query with a lambda", since `Status` isn't indexed.
 
 ## Fixed
 

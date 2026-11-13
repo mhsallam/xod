@@ -29,7 +29,7 @@ All classic XOD 1.x attributes work identically:
 - `[UniqueKey]` (now fully enforced on `Insert` and `Update`)
 - `[ForeignKey("AuthorId")]` and `[ForeignKey("AuthorId", "Id")]`
 - `[Children]` and `[ParentKey("DepartmentId")]` *(plus in XOD++, these are now optional when using standard naming conventions!)*
-- `[Property(Position = ValuePosition.Attribute, Cascade = CascadeOptions.Delete, AutoNumber = true, Indexed = true, IdentitySeed = 1, IdentityIncrement = 1)]`
+- `[Property(Position = ValuePosition.Attribute, Cascade = CascadeOptions.Delete, AutoNumber = true, Indexed = true)]`. `IdentitySeed` and `IdentityIncrement` couldn't be set this way in 1.x or 2.0.x (they were `dynamic`, which C# refuses in an attribute, CS0655); the next release makes them settable, and refuses them on a `Guid` autonumber (see `RELEASE-NOTES-NEXT.md`)
 - `[Crypto(CryptoMethod.MD5)]`, `[Crypto(CryptoMethod.SHA1)]`, plus new `SHA256`, `SHA512`, and reversible `AES256`
 - `[Markup]`, `[Required]`, `[NotMapped]`, `[GenericTypeProperty("TypeName")]`
 

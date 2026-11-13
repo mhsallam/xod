@@ -183,7 +183,7 @@ After round 2 of the review (its findings fixed in `TASK-063`, PLAN-053):
 
 | Change | Verdict |
 | :--- | :--- |
-| ISS-047 seed and increment | Clean: one reader, when the type loads |
+| ISS-047 seed and increment | Clean: one reader, when the type loads. **Corrected 2026-11-13:** it did not hold for a Guid autonumber, which any `[Property]` made refused, because the attribute's constructor set both settings to 1 (ISS-117, fixed: section 8) |
 | ISS-048 `EnableCompression` | Mitigation: `[Obsolete]`; removal waits for a major version (ISS-048 open) |
 | ISS-059 counter and mark on update | Clean with named debt: the update's mark write has a delete's batch crash window |
 | ISS-075 unset autonumber kept | Clean with named debt: the row's item is a copy and the caller's new item is never changed, so what triggers and write-backs see depends on whether a copy was made (ISS-092) |
@@ -206,3 +206,73 @@ library builds with 0 warnings.
 - A conversion cut short by a crash leaves its staging folder beside the target; nothing deletes it.
 - The migrator recognises the source folder by its path: reached through a link, it is refused as a target
   that isn't empty rather than converted in place.
+
+## 8. ISS-117: a Guid autonumber refused by any `[Property]` (2026-11-13)
+
+**What happened.** `[Property(AutoNumber = true)] Guid Token`, and a `Guid Id` that carries
+`[Property(Position = ValuePosition.Attribute)]`, were refused with `AutonumberSeedException` when the type was
+first used. XOD 2.0.0 accepts both. It was found while the site's docs were updated.
+
+**Cause.** `PropertyAttribute`'s constructor set `IdentitySeed = 1` and `IdentityIncrement = 1`, and
+`PropertyService` copied the public properties into `SeedSetting` and `IncrementSetting`. So every
+`[Property]` looked as if it gave both settings, and `ReadIdentitySettings` refuses any setting on a Guid. The
+default couldn't be told from a value the model set.
+
+**Change.** The attribute owns whether a setting was given:
+- Its fields hold only what was assigned, null when nothing was.
+- The public getters read 1 when a setting is unset. What 2.0.x code reads is unchanged.
+- `PropertyService` copies the internal `IdentitySeedGiven` and `IdentityIncrementGiven`, so the Guid check sees
+  exactly what the model gave.
+- The default 1 is one constant, `PropertyAttribute.DefaultIdentity`. The getters, `ReadIdentitySettings` and
+  `PropertyInfoItem`'s initial values all use it.
+- A `null` setting counts as no setting.
+
+**Named change from 2.0.0, kept by the owner (2026-11-13: "keep the refusal").** A subclass of `[Property]` that sets either setting in its
+constructor, which was 2.0.x's only way to set them, gives them. That holds for a number autonumber, which
+numbers as in 2.0.0, and for a Guid autonumber, which is now refused even when the value is 1, where 2.0.0
+ignored them. The alternative was to refuse on a Guid only a value other than 1. It would still refuse a
+subclass that sets 1000, and would let `IdentityIncrement = 1` on a Guid pass silently. Reading only the
+attribute's named arguments (`CustomAttributeData`) would drop a seed a subclass sets on a number, which
+2.0.0 honours. The release notes and the site's upgrading page state it.
+
+**Tests** (`XodAutonumberTests`):
+- `A_guid_autonumber_with_a_property_attribute_and_no_seed_is_accepted`: `[Property(AutoNumber = true)]` on a
+  `Guid`, the `Guid Id` convention with a `[Property]`, an explicit `null` seed, and a `Guid?`. It was red
+  before the change.
+- `A_seed_on_a_guid_autonumber_is_refused`: now also covers a given `IdentityIncrement = 1` and a subclass that
+  sets the seed. The message check is on "takes no IdentitySeed", since the earlier "Guid" matched the type
+  names.
+- `A_seed_a_subclass_of_the_attribute_sets_is_honoured`: 1000, then 1005.
+- `The_property_attribute_reads_one_for_a_seed_or_increment_not_given`.
+
+Each guard was proven by breaking the code in a scratch copy:
+- the old constructor, with a Guid refused only for a value other than 1, turns the refusal test red;
+- a getter with no default turns the reads-one test red;
+- reading only the named arguments turns the subclass test and the refusal test red.
+
+**Independent review** (read-only, given the code and the problem). Its verdict was clean with named debt, and
+numeric autonumbers number exactly as before the change in every case it probed. Its findings:
+- the subclass route on a Guid: decided as above, and stated in the release notes, `MIGRATION-GUIDE.md` and
+  the site;
+- the default stated in three places: now one constant;
+- `null` no longer round-trips through the public property: documented on the property;
+- test gaps: closed as above;
+- `MIGRATION-GUIDE.md` listed `IdentitySeed = 1, IdentityIncrement = 1` as working in 1.x: corrected;
+- two pre-existing gaps, filed as ISS-122 (attributes on an overridden property are lost) and ISS-123 (a
+  `Guid? Id` isn't an autonumber by convention).
+
+**Gate** (the tree at 16:40, with other sessions' uncommitted work in it):
+- `Xod.Tests` 373/373 on net8.0 and on net9.0;
+- conformance 14/14 on each;
+- `read.mjs --check` and `--check-fresh` ok, the stored-values set included;
+- `XodBench.Tests` 26/26;
+- no warning in the changed files.
+
+**Verdict:** clean, with a named change from 2.0.0 (the subclass on a Guid), which the owner chose to keep.
+
+**Committed** on 2026-11-14 at the owner's request, after `PLAN-056`'s commit and on top of it. The gate ran on a
+copy (`HEAD` `3744178`, exported, with only the two changes applied), because the tree also held another
+task's uncommitted work:
+- `Xod.Tests` 407 of 407 on net9.0 and on net8.0; `Xod.Conformance` 14 of 14 on both; `read.mjs --check`, and
+  `--check-fresh` after the `data` and `stored-values` writers, exit 0; `XodBench.Tests` 26 of 26; no warning in
+  the changed files.

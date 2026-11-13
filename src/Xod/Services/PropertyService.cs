@@ -84,8 +84,8 @@ namespace Xod.Services
                                 propInfoItem.IsAutonumber = propertyAtt.AutoNumber;
                                 propInfoItem.IsIndexed = propertyAtt.Indexed;
                                 propInfoItem.ValuePosition = propertyAtt.Position;
-                                propInfoItem.SeedSetting = propertyAtt.IdentitySeed;
-                                propInfoItem.IncrementSetting = propertyAtt.IdentityIncrement;
+                                propInfoItem.SeedSetting = propertyAtt.IdentitySeedGiven;
+                                propInfoItem.IncrementSetting = propertyAtt.IdentityIncrementGiven;
                             }
 
                             propInfoItem.IsRequired = atts.OfType<RequiredAttribute>().Any();
@@ -309,7 +309,7 @@ namespace Xod.Services
             decimal Whole(object setting, string name)
             {
                 if (setting == null)
-                    return 1;
+                    return PropertyAttribute.DefaultIdentity;
                 decimal value;
                 try
                 {
