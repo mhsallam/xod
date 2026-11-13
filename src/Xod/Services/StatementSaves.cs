@@ -67,6 +67,10 @@ namespace Xod.Services
             }
         }
 
+        /// <summary>The statement on this thread failed: what it saved and didn't write is left to the next flush, in
+        /// the buffer's sets, where each waits too.</summary>
+        internal void LeaveThisThreadsToFlush() => byThread.Remove(Environment.CurrentManagedThreadId);
+
         /// <summary>The file is deleted: no statement writes it.</summary>
         internal void Remove(string name)
         {

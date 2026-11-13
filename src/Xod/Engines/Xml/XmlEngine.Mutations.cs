@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Xml.Linq;
 using Xod.Engines.Serializers;
 using Xod.Helpers;
@@ -16,10 +17,14 @@ namespace Xod.Engines.Xml
     {
         // The rows the statement under way has created, so that a statement that fails removes them (ISS-062): a
         // row whose second child is refused leaves no first child behind. The outermost Create or UpdateItem of a
-        // statement keeps the list, and only inside EnterTableWriteLock's engine-wide write lock (globalWriteDepth):
-        // only a type with relations creates rows beyond its own, and for it (as with triggers or a transaction)
-        // EnterTableWriteLock takes that lock, so no other statement runs meanwhile. A standalone table's row
-        // creates nothing else.
+        // statement keeps the list, inside one of EnterTableWriteLock's locks. Each thread keeps its own, as it keeps
+        // what its statement saved (StatementSaves): statements on standalone tables (no relations) run side by side,
+        // one per table, under the engine's read lock and their table's write lock; every other statement runs
+        // alone, under the engine-wide write lock. What isn't per thread: IOService's batch, which a standalone
+        // Delete or InsertRange still opens (ISS-124), and the indexes' set of types to save. A standalone table's
+        // row creates nothing else, but its own row is taken back too when its write fails at the statement's end
+        // (ISS-120: it stayed in the cache and the index, and the next flush wrote the row its caller was told had
+        // failed).
         //
         // A mitigation, not all or nothing (ISS-090): it removes created rows only, while the process runs. What a
         // failed statement changed in rows that were there before (an update's replaced row, children it dropped)
@@ -36,11 +41,17 @@ namespace Xod.Engines.Xml
             internal readonly List<(Type ParentType, string ParentCode, Type ChildType, string ChildCode)> Linked = new();
         }
 
-        private StatementLog statementLog;
+        private readonly ThreadLocal<StatementLog> statementLogs = new ThreadLocal<StatementLog>();
+
+        private StatementLog statementLog
+        {
+            get => statementLogs.Value;
+            set => statementLogs.Value = value;
+        }
 
         private bool BeginStatement()
         {
-            if (statementLog != null || globalWriteDepth == 0)
+            if (statementLog != null || (globalWriteDepth == 0 && standaloneWriteDepth.Value == 0))
                 return false;
             statementLog = new StatementLog();
             return true;
@@ -69,36 +80,66 @@ namespace Xod.Engines.Xml
         {
             var log = statementLog;
             statementLog = null;
+            try
+            {
+                TakeStatementBack(failure, log);
+            }
+            finally
+            {
+                // What the statement and its undo saved and didn't write waits for the next flush, not for the
+                // statement's end, where a write failing again would replace the failure the caller should see.
+                ioService.LeaveSavedToFlush();
+            }
+        }
+
+        private void TakeStatementBack(Exception failure, StatementLog log)
+        {
             if (log == null || (log.Created.Count == 0 && log.Linked.Count == 0))
                 return;
             var created = log.Created;
 
             autonumberMarksPending = true;
-            bool batch = !ioService.IsBatchOrBuffered;
+            Exception undoFailure = null;
             try
             {
-                if (batch)
-                    ioService.BeginBatch();
-                try
+                for (int i = created.Count - 1; i >= 0; i--)
                 {
-                    for (int i = created.Count - 1; i >= 0; i--)
-                        DeleteByItemCode(created[i].Type, created[i].Code, isCascade: false, cascadeChildren: false);
-                    for (int i = log.Linked.Count - 1; i >= 0; i--)
-                    {
-                        var link = log.Linked[i];
-                        RemoveChildEntry(RowByItemCode(link.ParentType, link.ParentCode), link.ParentType, link.ChildType, link.ChildCode);
-                    }
+                    DeleteByItemCode(created[i].Type, created[i].Code, isCascade: false, cascadeChildren: false);
+                    FaultInjection.Step("undo-statement", created.Count - i);
                 }
-                finally
+                for (int i = log.Linked.Count - 1; i >= 0; i--)
                 {
-                    if (batch)
-                    {
-                        ioService.EndBatch();
-                        indexService.FlushDirtyIndexes();
-                    }
+                    var link = log.Linked[i];
+                    RemoveChildEntry(RowByItemCode(link.ParentType, link.ParentCode), link.ParentType, link.ChildType, link.ChildCode);
                 }
             }
-            catch (Exception undoFailure)
+            catch (Exception e)
+            {
+                undoFailure = e;
+            }
+            // Written as any statement's end writes, with no batch: a batch is the context's, and statements on
+            // standalone tables run side by side, so it would take in another thread's writes (ISS-124). This thread's
+            // saves, then the indexes of the tables it took rows from. Not in a transaction or buffered mode, which
+            // write later. In a context closed meanwhile (ISS-103) every write is refused (ThrowIfWritesRefused), and
+            // the caller sees ObjectDisposedException.
+            if (undoFailure == null && !ioService.IsBatchOrBuffered)
+            {
+                try
+                {
+                    ioService.WriteSaved();
+                    indexService.SaveAfterRowsWritten(created.Select(c => c.Type).Concat(log.Linked.Select(l => l.ParentType)).Distinct().ToList());
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                {
+                    // The rows are taken back in the cache and the index; only writing that failed (the statement's
+                    // own write often failed the same way: a page another program holds). It stays to be made, by the
+                    // next statement that saves it or the next flush, as any write that fails does (ISS-098), and the
+                    // indexes stay marked behind until then. Not a reason to refuse writes, which is for a cache that
+                    // may not be what the disk should hold (ISS-120: an undo that met the held page faulted the
+                    // context). The caller sees the statement's failure.
+                }
+            }
+            if (undoFailure != null)
             {
                 var failures = new List<Exception> { failure, undoFailure };
                 foreach (var type in created.Select(c => c.Type).Distinct())
@@ -929,7 +970,7 @@ namespace Xod.Engines.Xml
                     ioService.EndBatch();
                     // The batch's pages are on disk and its indexes not yet (ISS-043's crash window).
                     FaultInjection.Step("batch-written");
-                    indexService.FlushDirtyIndexes();
+                    indexService.SaveAfterRowsWritten(null);
                 }
                 return count;
             }

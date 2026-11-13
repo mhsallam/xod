@@ -25,6 +25,7 @@ namespace Xod.Services
         private readonly Action onCommit;
         private readonly Action<Action> onRollback;
         private readonly Action<string> onFaulted;
+        private readonly Action dropIndexFiles;
         private readonly Action onDispose;
         private bool completed;
         // This commit's own journal: staged (the .tmp written) and in place. Only this commit's is ever deleted.
@@ -43,8 +44,12 @@ namespace Xod.Services
         /// <param name="onFaulted">Called when a failed commit can't be undone: the context must write nothing
         /// more (the next open undoes the commit from the journal, and would undo those writes with it).</param>
         /// <param name="onDispose">Ends the transaction in the engine.</param>
-        internal XodTransaction(string rootDirectory, Action<Action> exclusive, Action onCommit, Action<Action> onRollback, Action<string> onFaulted, Action onDispose)
+        /// <param name="dropIndexFiles">Drops the folder's index files, after a commit undone once it had written
+        /// them (they may hold its keys): the index service, the one that deletes them in a live context.</param>
+        internal XodTransaction(string rootDirectory, Action<Action> exclusive, Action onCommit, Action<Action> onRollback, Action<string> onFaulted, Action onDispose,
+            Action dropIndexFiles)
         {
+            this.dropIndexFiles = dropIndexFiles;
             this.exclusive = exclusive ?? (a => a());
             this.rootDirectory = rootDirectory;
             this.walFilePath = !string.IsNullOrEmpty(rootDirectory)
@@ -59,6 +64,13 @@ namespace Xod.Services
         internal void CaptureBeforeMutate(string filePath)
         {
             if (completed || string.IsNullOrEmpty(filePath))
+                return;
+
+            // Not an index file: a derived cache, never written while a transaction is open (ISS-100), which a commit
+            // undone drops whole (dropIndexFiles; the open's marker step after a crash). The image a delete took (a
+            // table's last row deleted removes its index) was written back by that undo, and onto one another
+            // program held it failed, faulting the context (review of TASK-070, ISS-110).
+            if (IOService.IsIndex(filePath))
                 return;
 
             if (snapshots.ContainsKey(filePath) || newlyCreatedFiles.Contains(filePath))
@@ -121,7 +133,8 @@ namespace Xod.Services
                     if (!filesWritten)
                         return;
                     FaultInjection.Step("undo");
-                    RestoreBeforeImages(rootDirectory, snapshots, newlyCreatedFiles, dropIndexes: true);
+                    RestoreBeforeImages(snapshots, newlyCreatedFiles);
+                    dropIndexFiles?.Invoke();
                 });
                 DeleteWalJournal();
             }
@@ -207,9 +220,10 @@ namespace Xod.Services
 
         /// <summary>
         /// Puts files back as they were before a transaction: deletes the files it created and writes each
-        /// snapshot back (atomically, through <c>.tmp</c>); with <paramref name="dropIndexes"/> deletes every
-        /// index file too, rebuilt from the pages when next needed. Idempotent, so a recovery interrupted part-way
-        /// can run again.
+        /// snapshot back (atomically, through <c>.tmp</c>). Idempotent, so a recovery interrupted part-way can run
+        /// again. Not the index files, which a commit undone after it wrote them may have left holding its keys:
+        /// its context drops them through its index service, and the open's recovery through the marker step
+        /// (ISS-110: deleted here, one another program held failed the undo).
         /// <para>
         /// It writes pages without the mutation hook that marks the indexes behind (ISS-043, IOService.IndexesBehind),
         /// and needs none. In a rollback the context's marker is already set (the transaction's first page write set
@@ -218,7 +232,7 @@ namespace Xod.Services
         /// before any index is loaded, and drops the indexes itself.
         /// </para>
         /// </summary>
-        private static void RestoreBeforeImages(string root, IEnumerable<KeyValuePair<string, byte[]>> before, IEnumerable<string> created, bool dropIndexes)
+        private static void RestoreBeforeImages(IEnumerable<KeyValuePair<string, byte[]>> before, IEnumerable<string> created)
         {
             foreach (string file in created)
             {
@@ -233,12 +247,6 @@ namespace Xod.Services
                 string tmp = snapshot.Key + ".tmp";
                 File.WriteAllBytes(tmp, snapshot.Value);
                 File.Move(tmp, snapshot.Key, overwrite: true);
-            }
-
-            if (dropIndexes && !string.IsNullOrEmpty(root))
-            {
-                foreach (var idxFile in Directory.GetFiles(root, "*.xidx"))
-                    File.Delete(idxFile);
             }
         }
 
@@ -279,7 +287,11 @@ namespace Xod.Services
                     var before = journalRoot.Elements("Snapshot")
                         .Select(e => new KeyValuePair<string, byte[]>(InFolder(rootDirectory, e.Attribute("file")?.Value), Convert.FromBase64String(e.Value)))
                         .ToList();
-                    RestoreBeforeImages(rootDirectory, before, created, dropIndexes: true);
+                    // First the mark, so no index file is trusted from here until the marker step, next in this
+                    // recovery, has dropped them all (IOService.RecoverInterruptedWrites); one it can't drop stays
+                    // untrusted with the marker.
+                    IOService.LeaveIndexesBehind(walFile);
+                    RestoreBeforeImages(before, created);
                 }
                 catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is FormatException || e is InvalidDataException)
                 {
@@ -309,7 +321,7 @@ namespace Xod.Services
                 completed = true;
                 try
                 {
-                    onRollback?.Invoke(() => RestoreBeforeImages(rootDirectory, snapshots, newlyCreatedFiles, dropIndexes: false));
+                    onRollback?.Invoke(() => RestoreBeforeImages(snapshots, newlyCreatedFiles));
                 }
                 finally
                 {

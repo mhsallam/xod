@@ -90,6 +90,7 @@ namespace Xod.Engines.Xml
                         autonumberMarksPending = true;
                     },
                     onFaulted: message => transactionFault = message,
+                    dropIndexFiles: indexService.DropIndexFiles,
                     onDispose: () =>
                     {
                         activeTransaction = null;

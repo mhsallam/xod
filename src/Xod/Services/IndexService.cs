@@ -349,6 +349,35 @@ namespace Xod.Services
         }
 
         /// <summary>
+        /// Saves the indexes at the end of a statement whose rows are already written (InsertRange's batch, a failed
+        /// statement's undo): <paramref name="types"/>, or every type to be saved when null. A save that the file
+        /// system refuses now is left to the next flush, which reports it if it fails again (XmlEngine.FlushToDisk).
+        /// Until it is made, the type stays to be saved, and after a crash the marker keeps every index file
+        /// untrusted (ISS-043, ISS-098). While this context lives its marker is held, and the other contexts still
+        /// read the file it couldn't save (ISS-126). Failing the statement told the caller its rows weren't written
+        /// when they were, and a retry met their keys (ISS-115: on Windows another context reading the index file,
+        /// which a load or a block read keeps open, refuses a snapshot's replace, whatever that reader shares).
+        /// </summary>
+        internal void SaveAfterRowsWritten(IReadOnlyCollection<Type> types)
+        {
+            try
+            {
+                if (types == null)
+                {
+                    FlushDirtyIndexes();
+                    return;
+                }
+                // SaveToDisk leaves the type to be saved (dirtyTypes) until a flush saves it, so one that fails here is
+                // made by that flush.
+                foreach (var type in types)
+                    SaveToDisk(type);
+            }
+            catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException)
+            {
+            }
+        }
+
+        /// <summary>
         /// Every change this context recorded to an index is saved, and no index file it couldn't delete is left
         /// missing its changes (ISS-043: XmlEngine.FlushToDisk; ISS-042).
         /// </summary>
@@ -451,13 +480,7 @@ namespace Xod.Services
         /// </summary>
         private void DeleteIndexFile(Type type)
         {
-            string indexFileName = GetIndexFileName(type);
-            try
-            {
-                if (ioService != null && ioService.FileExists(indexFileName))
-                    ioService.Delete(indexFileName);
-            }
-            catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException)
+            if (!TryDeleteIndexFile(GetIndexFileName(type)))
             {
                 lock (syncLock)
                 {
@@ -472,6 +495,40 @@ namespace Xod.Services
             {
                 undeletedIndexFiles.Remove(type);
             }
+        }
+
+        // The one deletion of an index file in a live context; false when it is held open elsewhere (or can't be
+        // deleted for another reason the file system gives).
+        private bool TryDeleteIndexFile(string indexFileName)
+        {
+            try
+            {
+                if (ioService != null && ioService.FileExists(indexFileName))
+                    ioService.Delete(indexFileName);
+                return true;
+            }
+            catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// A commit undone after it wrote index files (XodTransaction): every index file of the folder is dropped,
+        /// as they may hold its keys; this context's indexes are then forgotten and rebuilt from the pages when next
+        /// needed (the rollback's ForgetEverythingHeld). One that can't be deleted (another program holds it) no
+        /// longer fails the undo, which faulted the context (ISS-110): a marker no context holds says the indexes
+        /// are behind, so no context trusts an index file until an open alone drops them.
+        /// </summary>
+        internal void DropIndexFiles()
+        {
+            if (ioService == null)
+                return;
+            bool dropped = true;
+            foreach (string name in ioService.IndexFileNames())
+                dropped &= TryDeleteIndexFile(name);
+            if (!dropped)
+                ioService.LeaveIndexesBehind();
         }
 
         /// <summary>Drops everything this context holds for the type's index (not the file).</summary>

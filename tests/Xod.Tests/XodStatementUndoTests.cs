@@ -165,14 +165,60 @@ namespace Xod.Tests
 
         // ISS-091: an undo that failed part-way left the index without the row while the page still held it (the
         // index entry went before the page delete failed, and the undo saved the index anyway): a lookup missed a
-        // row a scan found. The index now agrees with the pages, and the caller gets both failures.
+        // row a scan found. The index now agrees with the pages, the caller gets both failures, and the context
+        // writes nothing more until it is reopened. The undo fails here by an injected fault (in the crash writer's
+        // process): a page another program holds fails only the undo's write, which stays to be made (below).
         [Fact]
         public void An_undo_that_fails_leaves_the_index_agreeing_with_the_pages()
         {
-            if (!OperatingSystem.IsWindows())
-                return; // a file held open blocks its deletion on Windows only
+            string dir = Path.GetDirectoryName(NewDatabase("undo-fails-injected"))!;
+            var run = XodCrashSafetyTests.RunWriterProcess("undo-fails", dir, ("XOD_FAIL_AT_STEP", "undo-statement:1"));
+            Assert.Contains("BOTH FAILED", run.Output);
+            Assert.Contains("REFUSED", run.Output);
+            // The undo stopped once it had taken one row back (the order), the customer still there. The indexes of
+            // both tables are dropped, their files too: the other contexts trust index files while this one's marker
+            // is held.
+            string before = run.Output.Split('\n').Single(l => l.StartsWith("INDEX FILES BEFORE", StringComparison.Ordinal));
+            string after = run.Output.Split('\n').Single(l => l.StartsWith("INDEX FILES AFTER", StringComparison.Ordinal));
+            Assert.Contains("CrashCustomer.xidx", before);
+            Assert.Contains("CrashOrder.xidx", before);
+            Assert.DoesNotContain("CrashCustomer.xidx", after);
+            Assert.DoesNotContain("CrashOrder.xidx", after);
+            using var db = new XodContext(Path.Combine(dir, "crash.xod"));
+            Assert.Equal(db.Select<CrashCustomer>().Count(c => c.Name == "refused"), db.Query<CrashCustomer>(c => c.Id == 2).Count());
+            Assert.DoesNotContain(db.Select<CrashCustomer>(), c => c.Name == "after");
+            db.Insert(new CrashCustomer { Name = "after reopening", Orders = new List<CrashOrder>() });
+        }
 
-            string path = NewDatabase("undo-fails");
+        // ISS-124: the undo of a standalone table's statement (no relations: it runs beside statements on other tables)
+        // opened a batch, which is the context's: a statement on another table that ended while it was open joined it,
+        // and returned before its row was written. The undo writes as a statement's end does now, its own saves only.
+        // The crash writer's process pauses the undo, and inserts on the other table meanwhile.
+        [Fact]
+        public void An_undo_leaves_a_statement_on_another_table_its_own_write()
+        {
+            string dir = Path.GetDirectoryName(NewDatabase("undo-beside"))!;
+            var seed = XodCrashSafetyTests.RunWriterProcess("undo-beside-seed", dir);
+            Assert.True(seed.ExitCode == 0, seed.Output);
+            var run = XodCrashSafetyTests.RunWriterProcess("undo-beside", dir,
+                ("XOD_FAIL_AT_STEP", "statement-saving"), ("XOD_PAUSE_AT_STEP", "undo-statement:1"));
+            Assert.True(run.ExitCode == 0, run.Output);
+            Assert.Contains("BESIDE WRITTEN", run.Output);
+            Assert.Contains("FIRST IOException", run.Output);
+            Assert.Contains("MEMBERS 1 NOTES 2", run.Output);
+        }
+
+        // ISS-120: the undo of a statement that failed (here its trigger throws) takes its row back, but its write
+        // meets a page another program holds. That write stays to be made, as any write that fails does: the
+        // context goes on writing, and the page is written once it can be. It used to refuse every write until
+        // reopened.
+        [Fact]
+        public void An_undo_whose_write_fails_leaves_it_to_be_made()
+        {
+            if (!OperatingSystem.IsWindows())
+                return; // a file held open blocks writing it on Windows only
+
+            string path = NewDatabase("undo-write-fails");
             string dir = Path.GetDirectoryName(path)!;
             FileStream held = null;
             using (var db = new XodContext(path))
@@ -191,21 +237,20 @@ namespace Xod.Tests
                 };
                 try
                 {
-                    var failure = Assert.ThrowsAny<XodException>(() => db.Insert(new UndoTag { Name = "refused" }));
-                    var both = Assert.IsType<AggregateException>(failure.InnerException);
-                    Assert.IsType<InvalidOperationException>(both.InnerExceptions[0]);
+                    Assert.Throws<InvalidOperationException>(() => db.Insert(new UndoTag { Name = "refused" }));
                 }
                 finally
                 {
                     held?.Dispose();
                 }
-                Assert.Equal(db.Select<UndoTag>().Count(t => t.Name == "refused"), db.Query<UndoTag>(t => t.Id == 2).Count());
-                // What the context holds may not be what the disk holds: it writes nothing more.
-                Assert.Contains("Reopen", Assert.ThrowsAny<XodException>(() => db.Insert(new UndoTag { Name = "after" })).Message);
+                Assert.DoesNotContain(db.Select<UndoTag>(), t => t.Name == "refused");
+                Assert.Empty(db.Query<UndoTag>(t => t.Id == 2));
+                db.Insert(new UndoTag { Name = "after" });
             }
             using (var db = new XodContext(path))
             {
-                Assert.Equal(db.Select<UndoTag>().Count(t => t.Name == "refused"), db.Query<UndoTag>(t => t.Id == 2).Count());
+                Assert.Equal(new[] { "after", "seed" }, db.Select<UndoTag>().Select(t => t.Name).OrderBy(n => n));
+                Assert.Empty(db.Query<UndoTag>(t => t.Id == 2));
                 db.Insert(new UndoTag { Name = "after reopening" });
             }
         }
@@ -285,7 +330,8 @@ namespace Xod.Tests
         }
 
         // A row whose own page write failed was already in the cached page, and wasn't noted for the undo: the next
-        // write of that table saved it, a child whose parent didn't exist.
+        // write of that table saved it, a child whose parent didn't exist. Its undo's write meets the held page too,
+        // and stays to be made (ISS-120): the context goes on writing, and the row never reaches the disk.
         [Fact]
         public void A_row_whose_page_write_fails_is_taken_back()
         {
@@ -301,10 +347,7 @@ namespace Xod.Tests
                 string page = Regex.Match(table, "file=\"([^\"]+)\"").Groups[1].Value;
                 using (new FileStream(Path.Combine(dir, page), FileMode.Open, FileAccess.Read, FileShare.None))
                     Assert.ThrowsAny<Exception>(() => db.Insert(new RefusedParent { Name = "bad", Children = new() { new RefusedChild { Label = "orphan" } } }));
-                // Its undo couldn't write the page either: the context writes nothing more (ISS-091), and the row
-                // stays out of the disk.
-                Assert.Contains("Reopen", Assert.ThrowsAny<XodException>(() =>
-                    db.Insert(new RefusedParent { Name = "refused", Children = new() { new RefusedChild { Label = "x" } } })).Message);
+                db.Insert(new RefusedParent { Name = "next", Children = new() { new RefusedChild { Label = "c1" } } });
             }
             using (var db = new XodContext(path))
                 db.Insert(new RefusedParent { Name = "later", Children = new() { new RefusedChild { Label = "c2" } } });
@@ -312,7 +355,7 @@ namespace Xod.Tests
             {
                 var parents = db.Select<RefusedParent>().Select(p => p.Id).ToHashSet();
                 var children = db.Select<RefusedChild>().ToList();
-                Assert.Equal(new[] { "c0", "c2" }, children.Select(c => c.Label).OrderBy(l => l));
+                Assert.Equal(new[] { "c0", "c1", "c2" }, children.Select(c => c.Label).OrderBy(l => l));
                 Assert.All(children, c => Assert.Contains(c.RefusedParentId, parents));
             }
         }

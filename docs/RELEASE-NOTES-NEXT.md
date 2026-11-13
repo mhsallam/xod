@@ -123,9 +123,16 @@ records it.
 - **A write that fails without a transaction or a buffer stays to be made** (ISS-099, [PLAN-057](plans/PLAN-057-review-of-task-066-direct-writes-triggers-transactions.md)):
   in the default mode a page or table write that failed (a page file another program held open) was dropped, as
   ISS-098 was for batches and the buffer. A statement's writes are now made when it ends, after its index
-  changes; one that fails throws and stays to be written by the next flush. One gap remains (ISS-120): an insert
-  into a table with no references whose write fails throws, but its row is still written by the next flush, so
-  retrying it is refused as a duplicate key.
+  changes; one that fails throws and stays to be written by the next flush. An insert whose write fails is taken
+  back, on any table, so it can be retried (ISS-120, [PLAN-058](plans/PLAN-058-standalone-undo-held-index-files-insert-range-index-save.md)). One gap remains (ISS-125): an
+  `InsertRange`, an `Update` or a `Delete` whose write fails throws, but its change is still written by the next
+  flush.
+- **Index files another program holds, at a commit's undo and after `InsertRange`** ([PLAN-058](plans/PLAN-058-standalone-undo-held-index-files-insert-range-index-save.md)):
+  a commit undone after it wrote its index files no longer fails on one another program holds open, which made the
+  context refuse every later write until it was reopened (ISS-110); a file it can't delete is left untrusted, and
+  the next open that has the database to itself drops it. On Windows, an `InsertRange` whose rows are written no
+  longer throws because another context is reading its table's index file: the next flush saves the index
+  (ISS-115). Until then the other contexts may read that index file behind the pages (ISS-126).
 - **Transactions and files** ([PLAN-057](plans/PLAN-057-review-of-task-066-direct-writes-triggers-transactions.md)): no index file is written while a transaction is open,
   `Flush` inside it included; the commit writes them after its pages and a rollback forgets them (ISS-100). A
   page file that a transaction's delete emptied is set aside as `<file>.xdel` until the commit has written its

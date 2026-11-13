@@ -106,7 +106,7 @@ namespace Xod.Services
             }
         }
 
-        private static bool IsIndex(string filePath) =>
+        internal static bool IsIndex(string filePath) =>
             filePath != null && filePath.EndsWith(".xidx", StringComparison.OrdinalIgnoreCase);
 
         private static bool IsTableOrPage(string filePath) =>
@@ -194,6 +194,22 @@ namespace Xod.Services
         }
 
         private static string[] Markers(string root) => Directory.GetFiles(root, "*" + IndexesBehindSuffix);
+
+        /// <summary>
+        /// Leaves a marker that says the indexes are behind and that no context holds, named after
+        /// <paramref name="owner"/> (a path in the database folder): every index load distrusts the index files and
+        /// rebuilds from the pages, and the next open alone drops them (DropIndexesLeftBehind), keeping the marker
+        /// while one can't be. For index files that may hold keys the pages don't and that can't be dropped now:
+        /// a commit undone, by its context (IndexService.DropIndexFiles) or from its journal at the open
+        /// (TransactionService). Deleting them there failed the undo on one another program held (ISS-110).
+        /// </summary>
+        internal static void LeaveIndexesBehind(string owner)
+        {
+            File.WriteAllBytes(owner + "." + Guid.NewGuid().ToString("N").Substring(0, 8) + IndexesBehindSuffix, new byte[] { 1 });
+        }
+
+        /// <summary>This context's index files can't all be dropped: see <see cref="LeaveIndexesBehind(string)"/>.</summary>
+        internal void LeaveIndexesBehind() => LeaveIndexesBehind(path);
 
         /// <summary>
         /// A context stopped with its indexes behind its pages, and no open alone has dropped them since: no index

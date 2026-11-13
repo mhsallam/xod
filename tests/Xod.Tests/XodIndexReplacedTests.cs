@@ -324,5 +324,98 @@ namespace Xod.Tests
             Assert.Equal(52, again.Find<ReplacedIndexItem>(i => i.Code == Code(52))?.Id);
             Assert.Throws<ReservedUniqueKeyException>(() => again.Insert(new ReplacedIndexItem { Id = 53, Code = Code(51) }));
         }
+
+        // ISS-110: a commit that fails after its pages are written is undone: the pages go back and the index files
+        // are dropped (they may hold its keys). The undo deleted every index file itself, and one another program
+        // held failed it, so the context refused writes until reopened. One that can't be dropped is now left
+        // untrusted, with a marker that says the indexes are behind, until an open alone drops it: the undo
+        // finishes and the context goes on writing. (On Unix an open file can be deleted: the case doesn't arise.)
+        [Fact]
+        public void A_commit_undone_isn_t_failed_by_an_index_file_held_open()
+        {
+            if (!OperatingSystem.IsWindows())
+                return;
+            string dir = Seeded("undo-held", 3);
+            using (var db = new XodContext(DatabasePath(dir)))
+            {
+                Assert.NotNull(db.Find<ReplacedIndexItem>(i => i.Code == Code(1)));
+                Exception commit;
+                using (new FileStream(IndexFile(dir), FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    using var tx = db.BeginTransaction();
+                    db.Insert(new ReplacedIndexItem { Id = 4, Code = Code(4), Name = "n4" });
+                    commit = Record.Exception(() => tx.Commit()); // its index can't be written: undone
+                    Assert.NotNull(commit);
+                    Assert.Null(db.Find<ReplacedIndexItem>(i => i.Code == Code(4)));
+                    db.Insert(new ReplacedIndexItem { Id = 5, Code = Code(5), Name = "n5" });
+                }
+                db.Insert(new ReplacedIndexItem { Id = 4, Code = Code(4), Name = "again" });
+            }
+            // The file it couldn't drop stays untrusted after the close, until an open alone drops it.
+            Assert.NotEmpty(Directory.GetFiles(dir, "*.xidxdirty"));
+
+            using var again = new XodContext(DatabasePath(dir));
+            for (int i = 1; i <= 5; i++)
+            {
+                string code = Code(i);
+                Assert.Equal(i, again.Find<ReplacedIndexItem>(x => x.Code == code)?.Id);
+            }
+            Assert.Equal("again", again.Find<ReplacedIndexItem>(x => x.Id == 4).Name);
+        }
+
+        // ISS-110, through the transaction's own images: deleting a table's last row inside a transaction removes its
+        // index, and the index file's delete took an image of it. A commit then undone wrote that image back over the
+        // file, and one another program held failed the undo, so the context refused writes. A transaction keeps no
+        // image of an index file: the undo drops them all.
+        [Fact]
+        public void A_commit_undone_writes_no_index_file_back()
+        {
+            if (!OperatingSystem.IsWindows())
+                return; // a file held open blocks replacing it on Windows only
+            string dir = Seeded("undo-image", 3);
+            string tagIndex = Path.Combine(dir, typeof(ReplacedIndexTagged).FullName + ".xidx");
+            using (var db = new XodContext(DatabasePath(dir)))
+            {
+                db.Insert(new ReplacedIndexTagged { Id = 1, Tag = "lone" });
+                db.Flush();
+                Assert.True(File.Exists(tagIndex));
+                using (new FileStream(tagIndex, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (new FileStream(IndexFile(dir), FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    using var tx = db.BeginTransaction();
+                    Assert.True(db.Delete(new ReplacedIndexTagged { Id = 1 })); // its table's last row: its index goes
+                    db.Insert(new ReplacedIndexItem { Id = 4, Code = Code(4), Name = "n4" });
+                    Assert.NotNull(Record.Exception(() => tx.Commit())); // the item index can't be written: undone
+                }
+                db.Insert(new ReplacedIndexItem { Id = 5, Code = Code(5), Name = "n5" }); // not refused
+            }
+
+            using var again = new XodContext(DatabasePath(dir));
+            Assert.Equal("lone", again.Find<ReplacedIndexTagged>(x => x.Id == 1)?.Tag);
+            Assert.Null(again.Find<ReplacedIndexItem>(x => x.Code == Code(4)));
+            Assert.Equal(5, again.Find<ReplacedIndexItem>(x => x.Code == Code(5))?.Id);
+        }
+
+        // ISS-115: InsertRange writes its rows, then saves its index. Another context reading the index file (a load
+        // or a block read keeps it open, sharing reading) kept that save from replacing or appending to it on Windows,
+        // and InsertRange threw though its rows were on the pages: a retry met their keys. The save is a derived
+        // cache's, left to the next flush, and the index files stay untrusted until it is made.
+        [Fact]
+        public void An_insert_range_isn_t_failed_by_another_context_reading_its_index_file()
+        {
+            string dir = Seeded("reading", 2);
+            using (var db = new XodContext(DatabasePath(dir)))
+            {
+                Assert.NotNull(db.Find<ReplacedIndexItem>(i => i.Code == Code(1)));
+                using (new FileStream(IndexFile(dir), FileMode.Open, FileAccess.Read, FileShare.Read))
+                    db.InsertRange(Enumerable.Range(3, 500).Select(i => new ReplacedIndexItem { Id = i, Code = Code(i), Name = "n" + i }).ToList());
+                Assert.Equal(300, db.Find<ReplacedIndexItem>(i => i.Code == Code(300))?.Id);
+                db.Flush(); // the reader gone, the next flush saves it
+            }
+
+            using var again = new XodContext(DatabasePath(dir));
+            Assert.Equal(502, again.Find<ReplacedIndexItem>(i => i.Code == Code(502))?.Id);
+            Assert.Throws<ReservedUniqueKeyException>(() => again.Insert(new ReplacedIndexItem { Id = 9999, Code = Code(300) }));
+        }
     }
 }

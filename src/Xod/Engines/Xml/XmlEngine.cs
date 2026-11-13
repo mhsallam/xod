@@ -348,6 +348,10 @@ namespace Xod.Engines.Xml
         // waited for it while the close held it finds the context closed.
         private static ObjectDisposedException Closed() => new ObjectDisposedException(nameof(XodContext), "The database context is closed.");
 
+        // This thread is inside a standalone table's write (no relations: the engine's read lock and the table's write
+        // lock), where its statement runs beside others on other tables (BeginStatement, ISS-120).
+        private readonly ThreadLocal<int> standaloneWriteDepth = new ThreadLocal<int>();
+
         private void EnterTableWriteLock(Type type, out ReaderWriterLockSlim tableLock, out bool usedGlobalWriteLock)
         {
             ThrowIfWritesRefused();
@@ -360,6 +364,7 @@ namespace Xod.Engines.Xml
                 var table = GetTableLock(type);
                 EnterSecond(() => EnterWrite(table.EnterWriteLock), rwLock.ExitReadLock);
                 tableLock = table;
+                standaloneWriteDepth.Value++;
             }
             else
             {
@@ -385,7 +390,11 @@ namespace Xod.Engines.Xml
             {
                 try
                 {
-                    tableLock?.ExitWriteLock();
+                    if (tableLock != null)
+                    {
+                        standaloneWriteDepth.Value--;
+                        tableLock.ExitWriteLock();
+                    }
                 }
                 finally
                 {

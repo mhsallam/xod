@@ -75,22 +75,16 @@ namespace Xod.Tests
             throw new DirectoryNotFoundException("repository root not found above " + AppContext.BaseDirectory);
         }
 
+        // The writer built with these tests: the same configuration and framework, beside them (the project
+        // reference builds it). The newest writer of any build was taken before, and a Debug one built from other
+        // code ran in a Release run.
         internal static string WriterDll()
         {
-            string root = RepoRoot();
-            var candidates = Directory.Exists(Path.Combine(root, "tests", "Xod.CrashWriter", "bin"))
-                ? Directory.GetFiles(Path.Combine(root, "tests", "Xod.CrashWriter", "bin"), "Xod.CrashWriter.dll", SearchOption.AllDirectories)
-                : Array.Empty<string>();
-
-            if (candidates.Length == 0)
-                throw new FileNotFoundException("Xod.CrashWriter.dll not found; build tests/Xod.CrashWriter first");
-
-            // prefer the build for the framework the tests are running on
-            string own = $"net{Environment.Version.Major}.0";
-            var matching = candidates.Where(c => c.Contains(own, StringComparison.OrdinalIgnoreCase)).ToList();
-            return (matching.Count > 0 ? (IEnumerable<string>)matching : candidates)
-                .OrderByDescending(File.GetLastWriteTimeUtc)
-                .First();
+            var framework = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            string writer = Path.Combine(RepoRoot(), "tests", "Xod.CrashWriter", "bin", framework.Parent!.Name, framework.Name, "Xod.CrashWriter.dll");
+            if (!File.Exists(writer))
+                throw new FileNotFoundException("The crash writer built with these tests isn't there: " + writer);
+            return writer;
         }
 
         private Process StartWriter(string mode, string dir)

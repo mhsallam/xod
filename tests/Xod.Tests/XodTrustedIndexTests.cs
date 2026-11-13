@@ -171,6 +171,90 @@ namespace Xod.Tests
             IndexAgreesWithPages(path, options, "a", "b", "c");
         }
 
+        // ISS-120: an insert whose page write fails is taken back, so the caller can make it again. A standalone table
+        // (no references) had no statement: its row stayed in the cache and the index, the next flush wrote it, and
+        // the retry was refused as a duplicate. A table with relations has one, but its undo's own write met the same
+        // held page, and the context refused every write until reopened.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void An_insert_whose_page_write_failed_can_be_made_again(bool relational)
+        {
+            string path = NewDatabase("again-" + relational);
+            var options = new DatabaseOptions { InitialCreate = true };
+            void Insert(XodContext db, int id, string code)
+            {
+                if (relational)
+                    db.Insert(new TrustParent { Id = id, Code = code, Kids = new List<TrustKid> { new TrustKid { Id = id * 10, Name = code } } });
+                else
+                    db.Insert(new TrustMember { Id = id, Email = code });
+            }
+            using (var db = new XodContext(path, options: options))
+            {
+                Insert(db, 1, "a");
+                db.Flush();
+                Exception failure;
+                using (HoldPage(PageOf(path, relational ? typeof(TrustParent) : typeof(TrustMember))))
+                    failure = Record.Exception(() => Insert(db, 2, "b"));
+                AssertWriteFailed(failure);
+                if (failure != null)
+                    Insert(db, 2, "b");
+                Insert(db, 3, "c");
+            }
+
+            using var again = new XodContext(path, options: options);
+            var codes = relational
+                ? again.QueryDelegate<TrustParent>(p => p.Code != null).Select(p => p.Code)
+                : again.QueryDelegate<TrustMember>(m => m.Email != null).Select(m => m.Email);
+            Assert.Equal(new[] { "a", "b", "c" }, codes.OrderBy(c => c).ToArray());
+            foreach (string code in new[] { "a", "b", "c" })
+            {
+                Assert.True(relational
+                    ? again.Find<TrustParent>(p => p.Code == code) != null
+                    : again.Find<TrustMember>(m => m.Email == code) != null, code + " not found by its key");
+            }
+        }
+
+        // ISS-120: statements on standalone tables run side by side, one per table, so each thread keeps its own
+        // statement. With one for the context, the second statement found the first one's and kept none: its row,
+        // whose write failed, stayed, and the retry was refused.
+        [Fact]
+        public void Two_standalone_statements_side_by_side_each_take_their_own_row_back()
+        {
+            string path = NewDatabase("side-by-side");
+            var options = new DatabaseOptions { InitialCreate = true };
+            using (var db = new XodContext(path, options: options))
+            {
+                db.Insert(new TrustGate { Code = "seed", Name = "s" });
+                db.Insert(new TrustMember { Id = 1, Email = "a" });
+                db.Flush();
+
+                TrustGate.Entered.Reset();
+                TrustGate.Go.Reset();
+                TrustGate.Armed = true;
+                var first = Task.Run(() => db.Insert(new TrustGate { Code = "block", Name = "late" }));
+                Assert.True(TrustGate.Entered.Wait(10000)); // the first statement is under way, on its own table
+                Exception failure;
+                try
+                {
+                    using (HoldPage(PageOf(path, typeof(TrustMember))))
+                        failure = Record.Exception(() => db.Insert(new TrustMember { Id = 2, Email = "b" }));
+                }
+                finally
+                {
+                    TrustGate.Go.Set();
+                }
+                Assert.True(first.Wait(10000));
+                AssertWriteFailed(failure);
+                if (failure != null)
+                    db.Insert(new TrustMember { Id = 2, Email = "b" });
+            }
+
+            using var again = new XodContext(path, options: options);
+            Assert.Equal(new[] { "a", "b" }, again.QueryDelegate<TrustMember>(m => m.Email != null).Select(m => m.Email).OrderBy(e => e).ToArray());
+            Assert.Equal(new[] { "block", "seed" }, again.QueryDelegate<TrustGate>(g => g.Code != null).Select(g => g.Code).OrderBy(c => c).ToArray());
+        }
+
         // ISS-099, an update: its page write fails too while another program holds the page; the row's new key and
         // its page must still agree after a close and a reopen.
         [Theory]

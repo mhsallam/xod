@@ -250,7 +250,8 @@ namespace Xod.Tests
 
         // Review of TASK-064 (F2): an index save that failed (its file held open elsewhere: another reader, a backup
         // tool) left its type out of those still to save, so the next flush called the indexes caught up and the
-        // close deleted the mark. A type now stays to be saved until its save succeeds.
+        // close deleted the mark. A type now stays to be saved until its save succeeds. The InsertRange whose rows
+        // are written no longer fails for it (ISS-115): the save is the next flush's.
         [Fact]
         public void An_index_save_that_failed_is_made_by_the_next_flush()
         {
@@ -268,8 +269,7 @@ namespace Xod.Tests
                     failure = Record.Exception(() => db.InsertRange(Enumerable.Range(51, 10)
                         .Select(i => new CrashMember { Id = i, Email = "e" + i }).ToList()));
                 }
-                if (OperatingSystem.IsWindows())
-                    Assert.NotNull(failure); // the file held open fails the save there
+                Assert.Null(failure);
                 db.Flush();
             }
             using (var db = new XodContext(path))

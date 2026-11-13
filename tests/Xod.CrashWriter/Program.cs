@@ -12,6 +12,39 @@ public class CrashMember
     [UniqueKey] public string Email { get; set; }
 }
 
+// A second standalone table (no relations), beside CrashMember (ISS-124).
+public class CrashNote
+{
+    [PrimaryKey] public int Id { get; set; }
+    public string Text { get; set; }
+}
+
+// Signals when fault injection pauses (it writes PAUSED), and lets it go on when the test says so: the process
+// drives its own pause, so a thread of it can act while another is paused.
+public sealed class PauseSignal : TextWriter
+{
+    private readonly TextWriter inner;
+    private readonly System.Threading.ManualResetEventSlim paused;
+    public PauseSignal(TextWriter inner, System.Threading.ManualResetEventSlim paused) { this.inner = inner; this.paused = paused; }
+    public override System.Text.Encoding Encoding => inner.Encoding;
+    public override void Write(char value) => inner.Write(value);
+    public override void Write(string value) { inner.Write(value); Seen(value); }
+    public override void WriteLine(string value) { inner.WriteLine(value); Seen(value); }
+    public override void Flush() => inner.Flush();
+    private void Seen(string value)
+    {
+        if (value != null && value.StartsWith("PAUSED", StringComparison.Ordinal))
+            paused.Set();
+    }
+}
+
+public sealed class ReleaseOnRead : TextReader
+{
+    private readonly System.Threading.ManualResetEventSlim release;
+    public ReleaseOnRead(System.Threading.ManualResetEventSlim release) { this.release = release; }
+    public override string ReadLine() { release.Wait(); return ""; }
+}
+
 public class CrashCustomer
 {
     public int Id { get; set; }
@@ -325,6 +358,141 @@ public static class Program
             Console.WriteLine("DELETED");
             Console.Out.Flush();
             Environment.FailFast("killed before a commit");
+        }
+
+        // ISS-091: a statement fails (its trigger throws), and taking its rows back fails too (a test sets
+        // XOD_FAIL_AT_STEP=undo-statement): the context refuses every later write until it is reopened.
+        if (mode == "undo-fails")
+        {
+            using var db = new XodContext(path, options: options);
+            db.Insert(new CrashCustomer { Name = "seed", Orders = new List<CrashOrder> { new CrashOrder { Status = "seed" } } });
+            db.AfterAction += (_, e) =>
+            {
+                if (e.Item is CrashOrder order && order.Status == "x")
+                    throw new InvalidOperationException("refused by the trigger");
+            };
+            Console.WriteLine("INDEX FILES BEFORE " + string.Join(",", Array.ConvertAll(Directory.GetFiles(dir, "*.xidx"), Path.GetFileName)));
+            try
+            {
+                db.Insert(new CrashCustomer { Name = "refused", Orders = new List<CrashOrder> { new CrashOrder { Status = "x" } } });
+            }
+            catch (XodException e) when (e.InnerException is AggregateException)
+            {
+                Console.WriteLine("BOTH FAILED");
+            }
+            // The indexes of the tables the statement wrote are dropped, files too: this context's marker is held, so
+            // the other contexts trust the index files, and the undo stopped part way.
+            Console.WriteLine("INDEX FILES AFTER " + string.Join(",", Array.ConvertAll(Directory.GetFiles(dir, "*.xidx"), Path.GetFileName)));
+            try
+            {
+                db.Insert(new CrashCustomer { Name = "after", Orders = new List<CrashOrder>() });
+                Console.WriteLine("WROTE");
+            }
+            catch (XodException e) when (e.Message.Contains("Reopen"))
+            {
+                Console.WriteLine("REFUSED");
+            }
+            return 0;
+        }
+
+        // ISS-110: a commit undone once its index files are written (XOD_PAUSE_AT_STEP=commit-indexed, then
+        // XOD_FAIL_AT_STEP=commit-indexed fails it), while the test holds the member index, which has the commit's key.
+        // Then it waits for the test (which lets go of the file) and inserts the undone commit's key again.
+        if (mode == "txmember")
+        {
+            using var db = new XodContext(path, options: options);
+            db.Insert(new CrashMember { Id = 1, Email = "seed" });
+            db.Flush();
+            try
+            {
+                using var tx = db.BeginTransaction();
+                db.Insert(new CrashMember { Id = 2, Email = "tx" });
+                tx.Commit();
+                Console.WriteLine("COMMITTED");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("COMMIT FAILED " + e.GetType().Name);
+            }
+            Console.WriteLine("UNDONE");
+            Console.Out.Flush();
+            Console.In.ReadLine();
+            try
+            {
+                db.Insert(new CrashMember { Id = 3, Email = "tx" });
+                Console.WriteLine("WROTE");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("REFUSED " + e.GetType().Name + ": " + e.Message);
+            }
+            return 0;
+        }
+
+        if (mode == "undo-beside-seed")
+        {
+            using var db = new XodContext(path, options: options);
+            db.Insert(new CrashMember { Id = 1, Email = "seed" });
+            db.Insert(new CrashNote { Id = 1, Text = "seed" });
+            return 0;
+        }
+
+        // ISS-124: a standalone table's statement fails at its write (XOD_FAIL_AT_STEP=statement-saving) and its undo
+        // is paused (XOD_PAUSE_AT_STEP=undo-statement) while a statement on another standalone table runs beside it.
+        // That statement's row must be on disk when its insert returns.
+        if (mode == "undo-beside")
+        {
+            var paused = new System.Threading.ManualResetEventSlim();
+            var release = new System.Threading.ManualResetEventSlim();
+            Console.SetOut(new PauseSignal(Console.Out, paused));
+            Console.SetIn(new ReleaseOnRead(release));
+            try
+            {
+            using (var db = new XodContext(path, options: options))
+            {
+                var first = System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        db.Insert(new CrashMember { Id = 2, Email = "refused" });
+                        return "WROTE";
+                    }
+                    catch (Exception e)
+                    {
+                        return e.GetType().Name;
+                    }
+                });
+                if (!paused.Wait(TimeSpan.FromSeconds(60)))
+                {
+                    release.Set();
+                    Console.WriteLine("NOT PAUSED: " + first.Result);
+                    return 1;
+                }
+                db.Insert(new CrashNote { Id = 2, Text = "beside-marker" });
+                bool onDisk = false;
+                foreach (string file in Directory.GetFiles(dir))
+                {
+                    // The pages and table files only: an index or a marker isn't a row's write, and the context holds its
+                    // marker.
+                    if (file.EndsWith(".xidx", StringComparison.Ordinal) || file.EndsWith(".xidxdirty", StringComparison.Ordinal))
+                        continue;
+                    using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    if (new StreamReader(stream).ReadToEnd().Contains("beside-marker"))
+                        onDisk = true;
+                }
+                Console.WriteLine(onDisk ? "BESIDE WRITTEN" : "BESIDE NOT WRITTEN");
+                release.Set();
+                Console.WriteLine("FIRST " + first.Result);
+            }
+            }
+            finally
+            {
+                // A paused thread holds the process open: let it go whatever happened here.
+                release.Set();
+            }
+            using (var again = new XodContext(path, options: options))
+                Console.WriteLine("MEMBERS " + again.Count<CrashMember>() + " NOTES " + again.Count<CrashNote>());
+            return 0;
         }
 
         // A table's first row, written with no batch and no buffer (a test sets where the process dies).

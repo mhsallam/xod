@@ -88,6 +88,10 @@ namespace Xod.Services
             }
         }
 
+        /// <summary>The names of the index files in the database folder.</summary>
+        internal string[] IndexFileNames() =>
+            Directory.GetFiles(root, "*.xidx").Select(f => Path.GetFileName(f)).ToArray();
+
         internal bool FileExists(string fileName)
         {
             if (string.IsNullOrEmpty(fileName)) return false;

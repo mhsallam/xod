@@ -233,6 +233,19 @@ namespace Xod.Services
         }
 
         /// <summary>
+        /// The statement on this thread failed: what it saved and didn't write waits for the next flush (or the next
+        /// statement that saves it) rather than for its end, where a write failing again would replace the failure
+        /// the caller should see (ISS-120: a page another program holds failed the statement, then its end).
+        /// </summary>
+        internal void LeaveSavedToFlush()
+        {
+            lock (syncLock)
+            {
+                saved.LeaveThisThreadsToFlush();
+            }
+        }
+
+        /// <summary>
         /// ISS-099: in direct mode (no batch, no buffer) what a statement saved is written when the statement ends
         /// (XmlEngine.ExitTableWriteLock), after its index changes, not at each save in its middle: a write that failed
         /// there threw before the index was changed, and left the cache (and soon the disk) ahead of the index: the

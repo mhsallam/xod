@@ -70,6 +70,50 @@ namespace Xod.Tests
             Assert.False(File.Exists(journal));
         }
 
+        // ISS-110: a commit undone after it wrote its index files, one of them held open by another program at the
+        // undo (held while the commit is paused once its indexes are written: it has the commit's key). The undo
+        // can't drop it, and leaves the indexes marked behind, so no index load trusts it: the context goes on
+        // writing, and the undone commit's key isn't taken.
+        [Fact]
+        public void A_held_index_file_with_an_undone_commit_s_keys_isn_t_trusted()
+        {
+            if (!OperatingSystem.IsWindows())
+                return; // a file held open blocks its deletion on Windows only
+            string dir = Path.Combine(tempRoot, "undo-held-keys");
+            Directory.CreateDirectory(dir);
+            using var writer = XodCrashSafetyTests.StartWriterProcess("txmember", dir,
+                ("XOD_PAUSE_AT_STEP", "commit-indexed"), ("XOD_FAIL_AT_STEP", "commit-indexed"));
+            string line;
+            while ((line = writer.StandardOutput.ReadLine()) != null && !line.StartsWith("PAUSED", StringComparison.Ordinal)) { }
+            Assert.NotNull(line);
+            string memberIndex = Path.Combine(dir, typeof(CrashMember).FullName + ".xidx");
+            var undone = new System.Text.StringBuilder();
+            using (new FileStream(memberIndex, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                writer.StandardInput.WriteLine();
+                writer.StandardInput.Flush();
+                while ((line = writer.StandardOutput.ReadLine()) != null && !line.StartsWith("UNDONE", StringComparison.Ordinal))
+                    undone.AppendLine(line);
+                Assert.NotNull(line);
+            }
+            Assert.Contains("COMMIT FAILED", undone.ToString());
+            Assert.True(File.Exists(memberIndex)); // held: it couldn't be dropped
+            // Without the pause the undo restores the pages within milliseconds of the index save, which the guess by
+            // time at an index load (a page more than 50 ms newer than the index) doesn't see: only the marker keeps
+            // the file untrusted. The pause gave the restored pages more, so the index file's time is brought level.
+            DateTime newest = Directory.GetFiles(dir, "*.xpag").Concat(Directory.GetFiles(dir, "*.xtab")).Max(File.GetLastWriteTimeUtc);
+            File.SetLastWriteTimeUtc(memberIndex, newest);
+            writer.StandardInput.WriteLine();
+            writer.StandardInput.Flush();
+            string rest = writer.StandardOutput.ReadToEnd() + writer.StandardError.ReadToEnd();
+            Assert.True(writer.WaitForExit(120_000));
+            Assert.Contains("WROTE", rest); // the context goes on writing, and the undone commit's key isn't taken
+
+            using var db = new XodContext(Path.Combine(dir, "crash.xod"));
+            Assert.Equal(3, db.Find<CrashMember>(m => m.Email == "tx")?.Id);
+            Assert.Equal(new[] { 1, 3 }, db.Select<CrashMember>().Select(m => m.Id).OrderBy(i => i).ToArray());
+        }
+
         // Another context opening the database while a commit is under way doesn't undo that commit: its
         // journal is live, not left by a crash.
         [Fact]
@@ -327,6 +371,42 @@ namespace Xod.Tests
                 acl.RemoveAccessRule(deny);
                 info.SetAccessControl(acl);
             }
+        }
+
+        // ISS-110: the open undoes a commit a crash cut short, from its journal, and the index files must go (they
+        // may hold its keys). The journal's undo deleted them itself, and an index file another program held (a
+        // backup tool, sharing reading) failed the undo and the open until it was let go. The journal now leaves
+        // them to the marker step, which drops what it can and keeps the marker, so the rest stay untrusted. The
+        // journal says so itself: the crashed context's marker may not be there (XOD 2.0.0 and 2.0.1 write none).
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void A_commit_undone_at_the_open_isn_t_stopped_by_an_index_file_held_open(bool markerLeft)
+        {
+            if (!OperatingSystem.IsWindows())
+                return; // a file held open blocks its deletion on Windows only
+            string dir = CrashDb.New(tempRoot, "undo-held-index-" + markerLeft);
+            var crash = XodCrashSafetyTests.RunWriterProcess("txcommit", dir, ("XOD_CRASH_AT_STEP", "commit-written"));
+            Assert.DoesNotContain("COMMITTED", crash.Output);
+            if (!markerLeft)
+            {
+                foreach (string marker in Directory.GetFiles(dir, "*.xidxdirty"))
+                    File.Delete(marker);
+            }
+            string journal = Path.Combine(dir, "transaction.xwal");
+            Assert.True(File.Exists(journal));
+            string index = Assert.Single(Directory.GetFiles(dir, typeof(CrashCustomer).FullName + ".xidx"));
+
+            using (new FileStream(index, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                var open = XodCrashSafetyTests.RunWriterProcess("pwopen", dir);
+                Assert.Contains("COUNT 25", open.Output);
+                Assert.False(File.Exists(journal), open.Output);
+                Assert.NotEmpty(Directory.GetFiles(dir, "*.xidxdirty")); // the index files stay untrusted
+            }
+
+            CrashDb.HoldsBatches(dir, "first", 1);
+            Assert.Empty(Directory.GetFiles(dir, "*.xidxdirty"));
         }
     }
 }
