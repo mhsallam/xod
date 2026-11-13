@@ -36,6 +36,7 @@ model, a Rust core, the browser) to read the files XOD 2.0 writes, and to know w
 | `<file>.tmp` | write in progress | an atomic write cut short | 9 |
 | `<file>.xpwnew` | password change in progress | a file under the new password, beside the one it replaces | 9 |
 | `<name>.xod.xpwlog` | password change in progress | the commit record of a password change | 9 |
+| `xod.lock` | open database (the folder's) | held by every open context with the database file's lock, of the same kind; never deleted (since the next release) | 9 |
 | `<name>.xod.lock` | open database | held by every open context: shared, or exclusively with `DatabaseOptions.LockDatabase`; never deleted | 9 |
 | `<name>.xod.<id>.xidxdirty` | a context that writes: whether its indexes are behind its pages | one byte while they are behind, empty once caught up; created at the context's first page or table write, held locked while it is open, deleted at its clean close | 9 |
 
@@ -44,11 +45,14 @@ model, a Rust core, the browser) to read the files XOD 2.0 writes, and to know w
 - **`<code>`** is nine lowercase hex digits (`e2d552584`), from `ValueHelper.PickCode`.
 - **The database file:** the path given to `XodContext` when it ends in `.xod`/`.xodj`/`.xodb`;
   otherwise the folder's one file with one of those extensions (before 2026-11-12: the first match of
-  `*.xod*`, which could be a `.tmp` or `.xpwnew` beside it), or `data.xod` for a new database. The extension only picks
-  the default encoding for new files; it doesn't describe the files.
+  `*.xod*`, which could be a `.tmp` or `.xpwnew` beside it), or `data.xod` for a new database. The database file's
+  extension only picks the encoding written when no `StorageFormat` is given and the database file records none
+  (section 5); it doesn't describe the files.
 - **One database per folder:** a folder holding more than one database file is refused, and so is a path
   naming a new database file beside one (since PLAN-053): every database file in a folder would share its
-  tables, while each has its own lock file.
+  tables, while each has its own lock file. The check is made again under the hold (section 9), before
+  anything is recovered, created or converted, and a database file is created only with the folder held alone,
+  so of two opens creating different files at once one goes on and the other creates nothing (ISS-096).
 - Readers must ignore files they don't know.
 
 ## 3. Layers
@@ -67,7 +71,8 @@ To read a file:
 
 Detect the encoding per file, never from the database file's `Format` attribute or the extension.
 Opening a database with a different `StorageFormat` option writes new and rewritten files in that
-encoding and leaves the rest, so one folder can hold all three encodings.
+encoding and leaves the rest, so one folder can hold all three encodings. Without the option the library
+writes in the encoding the database file's `Format` records (section 5).
 
 ### 3.1 The binary building blocks
 
@@ -170,8 +175,13 @@ element ends.
 ```
 
 - `Version` is `2.0` for every 2.x release.
-- `Format` is the encoding chosen when the database was created; `XodMigrator` rewrites it. It is
-  advisory (section 3).
+- `Format` is the encoding chosen when the database was created (the `StorageFormat` option, or else
+  the one the extension picks: `.xod` XML, `.xodj` JSON, `.xodb` Binary); `XodMigrator` rewrites it. A
+  reader doesn't use it (section 3). The library writes new and rewritten files in it when no
+  `StorageFormat` is given; a value that isn't one of the three names (in any case) is no record, and the
+  database file's extension decides. Up to 2.0.1 the library didn't read it: it wrote in the encoding the extension
+  picks when no options were given, and in XML when options without a format were, so a database converted
+  in place (which keeps its name) was written in an encoding it wasn't converted to (ISS-093).
 - The library creates the file when it is missing. Readers check only that it decodes.
 - **Since the next release** it may hold the key of the database's `AES256` values (section 7.6):
 
@@ -267,10 +277,18 @@ Property element shapes:
 | Shape | Marked by | Content |
 | :--- | :--- | :--- |
 | scalar | no `collType`/`refType` | text; CDATA when `[Markup]` |
-| map | `collType="dictionary"` | `<Entry key="k">value</Entry>`, value in scalar form, empty text for null |
-| scalar list | `dataType="System.String" collType="generic"` (or `"array"`) | one child per non-null item, named by the item type's short name (`String`, `Int32`), text value |
+| map | `collType="dictionary"` | one `<Entry key="k">value</Entry>` per entry, the value in scalar form; a null value is marked as a null property is (`<Entry key="k" nil="true" />`); an empty map has no entries |
+| scalar list | `dataType="System.String" collType="generic"` (or `"array"`) | one child per item, in order, named by the item type's short name (`String`, `Int32`; a nullable type's by its underlying type's, `Int32` for `int?`), text value; a null item is marked (`<String nil="true" />`) |
 | entity list | `dataType`, `collType`, `refType` | one child per item, named by the item's short name: `<Order Id="1">30ee1031c.ec4cb8f22</Order>` |
 | entity | `refType` | the item code as text, key attributes |
+
+Up to 2.0.1 a map's null value was stored as empty text (it read back as `""`), an empty map was omitted
+(it read back as null), a list's null item was left out, and a list of a nullable type couldn't be stored
+(its items were named `Nullable`1`, which isn't an XML name) (ISS-097). A 2.0.1 reader reads a marked map
+value or list item as its empty text (`""` for a string, null for a nullable type), and fails on a row that
+holds a list of a nullable type, or an empty map of a type other than `Dictionary<,>` (it reads every map as a
+`Dictionary<,>`; the next release reads a map as the property's own type). A list's `dataType` is the item type's `FullName`, which no reader uses;
+for a nullable type it is .NET's long form, which names the runtime's version.
 
 `refType`:
 - **`reference`**: a row of another table that has a primary key. Its key values are attributes
@@ -539,6 +557,15 @@ in (`zone`, section 8.1), so a database opened in another zone rebuilds its inde
   place of the files they name, and treat `Created` files as absent. Otherwise it would read a commit
   that never finished. (The library itself, while other contexts have the database open, reads the files as
   they are: it can't tell a live journal from one a crash left; PLAN-051 section 7.)
+- **The folder's lock file** `xod.lock` (since the next release, ISS-096): every open context holds it before
+  the database file's lock, of the same kind, and so do the migrator and a password change, by the rules below.
+  Every database file in a folder shares the folder's tables, pages, journals and markers, so what a hold proves
+  (that no other context has them open) is about the folder: up to now an open naming a second, new database
+  file beside one another context had open held its own file's lock alone, ran the folder's recovery as if it
+  had the database to itself (undoing that context's commit under way and dropping its indexes), and only then
+  found the other file and was refused. XOD 2.0.0 and 2.0.1 don't take it. A new database's file is created
+  only with both lock files held exclusively, until the database file is written: a folder's one database is
+  checked under a hold, and holds the answer only while no other context can create one.
 - **The lock file** `<database file>.lock` (since PLAN-051): every open context holds it, shared (read
   access, others may read and write) or, with `LockDatabase`, exclusively (no sharing; opened with write access where the file allows it, since an NFS client locks exclusively only a file open for writing, and read access otherwise, so a read-only lock file holds on a local file system; an exclusive hold counts only once a second open of the file is refused, so a file system that gives no lock refuses it: since the review of PLAN-053); either kind fails while the other is held. A password change holds it exclusively for the whole change. An open recovers
   (the password-change, `.tmp` and journal steps) only while holding it exclusively: with `LockDatabase`, or

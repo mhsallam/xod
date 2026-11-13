@@ -245,5 +245,31 @@ namespace Xod.Tests
             Assert.ThrowsAny<XodException>(() => XodMigrator.ConvertDatabase(dir, Path.Combine(tempRoot, "target"), StorageFormat.Json));
             Assert.False(Directory.Exists(Path.Combine(tempRoot, "target")));
         }
+
+        // The review of TASK-071: the conversion checked the folder to hold one database before its hold, and not
+        // again, then converted every file of the folder. Here a second database file is put in the folder (a copy,
+        // or XOD 2.0.x, which takes no folder hold) after the conversion's first check: under its hold it checks
+        // again and is refused, converting nothing, where it converted both into its target.
+        [Fact]
+        public void A_conversion_checks_the_folder_again_under_its_hold()
+        {
+            string dir = Path.Combine(tempRoot, "second-file");
+            var setup = XodCrashSafetyTests.RunWriterProcess("pwsetup", dir);
+            Assert.True(setup.ExitCode == 0, setup.Output);
+            string target = Path.Combine(tempRoot, "second-file-target");
+            using var convert = XodCrashSafetyTests.StartWriterProcess("convert", dir, ("XOD_PAUSE_AT_STEP", "open-checked"), ("XOD_TEST_TARGET", target));
+            string line;
+            while ((line = convert.StandardOutput.ReadLine()) != null && !line.StartsWith("PAUSED", StringComparison.Ordinal)) { }
+            Assert.NotNull(line);
+
+            File.Copy(Path.Combine(dir, "pw.xod"), Path.Combine(dir, "copy.xod"));
+            convert.StandardInput.WriteLine();
+            convert.StandardInput.Flush();
+            string rest = convert.StandardOutput.ReadToEnd() + convert.StandardError.ReadToEnd();
+            Assert.True(convert.WaitForExit(120_000));
+            Assert.Contains("more than one database file", rest);
+            Assert.DoesNotContain("CONVERTED", rest);
+            Assert.False(Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any());
+        }
     }
 }

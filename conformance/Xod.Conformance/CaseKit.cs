@@ -247,5 +247,15 @@ namespace Xod.Conformance
         };
 
         public static string PasswordOf(string fixture) => fixture == "password" ? Dataset.Password : null;
+
+        /// <summary>
+        /// Deletes what the context that wrote a fixture held, the database file's lock file and the folder's
+        /// <c>xod.lock</c>: they are the open contexts', not the database's content (PLAN-046 section 9), and a
+        /// fixture is committed without them. Called once the context is closed.
+        /// </summary>
+        public static void DropLockFiles(string folder)
+        {
+            foreach (string f in Directory.GetFiles(folder, "*.lock")) File.Delete(f);
+        }
     }
 }

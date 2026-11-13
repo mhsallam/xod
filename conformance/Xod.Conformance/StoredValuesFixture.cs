@@ -1,7 +1,8 @@
 // The stored-values fixture (ISS-060, PLAN-053; PLAN-046 section 7.2): rows whose values a read wouldn't give
 // back if they were left out, written by the library in the tree: an empty string is an empty element or
 // attribute, a null whose new instance holds something else is <Name nil="true" />, and a value a read gives
-// back anyway stays out. Each implementation's reader must read these forms; read.mjs checks this fixture with
+// back anyway stays out. Since ISS-097 a map's null value and a list's null item are marked the same way, and
+// an empty map is stored. Each implementation's reader must read these forms; read.mjs checks this fixture with
 // the others. Written by:
 //   dotnet run --project conformance/Xod.Conformance -f net9.0 -- stored-values [root]
 // into <root>/stored-values (root: conformance/data by default). Rewrite it only when its rows or the format
@@ -33,6 +34,15 @@ namespace Xod.Conformance.Model.Format
         [Property(Position = ValuePosition.Attribute)] public string Tag { get; set; }
         [DefaultValue(5)] public int Count { get; set; }
     }
+
+    // The value collections (ISS-097, PLAN-046 section 7.2): a map and lists of scalars.
+    public class BlankCollections
+    {
+        public int Id { get; set; }
+        public Dictionary<string, string> Names { get; set; }
+        public List<string> Words { get; set; }
+        public List<int?> Numbers { get; set; }
+    }
 }
 
 namespace Xod.Conformance
@@ -58,6 +68,18 @@ namespace Xod.Conformance
             new BlankDocument { Id = 3, Text = "y", Label = "", Tag = "t", Count = 7 },
         };
 
+        public static List<BlankCollections> Collections() => new()
+        {
+            new BlankCollections
+            {
+                Id = 1,
+                Names = new() { ["none"] = null, ["empty"] = "", ["one"] = "1" },
+                Words = new() { "x", null, "" },
+                Numbers = new() { 1, null, 0 },
+            },
+            new BlankCollections { Id = 2, Names = new(), Words = new(), Numbers = null },
+        };
+
         /// <summary>Writes the fixture into <paramref name="folder"/>, which is emptied first.</summary>
         public static void Write(string folder)
         {
@@ -68,10 +90,9 @@ namespace Xod.Conformance
             {
                 foreach (var b in Blanks()) db.Insert(b);
                 foreach (var d in Documents()) db.Insert(d);
+                foreach (var c in Collections()) db.Insert(c);
             }
-            // The lock file is the open context's, not the database's content (PLAN-046 section 9); the fixture
-            // is committed without it, as the 2.0 fixtures are.
-            File.Delete(path + ".lock");
+            Repo.DropLockFiles(folder);
         }
     }
 }

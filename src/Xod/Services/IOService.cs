@@ -48,7 +48,7 @@ namespace Xod.Services
         private string password;
         private readonly PropertyService propertyService;
         private IXodStorageSerializer storageSerializer;
-        private FileStream lockStream;
+        private DatabaseHold lockStream;
 
         private int batchDepth;
         private readonly bool bufferedDurability;
@@ -77,7 +77,9 @@ namespace Xod.Services
             StorageFormat storageFormat = StorageFormat.Xml,
             bool lockDatabase = false,
             int lockRetryTimeoutMs = 0,
-            bool bufferedDurability = false)
+            bool bufferedDurability = false,
+            bool creating = false,
+            Action checkFolder = null)
         {
             this.path = path;
             this.root = Path.GetDirectoryName(this.path);
@@ -88,7 +90,7 @@ namespace Xod.Services
 
             if (!string.IsNullOrEmpty(this.root) && Directory.Exists(this.root))
             {
-                OpenAndRecover(lockDatabase, lockRetryTimeoutMs);
+                OpenAndRecover(lockDatabase, lockRetryTimeoutMs, creating, checkFolder);
             }
         }
 

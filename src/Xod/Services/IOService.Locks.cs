@@ -6,12 +6,14 @@ namespace Xod.Services
 {
     internal partial class IOService
     {
-        // Every context holds "<database file>.lock" open while it has the database open: shared, or with
-        // DatabaseOptions.LockDatabase exclusively. So a context knows whether others have the database open, and
-        // a password change can require the database to itself (ISS-071): one open under the old password would
-        // go on writing under it. The file is never deleted (see ReleaseHold).
+        // Every context holds the folder's lock file and "<database file>.lock" open while it has the database
+        // open: shared, or with DatabaseOptions.LockDatabase exclusively (OpenLockFile). So a context knows whether
+        // others have the database open, and a password change can require the database to itself (ISS-071): one
+        // open under the old password would go on writing under it. The files are never deleted (see ReleaseHold).
         private bool exclusivePresence;
         private int lockRetryTimeoutMs;
+        // Held alone to create the database file (OpenAndRecover), until the engine has written it (ShareHoldOnceCreated).
+        private bool holdingToCreate;
 
         /// <summary>
         /// Why this context holds no lock on the database, or null while it holds one. A context without a hold
@@ -28,8 +30,17 @@ namespace Xod.Services
         /// journal, a staged file or a <c>.tmp</c> may be that context's, live, and undoing it would undo its
         /// commit. What a crash left while others are open is recovered by the next open that finds the database
         /// to itself. A failed recovery stops the open and releases the hold.
+        /// <para>
+        /// A new database's file (<paramref name="creating"/>) is created only with the database to this context
+        /// too, which the engine ends once it has written the file (<see cref="ShareHoldOnceCreated"/>): a folder holds
+        /// one database, and the check (<paramref name="checkFolder"/>, DatabaseFiles.Recheck) stands only while no
+        /// other context can create one, so two opens naming different new files in one folder can't both pass it and
+        /// both create theirs (ISS-096). One that finds the folder held by another context checks under a shared
+        /// hold: it opens the database another created meanwhile, or is refused, with no file created. The check runs
+        /// under every hold, before anything is recovered: an open that would be refused never recovers.
+        /// </para>
         /// </summary>
-        private void OpenAndRecover(bool lockDatabase, int retryTimeoutMs)
+        private void OpenAndRecover(bool lockDatabase, int retryTimeoutMs, bool creating, Action checkFolder)
         {
             this.lockRetryTimeoutMs = retryTimeoutMs;
 
@@ -39,6 +50,7 @@ namespace Xod.Services
                 this.exclusivePresence = true;
                 try
                 {
+                    checkFolder?.Invoke();
                     RecoverInterruptedWrites(root);
                 }
                 catch
@@ -49,20 +61,23 @@ namespace Xod.Services
                 return;
             }
 
-            if (RecoveryPending(root))
+            if (creating || RecoveryPending(root))
             {
-                FileStream alone = null;
+                DatabaseHold alone = null;
                 try
                 {
                     alone = OpenLockFile(exclusive: true, retryTimeoutMs: 0);
                 }
                 catch (DatabaseLockedException)
                 {
-                    // Another context has the database open: what is pending may be its own, under way.
+                    // Another context has the database open: what is pending may be its own, under way; and a new
+                    // database file is created only under the shared hold's check below.
                 }
                 catch (UnauthorizedAccessException) when (!WritesPending(root))
                 {
                     // Only index markers: each index load honours them without writing (IndexesLeftBehind, ISS-043).
+                    // Or nothing pending, and a database to create where no lock file can be: the shared hold fails
+                    // the same way below, and the engine refuses the write that would create it (NoHoldReason).
                 }
                 catch (UnauthorizedAccessException e)
                 {
@@ -77,8 +92,24 @@ namespace Xod.Services
 
                 if (alone != null)
                 {
-                    using (alone)
+                    try
+                    {
+                        checkFolder?.Invoke();
                         RecoverInterruptedWrites(root);
+                    }
+                    catch
+                    {
+                        alone.Dispose();
+                        throw;
+                    }
+                    if (creating)
+                    {
+                        this.lockStream = alone;
+                        this.exclusivePresence = true;
+                        this.holdingToCreate = true;
+                        return;
+                    }
+                    alone.Dispose();
                 }
             }
 
@@ -94,6 +125,37 @@ namespace Xod.Services
                     e.Message + "), so it can't tell whether others have the database open: it is open for reading only.";
             }
             this.exclusivePresence = false;
+            if (lockStream == null)
+                return;
+            try
+            {
+                checkFolder?.Invoke();
+                // Another context holds the folder (it held it when this one asked for it alone), and no database
+                // file has been created meanwhile: one can't be created while another context could create one too.
+                if (creating && !File.Exists(path))
+                    throw new DatabaseLockedException(path, new IOException("Another context or process has the folder '" + root +
+                        "' open, so a new database file can't be created in it."));
+            }
+            catch
+            {
+                ReleaseHold();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Back to the shared hold once the engine has written the database file this context held the database
+        /// alone to create (<see cref="OpenAndRecover"/>), with everything it writes at creation. Nothing to do for
+        /// a context that holds it alone by choice (LockDatabase), holds nothing, or opened a database that was there.
+        /// </summary>
+        internal void ShareHoldOnceCreated()
+        {
+            if (!holdingToCreate)
+                return;
+            holdingToCreate = false;
+            ReleaseHold();
+            exclusivePresence = false;
+            TakeBackSharedHold();
         }
 
         // What a crash may have left: a write cut short, or a context's indexes behind its pages (ISS-043).
@@ -124,12 +186,46 @@ namespace Xod.Services
             lockStream = null;
         }
 
-        private FileStream OpenLockFile(bool exclusive, int retryTimeoutMs) => OpenLockFile(this.path, exclusive, retryTimeoutMs);
+        private DatabaseHold OpenLockFile(bool exclusive, int retryTimeoutMs) => OpenLockFile(this.path, exclusive, retryTimeoutMs);
+
+        /// <summary>The folder's lock file (PLAN-046 section 9), beside the database file's own.</summary>
+        internal const string FolderLockName = "xod.lock";
 
         /// <summary>
-        /// The one place a database's lock file (<c>&lt;database file&gt;.lock</c>) is opened, by a context and by
-        /// <see cref="XodMigrator"/>. Shared, it is opened with read access, so a read-only lock file holds (on Unix
-        /// .NET takes flock LOCK_SH, which needs only read access, NFS included). Exclusive, it shares nothing (.NET
+        /// The one place a hold on a database is taken, by a context and by <see cref="XodMigrator"/>: the folder's
+        /// lock file (<see cref="FolderLockName"/>), then the database file's (<c>&lt;database file&gt;.lock</c>), both of
+        /// one kind. The folder's because every database file in a folder shares the folder's tables, pages, journals
+        /// and markers, and what a hold proves is about those: an open naming a second, new database file beside one
+        /// another context had open held its own file's lock alone, so it ran the folder's recovery as if it had the
+        /// database to itself, undid that context's commit under way and dropped its indexes, and only then found the
+        /// other database file and was refused (review of TASK-071; ISS-096). The database file's, because XOD 2.0.0
+        /// and 2.0.1 hold only that one (with LockDatabase), and the contexts of one database file still have to see
+        /// them. Always in this order, so two holders never wait on each other. <paramref name="retryTimeoutMs"/> covers
+        /// both.
+        /// </summary>
+        internal static DatabaseHold OpenLockFile(string databasePath, bool exclusive, int retryTimeoutMs)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string folderLock = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(databasePath)), FolderLockName);
+            FileStream folder = OpenOneLockFile(folderLock, databasePath, exclusive, retryTimeoutMs);
+            try
+            {
+                if (exclusive)
+                    FaultInjection.Step("hold-alone");
+                int remaining = retryTimeoutMs <= 0 ? retryTimeoutMs : Math.Max(1, retryTimeoutMs - (int)sw.ElapsedMilliseconds);
+                return new DatabaseHold(folder, OpenOneLockFile(databasePath + ".lock", databasePath, exclusive, remaining));
+            }
+            catch
+            {
+                folder.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Opens one lock file of a hold (<see cref="OpenLockFile(string, bool, int)"/>). Shared, it is opened with read
+        /// access, so a read-only lock file holds (on Unix .NET takes flock LOCK_SH, which needs only read access, NFS
+        /// included). Exclusive, it shares nothing (.NET
         /// takes LOCK_EX for FileShare.None: SafeFileHandle.Unix.cs, dotnet/runtime release/8.0 and 9.0), and is
         /// opened with write access where the file allows it, since an NFS client grants LOCK_EX only to a file open
         /// for writing (flock(2)); a read-only lock file is opened for reading (ISS-084). .NET ignores a lock it
@@ -140,9 +236,8 @@ namespace Xod.Services
         /// created (its folder can't be written, its medium is read-only) or opened (its permissions): no hold, and no
         /// telling whether others have the database open.
         /// </summary>
-        internal static FileStream OpenLockFile(string databasePath, bool exclusive, int retryTimeoutMs)
+        private static FileStream OpenOneLockFile(string lockFilePath, string databasePath, bool exclusive, int retryTimeoutMs)
         {
-            string lockFilePath = databasePath + ".lock";
             var sw = System.Diagnostics.Stopwatch.StartNew();
             int delayMs = 5;
             bool writable = exclusive;
@@ -164,7 +259,7 @@ namespace Xod.Services
                 {
                     // No file to be locked: it couldn't be created (EROFS is an IOException, not an
                     // UnauthorizedAccessException: Interop.IOErrors.cs, release/9.0). Not another's lock.
-                    throw new UnauthorizedAccessException("The database's lock file '" + lockFilePath + "' can't be created: " + ex.Message, ex);
+                    throw new UnauthorizedAccessException("The lock file '" + lockFilePath + "' can't be created: " + ex.Message, ex);
                 }
                 // Held by another context (or program): waited for, then reported as locked. Any other failure is
                 // reported as itself (HeldByAnother; it used to read as another's lock, review of TASK-068).
@@ -259,15 +354,21 @@ namespace Xod.Services
             }
 
             ReleaseHold();
-            FileStream exclusive;
+            DatabaseHold exclusive;
             try
             {
                 exclusive = OpenLockFile(exclusive: true, retryTimeoutMs: 0);
             }
-            catch (Exception e) when (e is DatabaseLockedException || e is UnauthorizedAccessException)
+            catch (Exception e)
             {
+                // Whatever failed, the shared hold is taken back: a failure that isn't another's lock (an IOException
+                // such as too many open files, or a network error) used to leave this context holding nothing, with
+                // no NoHoldReason, so it went on writing, and its next password change ran as if alone (review of
+                // TASK-071).
                 TakeBackSharedHold();
-                throw new XodException("Another context or process has the database open; this needs the database to itself. Close the others and try again.", e);
+                if (e is DatabaseLockedException || e is UnauthorizedAccessException)
+                    throw new XodException("Another context or process has the database open; this needs the database to itself. Close the others and try again.", e);
+                throw;
             }
 
             Exception failure = null;
@@ -310,6 +411,28 @@ namespace Xod.Services
                     e.Message + "). It refuses writes; dispose it and open the database again.";
                 throw new XodException(NoHoldReason, e);
             }
+        }
+    }
+
+    /// <summary>A hold on a database: the folder's lock file and the database file's, of one kind
+    /// (IOService.OpenLockFile). Let go of the database file's first.</summary>
+    internal sealed class DatabaseHold : IDisposable
+    {
+        private FileStream folder;
+        private FileStream database;
+
+        internal DatabaseHold(FileStream folder, FileStream database)
+        {
+            this.folder = folder;
+            this.database = database;
+        }
+
+        public void Dispose()
+        {
+            database?.Dispose();
+            database = null;
+            folder?.Dispose();
+            folder = null;
         }
     }
 }

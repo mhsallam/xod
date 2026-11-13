@@ -46,6 +46,7 @@ namespace Xod
             // The database as a context finds it: a folder with two database files is refused (ISS-085), since a
             // context opened through the other would write the tables this conversion holds.
             var (databaseFile, resolvedFolder) = DatabaseFiles.Resolve(sourceDirectoryOrFile);
+            FaultInjection.Step("open-checked");
             // Full paths without a trailing separator, so that one folder is one string (SameFolder).
             string sourceDir = Path.TrimEndingDirectorySeparator(resolvedFolder);
             string targetDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(targetDirectory));
@@ -66,7 +67,7 @@ namespace Xod
             // whether what a crash seems to have left is another process's commit under way, so the conversion is
             // refused (ISS-084: one that went on, taking a lock file it couldn't open for a folder nothing could
             // write, undid a live commit). A lock file is opened with read access only, so a read-only one holds.
-            FileStream hold;
+            DatabaseHold hold;
             try
             {
                 hold = IOService.OpenLockFile(databaseFile, exclusive: true, retryTimeoutMs: 0);
@@ -79,6 +80,9 @@ namespace Xod
 
             using (hold)
             {
+                // The folder checked again under the hold, before anything is recovered or converted: a database file
+                // added since the check above would be converted with the database (review of TASK-071).
+                DatabaseFiles.Recheck(sourceDirectoryOrFile, databaseFile);
                 IOService.RecoverInterruptedWrites(sourceDir);
 
                 var files = Directory.GetFiles(sourceDir).Where(DatabaseFiles.IsOfDatabase).ToList();

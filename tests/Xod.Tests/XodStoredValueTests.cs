@@ -3,6 +3,7 @@
 // has without the row (its DefaultValue, or what a new instance holds): "" read back as null, 0 as the
 // DefaultValue, Guid.Empty as a new instance's Guid. A value is now left out only when a read gives it back.
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -89,6 +90,41 @@ namespace Xod.Tests
         public string Name { get; set; }
         [Property(Indexed = true)] public string Code { get; set; }
     }
+
+    // ISS-097: the value collections, a map and a list or array of scalars. A map's null value read back as "", a
+    // list or array dropped a null item, a list of a nullable type couldn't be stored (its items were named
+    // "Nullable`1"), and an empty map read back as null.
+    public abstract class CollectionValues
+    {
+        public int Id { get; set; }
+        public Dictionary<string, string> Names { get; set; }
+        public Dictionary<string, int?> Counts { get; set; }
+        public Dictionary<string, string> NoNames { get; set; }
+        public List<string> Words { get; set; }
+        public string[] Letters { get; set; }
+        public List<int?> Numbers { get; set; }
+        public int?[] Marks { get; set; }
+    }
+
+    // Read by the standalone row reader.
+    public class StoredCollections : CollectionValues { }
+
+    // An attribute property sends it to the general row reader.
+    public class AttributedStoredCollections : CollectionValues
+    {
+        [Property(Position = ValuePosition.Attribute)] public string Tag { get; set; }
+    }
+
+    // Maps of other types than Dictionary<,> (review of TASK-071).
+    public class OtherMaps
+    {
+        public int Id { get; set; }
+        public SortedDictionary<string, int> Sorted { get; set; }
+        public Hashtable Table { get; set; }
+        public CountMap Counts { get; set; }
+    }
+
+    public class CountMap : Dictionary<string, int> { }
 
     public class XodStoredValueTests
     {
@@ -285,6 +321,151 @@ namespace Xod.Tests
             Assert.DoesNotContain("<Span", page);
             Assert.DoesNotContain("Tag=", page);
             Assert.DoesNotContain("nil=", page);
+        }
+
+        [Theory]
+        [MemberData(nameof(Formats))]
+        public void Value_collections_read_back_as_written(StorageFormat format, string password)
+        {
+            string path = NewDatabase("collections-" + format);
+            var options = new DatabaseOptions { StorageFormat = format };
+            using (var db = new XodContext(path, password, options))
+            {
+                db.Insert(WrittenCollections(new StoredCollections()));
+                db.Insert(WrittenCollections(new AttributedStoredCollections { Tag = "t" }));
+            }
+            using (var db = new XodContext(path, password, options))
+            {
+                CollectionsReadBackAsWritten(db.Find<StoredCollections>(v => v.Id == 1));
+                CollectionsReadBackAsWritten(db.Select<StoredCollections>().Single());
+                CollectionsReadBackAsWritten(db.Find<AttributedStoredCollections>(v => v.Id == 1));
+                CollectionsReadBackAsWritten(db.Select<AttributedStoredCollections>().Single());
+            }
+        }
+
+        // The stored form (PLAN-046 section 7): a null entry or item is marked as a null property is, and a nullable
+        // item is named by its underlying type, as the item of a list of that type is.
+        [Fact]
+        public void A_null_entry_or_item_is_marked_and_a_nullable_item_is_named_by_its_type()
+        {
+            string path = NewDatabase("collections-format");
+            using (var db = new XodContext(path))
+                db.Insert(new StoredCollections { Names = new() { ["none"] = null }, Words = new() { null }, Numbers = new() { 1, null } });
+            string page = File.ReadAllText(Directory.GetFiles(Path.GetDirectoryName(path)!, "*.xpag").Single());
+            Assert.Contains("<Entry key=\"none\" nil=\"true\" />", page);
+            Assert.Contains("<String nil=\"true\" />", page);
+            Assert.Contains("<Int32>1</Int32><Int32 nil=\"true\" />", page);
+        }
+
+        // The review of TASK-071: an update compares the row it would write with the stored one, and took a map's
+        // value marked null for the same entry with no text (only the stored row's attributes were looked for in the
+        // new one), and a list reordered, or with an item repeated in place of another, for the same list: the update
+        // was dropped, and reported made. Each update here changes that alone.
+        [Theory]
+        [MemberData(nameof(Formats))]
+        public void An_update_of_what_a_map_or_list_holds_is_written(StorageFormat format, string password)
+        {
+            string path = NewDatabase("collections-update-" + format);
+            var options = new DatabaseOptions { StorageFormat = format };
+            var changes = new Action<CollectionValues>[]
+            {
+                v => v.Names["k"] = null,
+                v => v.Words = new List<string> { "x", null },
+                v => v.Letters = new[] { "a", "b", "b" },
+            };
+            using (var db = new XodContext(path, password, options))
+            {
+                foreach (var _ in changes)
+                {
+                    db.Insert(Before(new StoredCollections()));
+                    db.Insert(Before(new AttributedStoredCollections { Tag = "t" }));
+                }
+            }
+            using (var db = new XodContext(path, password, options))
+            {
+                for (int i = 0; i < changes.Length; i++)
+                {
+                    int id = i + 1;
+                    foreach (CollectionValues v in new CollectionValues[] { db.Find<StoredCollections>(x => x.Id == id), db.Find<AttributedStoredCollections>(x => x.Id == id) })
+                    {
+                        changes[i](v);
+                        Assert.True(db.Update(v.GetType(), v));
+                    }
+                }
+            }
+            using (var db = new XodContext(path, password, options))
+            {
+                foreach (CollectionValues[] rows in new[]
+                {
+                    db.Select<StoredCollections>().OrderBy(x => x.Id).ToArray<CollectionValues>(),
+                    db.Select<AttributedStoredCollections>().OrderBy(x => x.Id).ToArray<CollectionValues>(),
+                })
+                {
+                    Assert.Null(rows[0].Names["k"]);
+                    Assert.Equal(new List<string> { "x", null }, rows[1].Words);
+                    Assert.Equal(new[] { "a", "b", "b" }, rows[2].Letters);
+                }
+            }
+
+            static T Before<T>(T v) where T : CollectionValues
+            {
+                v.Names = new Dictionary<string, string> { ["k"] = "" };
+                v.Words = new List<string> { null, "x" };
+                v.Letters = new[] { "a", "a", "b" };
+                return v;
+            }
+        }
+
+        // A map property reads back as its own type, with its own key and value types (review of TASK-071: a
+        // Dictionary<,> was set on every map property, so a SortedDictionary, a Hashtable or a class deriving from
+        // Dictionary<,> couldn't be read once it held anything, or, since empty maps are stored, at all).
+        [Theory]
+        [MemberData(nameof(Formats))]
+        public void Maps_of_other_types_read_back_as_their_own_type(StorageFormat format, string password)
+        {
+            string path = NewDatabase("other-maps-" + format);
+            var options = new DatabaseOptions { StorageFormat = format };
+            using (var db = new XodContext(path, password, options))
+            {
+                db.Insert(new OtherMaps { Sorted = new() { ["b"] = 2, ["a"] = 1 }, Table = new Hashtable { ["x"] = "1" }, Counts = new CountMap { ["n"] = 3 } });
+                db.Insert(new OtherMaps { Sorted = new(), Table = new Hashtable(), Counts = new CountMap() });
+            }
+            using (var db = new XodContext(path, password, options))
+            {
+                var full = db.Find<OtherMaps>(m => m.Id == 1);
+                Assert.Equal(new[] { "a", "b" }, full.Sorted.Keys);
+                Assert.Equal(2, full.Sorted["b"]);
+                Assert.Equal("1", full.Table["x"]);
+                Assert.Equal(3, full.Counts["n"]);
+                var empty = db.Find<OtherMaps>(m => m.Id == 2);
+                Assert.Empty(empty.Sorted);
+                Assert.Empty(empty.Table);
+                Assert.Empty(empty.Counts);
+            }
+        }
+
+        private static T WrittenCollections<T>(T v) where T : CollectionValues
+        {
+            v.Names = new Dictionary<string, string> { ["none"] = null, ["empty"] = "", ["one"] = "1" };
+            v.Counts = new Dictionary<string, int?> { ["none"] = null, ["zero"] = 0 };
+            v.NoNames = new Dictionary<string, string>();
+            v.Words = new List<string> { "x", null, "" };
+            v.Letters = new[] { null, "a" };
+            v.Numbers = new List<int?> { 1, null, 0 };
+            v.Marks = new int?[] { null, 2 };
+            return v;
+        }
+
+        private static void CollectionsReadBackAsWritten(CollectionValues v)
+        {
+            Assert.Equal(new Dictionary<string, string> { ["none"] = null, ["empty"] = "", ["one"] = "1" }, v.Names);
+            Assert.Equal(new Dictionary<string, int?> { ["none"] = null, ["zero"] = 0 }, v.Counts);
+            Assert.NotNull(v.NoNames);
+            Assert.Empty(v.NoNames);
+            Assert.Equal(new List<string> { "x", null, "" }, v.Words);
+            Assert.Equal(new[] { null, "a" }, v.Letters);
+            Assert.Equal(new List<int?> { 1, null, 0 }, v.Numbers);
+            Assert.Equal(new int?[] { null, 2 }, v.Marks);
         }
     }
 }

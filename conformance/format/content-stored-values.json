@@ -36,6 +36,49 @@
    }
   }
  ],
+ "Xod.Conformance.Model.Format.BlankCollections": [
+  {
+   "element": "BlankCollections",
+   "attrs": {},
+   "fields": {
+    "Id": "1",
+    "Names": {
+     "map": {
+      "none": null,
+      "empty": "",
+      "one": "1"
+     }
+    },
+    "Words": {
+     "list": [
+      "x",
+      null,
+      ""
+     ]
+    },
+    "Numbers": {
+     "list": [
+      "1",
+      null,
+      "0"
+     ]
+    }
+   }
+  },
+  {
+   "element": "BlankCollections",
+   "attrs": {},
+   "fields": {
+    "Id": "2",
+    "Names": {
+     "map": {}
+    },
+    "Words": {
+     "list": []
+    }
+   }
+  }
+ ],
  "Xod.Conformance.Model.Format.BlankDocument": [
   {
    "element": "BlankDocument",

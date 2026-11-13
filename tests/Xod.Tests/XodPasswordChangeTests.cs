@@ -81,11 +81,13 @@ namespace Xod.Tests
             });
         }
 
-        // Nothing besides the database's own files (and the lock file) is left in the folder.
+        // Nothing besides the database's own files (and the lock files: the database file's, and the folder's
+        // "xod.lock", PLAN-046 section 9) is left in the folder.
         private static void NothingLeftOver(string dir)
         {
             var extra = Directory.GetFiles(dir)
-                .Where(f => !DatabaseExtensions.Contains(Path.GetExtension(f)) && !f.EndsWith(".xod.lock", StringComparison.OrdinalIgnoreCase))
+                .Where(f => !DatabaseExtensions.Contains(Path.GetExtension(f)) && !f.EndsWith(".xod.lock", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(Path.GetFileName(f), "xod.lock", StringComparison.OrdinalIgnoreCase))
                 .Select(Path.GetFileName)
                 .ToList();
             Assert.Empty(extra);

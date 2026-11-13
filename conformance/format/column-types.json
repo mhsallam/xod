@@ -43,6 +43,9 @@
     },
     "Xod.Conformance.Model.Format.BlankDocument": {
       "Id": "int"
+    },
+    "Xod.Conformance.Model.Format.BlankCollections": {
+      "Id": "int"
     }
   },
   "v1.2.5": {

@@ -448,49 +448,13 @@ namespace Xod.Engines.Xml
                     {
                         if (isColl.Value == "dictionary" && prop.TypeCategory == PropertyTypeCategory.Dictionary)
                         {
-                            var genArgs = prop.PropertyType.GetGenericArguments();
-                            Type keyType = genArgs.Length > 0 ? genArgs[0] : typeof(string);
-                            Type valType = genArgs.Length > 1 ? genArgs[1] : typeof(string);
-                            var dictInstance = (IDictionary)ValueHelper.CreateInstance(typeof(Dictionary<,>).MakeGenericType(keyType, valType));
-
-                            foreach (var entryElm in e.Elements("Entry"))
-                            {
-                                string kStr = entryElm.Attribute("key")?.Value;
-                                if (kStr != null)
-                                {
-                                    object k = ValueHelper.ParseScalar(keyType, kStr);
-                                    object v = ValueHelper.ParseScalar(valType, entryElm.Value);
-                                    dictInstance[k] = v;
-                                }
-                            }
-                            prop.SetValue(item, dictInstance);
+                            prop.SetValue(item, ReadStoredMap(prop, e));
                         }
                         else
                         {
-                            string addRangeMethod;
-                            Type itemType;
-                            if (prop.PropertyType.IsArray)
-                            {
-                                itemType = prop.PropertyType.GetElementType();
-                                addRangeMethod = nameof(CollectionExtensions.AddRangeFromString);
-                            }
-                            else
-                            {
-                                itemType = prop.PropertyType.GetGenericArguments().FirstOrDefault();
-                                addRangeMethod = nameof(CollectionExtensions.AddRange);
-                            }
-
+                            Type itemType = StoredItemType(prop);
                             if (itemType != null && ValueHelper.IsScalarType(itemType))
-                            {
-                                Type collGenType = typeof(List<>).MakeGenericType(itemType);
-                                dynamic coll = Activator.CreateInstance(collGenType);
-                                var collElements = e.Elements(itemType.Name).Select(s => (object)s.Value).ToArray();
-                                MethodInfo mi = typeof(CollectionExtensions)
-                                    .GetMethod(addRangeMethod)
-                                    .MakeGenericMethod(itemType);
-                                mi.Invoke(coll, new object[] { coll, collElements });
-                                prop.SetValue(item, prop.PropertyType.IsArray ? coll.ToArray() : coll);
-                            }
+                                prop.SetValue(item, ReadStoredScalarItems(prop, itemType, e));
                         }
                     }
                     else
@@ -547,56 +511,23 @@ namespace Xod.Engines.Xml
                     {
                         if (isColl.Value == "dictionary" && prop.TypeCategory == PropertyTypeCategory.Dictionary)
                         {
-                            var genArgs = prop.PropertyType.GetGenericArguments();
-                            Type keyType = genArgs.Length > 0 ? genArgs[0] : typeof(string);
-                            Type valType = genArgs.Length > 1 ? genArgs[1] : typeof(string);
-                            var dictInstance = (IDictionary)ValueHelper.CreateInstance(typeof(Dictionary<,>).MakeGenericType(keyType, valType));
-
-                            foreach (var entryElm in e.Elements("Entry"))
-                            {
-                                string kStr = entryElm.Attribute("key")?.Value;
-                                if (kStr != null)
-                                {
-                                    object k = ValueHelper.ParseScalar(keyType, kStr);
-                                    object v = ValueHelper.ParseScalar(valType, entryElm.Value);
-                                    dictInstance[k] = v;
-                                }
-                            }
-                            prop.SetValue(item, dictInstance);
+                            prop.SetValue(item, ReadStoredMap(prop, e));
                             continue;
                         }
 
-                        string addRangeMethod;
-                        Type itemType;
-                        if (prop.PropertyType.IsArray)
-                        {
-                            itemType = prop.PropertyType.GetElementType();
-                            addRangeMethod = nameof(CollectionExtensions.AddRangeFromString);
-                        }
-                        else
-                        {
-                            itemType = prop.PropertyType.GetGenericArguments().FirstOrDefault();
-                            addRangeMethod = nameof(CollectionExtensions.AddRange);
-                        }
-
+                        Type itemType = StoredItemType(prop);
                         if (itemType == null)
                             continue;
 
-                        Type collGenType = typeof(List<>).MakeGenericType(itemType);
-                        dynamic coll = Activator.CreateInstance(collGenType);
-                        var collElements = e.Elements(itemType.Name).Select(s => (object)s.Value).ToArray();
-
-                        MethodInfo mi = typeof(CollectionExtensions)
-                            .GetMethod(addRangeMethod)
-                            .MakeGenericMethod(itemType);
-
                         if (ValueHelper.IsScalarType(itemType))
                         {
-                            mi.Invoke(coll, new object[] { coll, collElements });
-                            prop.SetValue(item, prop.PropertyType.IsArray ? coll.ToArray() : coll);
+                            prop.SetValue(item, ReadStoredScalarItems(prop, itemType, e));
                         }
                         else if ((include == "*" && !LazyLoad) || includedRefProps.Contains(prop.PropertyName))
                         {
+                            Type collGenType = typeof(List<>).MakeGenericType(itemType);
+                            dynamic coll = Activator.CreateInstance(collGenType);
+                            var collElements = e.Elements(itemType.Name).Select(s => (object)s.Value).ToArray();
                             propertyService.LoadType(itemType);
                             var collQuery = collElements
                                 .Select(s =>
@@ -747,6 +678,49 @@ namespace Xod.Engines.Xml
 
             itemsCacheService.Add(cache);
             return item;
+        }
+
+        // The value collections a row stores (PLAN-046 section 7), read here for both row readers (the standalone one
+        // and the general one each had a copy). A map's entry and a list's item marked nil="true" is null (ISS-097).
+
+        private static Type StoredItemType(PropertyInfoItem prop) =>
+            prop.PropertyType.IsArray ? prop.PropertyType.GetElementType() : prop.PropertyType.GetGenericArguments().FirstOrDefault();
+
+        private static IDictionary ReadStoredMap(PropertyInfoItem prop, XElement e)
+        {
+            // The key and value types its IDictionary<K, V> names (strings for a Hashtable); the property's own type
+            // where it can be made, a Dictionary<K, V> otherwise. A Dictionary<,> was set on every map property, which
+            // a SortedDictionary or a Hashtable can't hold: once an empty map was stored, reading one threw (review of
+            // TASK-071; a map with entries always did).
+            Type mapType = prop.PropertyType;
+            Type generic = mapType.IsGenericType && mapType.GetGenericTypeDefinition() == typeof(IDictionary<,>)
+                ? mapType
+                : mapType.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>));
+            Type keyType = generic?.GetGenericArguments()[0] ?? typeof(string);
+            Type valType = generic?.GetGenericArguments()[1] ?? typeof(string);
+            bool ownType = !mapType.IsAbstract && !mapType.IsInterface && mapType.GetConstructor(Type.EmptyTypes) != null;
+            var map = (IDictionary)ValueHelper.CreateInstance(ownType ? mapType : typeof(Dictionary<,>).MakeGenericType(keyType, valType));
+            foreach (var entry in e.Elements("Entry"))
+            {
+                string key = entry.Attribute("key")?.Value;
+                if (key == null)
+                    continue;
+                // A null where the value type has none reads as its default, as a list's item does (AddRange).
+                object value = ValueHelper.ParseScalar(valType, StoredValue.ItemText(entry));
+                map[ValueHelper.ParseScalar(keyType, key)] = value ?? (valType.IsValueType ? ValueHelper.DefaultOf(valType) : null);
+            }
+            return map;
+        }
+
+        private static object ReadStoredScalarItems(PropertyInfoItem prop, Type itemType, XElement e)
+        {
+            object[] texts = e.Elements(StoredValue.ItemName(itemType)).Select(s => (object)StoredValue.ItemText(s)).ToArray();
+            dynamic list = Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType));
+            typeof(CollectionExtensions)
+                .GetMethod(prop.PropertyType.IsArray ? nameof(CollectionExtensions.AddRangeFromString) : nameof(CollectionExtensions.AddRange))
+                .MakeGenericMethod(itemType)
+                .Invoke(null, new object[] { list, texts });
+            return prop.PropertyType.IsArray ? list.ToArray() : list;
         }
 
         /// <summary>

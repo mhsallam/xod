@@ -175,6 +175,22 @@ public static class Program
             return 0;
         }
 
+        // A change whose hold alone fails for another reason than another's lock (XOD_FAIL_AT_STEP=hold-alone), then
+        // the context waits for a line, meanwhile the test checks what it still holds, and writes.
+        if (mode == "pwchange-hold")
+        {
+            using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
+            if (Change(db, "first", "second"))
+                Console.WriteLine("CHANGED");
+            Console.WriteLine("WAITING");
+            Console.Out.Flush();
+            Console.In.ReadLine();
+            db.InsertRange(BuildBatch(1));
+            db.Flush();
+            Console.WriteLine("WROTE");
+            return 0;
+        }
+
         // Buffered durability under a password: a batch, Flush, and the process dies at once.
         if (mode == "bufferedflush")
         {
@@ -425,6 +441,22 @@ public static class Program
             catch (Exception e)
             {
                 Console.WriteLine("REFUSED " + e.GetType().Name + ": " + e.Message);
+            }
+            return 0;
+        }
+
+        // ISS-096: opens "second.xod" in the folder, paused once it has checked that the folder holds one database
+        // (XOD_PAUSE_AT_STEP=open-checked) while the test creates another database there.
+        if (mode == "open-second")
+        {
+            try
+            {
+                using var db = new XodContext(Path.Combine(dir, "second.xod"), options: options);
+                Console.WriteLine("OPENED");
+            }
+            catch (XodException e)
+            {
+                Console.WriteLine("REFUSED " + e.Message);
             }
             return 0;
         }

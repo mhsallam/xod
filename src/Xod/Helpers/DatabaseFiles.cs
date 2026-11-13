@@ -22,6 +22,7 @@ namespace Xod.Helpers
         /// through two of them wouldn't see each other, and one would write the tables under a password change or a
         /// conversion holding the other (ISS-085). So a folder holding two is refused, and so is a path naming a
         /// new database file beside one (a mistyped name, or a case that differs on a case-sensitive file system).
+        /// This runs before the hold, whose lock files it names, and again under it (<see cref="Recheck"/>).
         /// </summary>
         internal static (string File, string Folder) Resolve(string path)
         {
@@ -51,6 +52,23 @@ namespace Xod.Helpers
                     "(or the folder), or create the new database in a folder of its own.");
 
             return (file, folder);
+        }
+
+        /// <summary>
+        /// The check of <see cref="Resolve"/> again, once a hold on <paramref name="resolvedFile"/> is taken and before
+        /// anything is recovered, created or converted: refused unless <paramref name="path"/> still names that file.
+        /// <see cref="Resolve"/> ran before the hold, so another context could have created a database file in the
+        /// folder since (ISS-096): two opens naming different new files in an empty folder both passed it. Under a
+        /// hold the answer stands, since a database file is created only with the folder held alone
+        /// (IOService.OpenAndRecover), which any hold keeps out, by every context of this release; XOD 2.0.0 and 2.0.1
+        /// take no folder hold.
+        /// </summary>
+        internal static void Recheck(string path, string resolvedFile)
+        {
+            string now = Resolve(path).File;
+            if (!string.Equals(now, resolvedFile, StringComparison.Ordinal))
+                throw new XodException($"The folder '{Path.GetDirectoryName(now)}' now holds the database '{Path.GetFileName(now)}', " +
+                    $"created by another context while this one was opening '{path}'. Open it again.");
         }
 
         /// <summary>Every file of the database: the database file, table files, pages and indexes. Not what a

@@ -20,6 +20,20 @@ namespace Xod.Helpers
         internal static bool IsNil(System.Xml.Linq.XElement element) =>
             element.HasAttributes && element.Attribute(NilAttribute)?.Value == "true";
 
+        /// <summary>The name of a stored list's item element (PLAN-046 section 7): the item type's short name, and a
+        /// nullable item type's underlying type's (ISS-097: <c>Nullable`1</c> isn't an XML name, so a list of
+        /// <c>int?</c> couldn't be stored). The writer and both row readers name items here.</summary>
+        internal static string ItemName(Type itemType) => (Nullable.GetUnderlyingType(itemType) ?? itemType).Name;
+
+        /// <summary>The content of a map entry or a list item: its text, or for a null the mark a null property
+        /// has (ISS-097: a map's null value was stored as empty text, which reads back as <c>""</c>, and a list's
+        /// null item was left out).</summary>
+        internal static object ItemContent(object value, string propertyName) =>
+            value == null ? new System.Xml.Linq.XAttribute(NilAttribute, "true") : Text(value, propertyName);
+
+        /// <summary>The text of a stored map entry or list item: null when it is marked null.</summary>
+        internal static string ItemText(System.Xml.Linq.XElement item) => IsNil(item) ? null : item.Value;
+
         /// <summary>True when an empty text is the property's value (a plain string): no other type has an empty
         /// form, and an encrypted or hashed string is never stored empty.</summary>
         internal static bool HasEmptyForm(PropertyInfoItem prop) =>

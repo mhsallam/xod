@@ -30,6 +30,7 @@ namespace Xod.Conformance
                         if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
                         Directory.CreateDirectory(dir);
                         Dataset.Write(dir, Repo.FormatOf(fixture), Repo.PasswordOf(fixture));
+                        Repo.DropLockFiles(dir);
                         Console.WriteLine($"wrote {dir}");
                     }
                     return 0;

@@ -302,8 +302,10 @@ export function readDatabase(dir, password, columnTypes = {}, applicationKey = n
       const keys = Object.fromEntries(Object.entries(f.attrs).filter(([k]) => k !== 'refType' && k !== 'hostProp'));
       return { [f.attrs.refType]: ref(f.text, keys), ...(f.attrs.hostProp ? { hostProp: f.attrs.hostProp } : {}) };
     }
-    if (f.attrs.collType === 'dictionary') return { map: Object.fromEntries(f.children.map((c) => [c.attrs.key, c.text ?? ''])) };
-    if (f.attrs.collType) return { list: f.children.map((c) => c.text) };
+    // A map's entry and a list's item as a scalar element is read: nil="true" is null, no text an empty string.
+    const item = (c) => (c.attrs.nil === 'true' ? null : c.text ?? '');
+    if (f.attrs.collType === 'dictionary') return { map: Object.fromEntries(f.children.map((c) => [c.attrs.key, item(c)])) };
+    if (f.attrs.collType) return { list: f.children.map(item) };
     // A scalar element: nil="true" is null, no text an empty string (section 7.2).
     if (f.attrs.nil === 'true') return null;
     return f.cdata ? { cdata: f.text } : canonical(columnTypes[table]?.[name], scalar(f.text ?? ''));

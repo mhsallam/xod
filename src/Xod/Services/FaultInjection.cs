@@ -15,9 +15,11 @@ namespace Xod.Services
     /// A step is <c>name</c>, <c>name:count</c> (after that many files) or <c>name:file</c>. Password changes:
     /// <c>staged</c>, <c>committed</c>, <c>switching</c>, <c>switched</c>. Commits: <c>commit-written</c>
     /// (the batch's files written, not the indexes), <c>undo</c>. A failed statement's undo: <c>undo-statement:n</c>
-    /// (once it has taken back n of the rows it created). Opening: <c>recover-restoring</c> (before a
-    /// transaction journal's snapshot is written back). So a fault lands at an exact, repeatable point instead
-    /// of a random one.</summary>
+    /// (once it has taken back n of the rows it created). Opening: <c>open-checked</c> (the folder checked
+    /// to hold one database, before the hold; a conversion's too), <c>creating</c> (a new database's file about
+    /// to be written, the database held alone), <c>recover-restoring</c> (before a transaction journal's snapshot
+    /// is written back). Holds: <c>hold-alone</c> (an exclusive hold, its folder's lock taken, not yet the
+    /// database file's). So a fault lands at an exact, repeatable point instead of a random one.</summary>
     internal static class FaultInjection
     {
         private static readonly int CrashAfterRows = Parse();

@@ -137,9 +137,14 @@ namespace Xod
 
     public static class XmlExtensions
     {
+        /// <summary>The same attributes with the same values. An attribute on one side only is a difference: an
+        /// update that marked a map's value null (<c>nil="true"</c>) was taken for no change against the entry with
+        /// no text, since only the first element's attributes were looked for in the second (review of TASK-071).</summary>
         public static bool ElementAttributesEquals(this XElement a, XElement b)
         {
             if (a.HasAttributes != b.HasAttributes)
+                return false;
+            if (a.Attributes().Count() != b.Attributes().Count())
                 return false;
 
             foreach (XAttribute at in a.Attributes())
@@ -152,6 +157,11 @@ namespace Xod
             return true;
         }
 
+        /// <summary>The same element, as an update asks of the row it would write and the stored one: name, attributes,
+        /// text, and the child elements in order. In order, because a list's items are: matching each child with any
+        /// equal one took a list reordered, or with an item repeated in place of another, for no change, so the update
+        /// was dropped and reported made (review of TASK-071). A row's properties are written in one order, so a row
+        /// stored in another (by another version) only costs a write. A list of children is always a change.</summary>
         public static bool ElementEquals(this XElement a, XElement b)
         {
             if (a == null && b == null) return true;
@@ -172,21 +182,16 @@ namespace Xod
             if (a.HasElements && b.HasElements && a.Elements().Count() != b.Elements().Count())
                 return false;
 
-            if (a.Attribute("refType") == null || a.Attribute("refType").Value != "children")
-            {
-                foreach (var ae in a.Elements())
-                {
-                    var be = b.Elements().Where(s => ae.ElementEquals(s));
-                    if (!be.Any())
-                        return false;
-                }
-            }
-            else
-            {
+            if (a.Attribute("refType")?.Value == "children")
                 return false;
-            }
 
-            return true;
+            using var bs = b.Elements().GetEnumerator();
+            foreach (var ae in a.Elements())
+            {
+                if (!bs.MoveNext() || !ae.ElementEquals(bs.Current))
+                    return false;
+            }
+            return !bs.MoveNext();
         }
 
         public static bool ElementMatch(this XElement a, XElement b)

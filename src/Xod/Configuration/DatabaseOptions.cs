@@ -14,7 +14,27 @@ namespace Xod
         public bool InitialCreate { get; set; } = true;
         public bool LazyLoad { get; set; }
         public bool LazyLoadParent { get; set; } = true;
-        public StorageFormat StorageFormat { get; set; } = StorageFormat.Xml;
+        private StorageFormat storageFormat = StorageFormat.Xml;
+
+        /// <summary>
+        /// The encoding of the files this context writes (each file's own encoding is read from the file, so a
+        /// folder can hold all three). Left unset, a database is written in the encoding its database file records
+        /// (the one it was created with, or that <see cref="XodMigrator"/> converted it to), or, for a new database or
+        /// a file that records none, in the one its database file's extension picks: <c>.xod</c> XML, <c>.xodj</c>
+        /// JSON, <c>.xodb</c> Binary.
+        /// </summary>
+        public StorageFormat StorageFormat
+        {
+            get => storageFormat;
+            set
+            {
+                storageFormat = value;
+                StorageFormatSet = true;
+            }
+        }
+
+        // Whether StorageFormat was set (ISS-093): unset, the database decides.
+        internal bool StorageFormatSet { get; private set; }
         public int PageSize { get; set; } = 524288; // 512 KB default page size
         public bool EnableIndexing { get; set; } = true;
         /// <summary>Has no effect: nothing has ever read it (ISS-048). For smaller files use

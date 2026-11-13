@@ -19,6 +19,16 @@ records it.
     with the reason. Before, a write failed when it reached the disk.
   - Don't run processes of XOD 2.0.0 or 2.0.1 on a database a newer version has open: they take no hold, so
     the newer version can't see them.
+  - Every context also holds the folder's lock file (`xod.lock`), of the same kind, before the database file's
+    ([PLAN-059](plans/PLAN-059-one-database-per-folder-recorded-format-value-collections.md)): every database file in a folder shares the folder's files, so a hold has to cover the
+    folder. An open naming a new database file beside one another context had open used to hold its own lock
+    alone, recover the folder as if it were alone (undoing that context's commit under way), and only then be
+    refused (ISS-096). It stays in the folder too.
+  - The open that creates a new database holds it alone until its database file is written. Another open
+    meanwhile, of that database or another in its folder, waits up to `LockRetryTimeoutMs`, then gets
+    `DatabaseLockedException`, as it does while an open recovers what a crash left.
+  - A password change whose hold alone failed for a reason other than another context's (too many open files, a
+    network error) left the context holding nothing while it went on writing; it holds the database again.
 - **A commit that fails is undone at once**, wherever it failed, and the original exception is thrown; a commit
   is refused (`TransactionException`) while another commit's journal is in the folder
   ([PLAN-051](plans/PLAN-051-commit-failure-and-shared-access.md)).
@@ -52,12 +62,21 @@ records it.
   - refused into a target folder that holds anything, and for a folder without a database file;
   - into another folder: the target appears whole or not at all (a crash leaves a `.<target>.converting-<id>`
     folder beside it, which can be deleted); in place: each file is replaced whole.
+- **A database is written in the encoding its database file records** ([PLAN-059](plans/PLAN-059-one-database-per-folder-recorded-format-value-collections.md)): unless
+  `DatabaseOptions.StorageFormat` is set, a context writes new and rewritten files in the encoding the database was
+  created in or `XodMigrator` converted it to, and a new database in the one its extension picks (`.xod` XML,
+  `.xodj` JSON, `.xodb` Binary; for a database opened through its folder, the extension of the file in it).
+  A record that names no format counts as none. A database converted in place keeps its name, and went on being written in its
+  extension's encoding; options that didn't set a format meant XML whatever the extension (ISS-093). A format set
+  is still the one written, and leaves the record as it is. Each file is read in its own encoding, as before.
 
 - **A folder holds one database** ([PLAN-053](plans/PLAN-053-statement-undo-counters-stored-values-locks.md)):
   opening a folder that holds more than one database file (`.xod`, `.xodj`, `.xodb`) is refused, and so is a
   path naming a new database file in a folder that already holds one (a mistyped name, or a case that differs
   on Linux). Every database file in a folder shares its tables, so a second one was another way into the same
-  data that the first one's lock didn't cover. Move all but one to folders of their own.
+  data that the first one's lock didn't cover. Move all but one to folders of their own. Two opens creating
+  different databases in one empty folder at the same moment both went on (ISS-096, [PLAN-059](plans/PLAN-059-one-database-per-folder-recorded-format-value-collections.md)): now one
+  does, and the other is refused and creates nothing.
 - **Lock files**: a read-only lock file holds on a local file system. Where the file system gives no exclusive
   lock (an NFS client and a lock file the user can only read), `LockDatabase`, the recovery at open and a
   password change are refused rather than run unprotected. A context that can't open or create the lock file
@@ -86,8 +105,17 @@ records it.
   marked element as they read a value left out, and an empty attribute as `""`; their index leaves `""` out, so
   they don't find an indexed empty value through the index. Files written by XOD 1.x stored an empty string as
   an empty element: it now reads `""`, where every earlier version read null. An attribute-positioned property
-  can't store null that way (ISS-094), and collection entries aren't covered: a dictionary's null value reads
-  back `""` and a list drops a null item (ISS-097).
+  can't store null that way (ISS-094). Maps and lists: the next entry.
+- **Maps and lists read back as written** ([PLAN-059](plans/PLAN-059-one-database-per-folder-recorded-format-value-collections.md)): a dictionary's null value reads back as null (it
+  read `""`), a list or array keeps its null items (they were dropped), an empty dictionary reads back empty (it
+  read null), and a list or array of a nullable type (`List<int?>`) can be stored (it threw `XmlException`)
+  (ISS-097). The files gain a marked entry and item (`<Entry key="k" nil="true" />`, `<String nil="true" />`).
+  XOD 2.0.0 and 2.0.1 read a marked entry or item as its empty text (`""` for a string, null for a nullable type),
+  and can't read a row that holds a list of a nullable type. An update that only sets a dictionary's value to
+  null, or only reorders a list, is written (it was dropped, and reported made). A dictionary property of another
+  type, a `SortedDictionary`, a `Hashtable` or a class deriving from `Dictionary<,>`, reads back as that type (it
+  threw once it held anything; 2.0.x reads an empty one stored now the same way). A null list or dictionary the
+  class initializes still reads back initialized (ISS-127).
 - **`XodSecurityService`** (obsolete) accepts the database's folder, as a context does, and refuses a mistyped
   database file beside the database rather than doing nothing.
 - **Deleting a child removes it from its parent's list**, whichever way the delete finds the row, and whether or

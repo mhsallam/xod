@@ -464,10 +464,11 @@ namespace Xod.Engines.Xml
                     xItem.Add(propertyElement);
                 }
             }
-            // Dictionary<TKey, TValue> support
+            // Dictionary<TKey, TValue> support. A map reads back as written (ISS-097): an empty one is stored, as an
+            // empty list is (left out, it read back null), and a null value is marked (StoredValue.ItemContent).
             else if (prop.TypeCategory == PropertyTypeCategory.Dictionary)
             {
-                if (value is IDictionary dict && dict.Count > 0)
+                if (value is IDictionary dict)
                 {
                     propertyElement = new XElement(prop.PropertyName,
                         new XAttribute("collType", "dictionary"));
@@ -478,7 +479,7 @@ namespace Xod.Engines.Xml
                         {
                             propertyElement.Add(new XElement("Entry",
                                 new XAttribute("key", StoredValue.Text(entry.Key, prop.PropertyName)),
-                                entry.Value != null ? StoredValue.Text(entry.Value, prop.PropertyName) : string.Empty));
+                                StoredValue.ItemContent(entry.Value, prop.PropertyName)));
                         }
                     }
                     xItem.Add(propertyElement);
@@ -513,13 +514,12 @@ namespace Xod.Engines.Xml
 
                 if (ValueHelper.IsScalarType(itmType))
                 {
+                    // Every item, a null one marked (ISS-097: it was left out), named as the readers look for it.
                     if (value is IEnumerable items)
                     {
+                        string itemName = StoredValue.ItemName(itmType);
                         foreach (var itm in items)
-                        {
-                            if (itm != null)
-                                propertyElement.Add(new XElement(itmType.Name, StoredValue.Text(itm, prop.PropertyName)));
-                        }
+                            propertyElement.Add(new XElement(itemName, StoredValue.ItemContent(itm, prop.PropertyName)));
                     }
                 }
                 else if (!shallowWrite)

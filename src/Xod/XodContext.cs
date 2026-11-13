@@ -21,8 +21,14 @@ namespace Xod
 
         public XodContext(string file, string password = null, DatabaseOptions options = null)
         {
-            var format = options?.StorageFormat ?? InferFormat(file);
-            this.engine = format switch
+            // A format given is the one written; otherwise the engine takes the database's own (ISS-093: a database
+            // converted to Binary was written in the encoding its extension picks).
+            if (options == null || !options.StorageFormatSet)
+            {
+                this.engine = new XmlEngine(file, password, options);
+                return;
+            }
+            this.engine = options.StorageFormat switch
             {
                 StorageFormat.Json => new JsonEngine(file, password, options),
                 StorageFormat.Binary => new BinaryEngine(file, password, options),
@@ -33,17 +39,6 @@ namespace Xod
         public XodContext(IXodEngine engine)
         {
             this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
-        }
-
-        private static StorageFormat InferFormat(string file)
-        {
-            string ext = System.IO.Path.GetExtension(file)?.ToLowerInvariant();
-            return ext switch
-            {
-                ".xodj" or ".json" => StorageFormat.Json,
-                ".xodb" or ".bin" => StorageFormat.Binary,
-                _ => StorageFormat.Xml
-            };
         }
 
         public IXodEngine Engine => engine;

@@ -187,6 +187,18 @@ for the number `2`, but the index stores `Gold`.
   element with no text as `""` and a nil element as nothing, as the library does. Each of four breaks of
   the reader (the nil mark ignored, empty text read as missing, the index check skipping `""` or keying a
   nil element) failed `--check` on this fixture.
+- **2026-11-13, value collections added to the stored-values fixture** (`TASK-071`,
+  [`PLAN-059`](PLAN-059-one-database-per-folder-recorded-format-value-collections.md)): ISS-097 gave a map's
+  entry and a list's item the `nil="true"` mark, stored an empty map, and named a nullable item by its
+  underlying type (PLAN-046 section 7.2). A third table, `BlankCollections`, holds a map with a null, an empty
+  and a set value, lists with a null and an empty item (one of `int?`), and an empty map and list. The
+  fixture was written again with `-- stored-values`, so the two older tables' files were written again too
+  (their pages have new codes); their expected content didn't change. The reader now reads a marked entry or
+  item as null and one with no text as `""` (it read an empty list item as null). Each of two breaks of the
+  reader (the mark ignored, an empty item read as missing) failed `--check` on this fixture. Every hold now
+  covers the folder too (`xod.lock`, PLAN-046 section 9), so both writers delete the lock files their context
+  held once it is closed (`Repo.DropLockFiles`); the `data` writer left the database file's lock file in the
+  folder before (the committed fixtures have none).
 
 ## 7. The gate
 

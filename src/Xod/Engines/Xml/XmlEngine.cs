@@ -75,22 +75,28 @@ namespace Xod.Engines.Xml
             if (!string.IsNullOrEmpty(password) && (password.Length < 1 || password.Length > 256))
                 throw new SecurityException("Password length should be between 1 and 256.");
 
+            // The encoding of the files this context writes: the one given; else, for an existing database, the one
+            // its database file records (taken once that file is open, below); else the one its database file's
+            // extension picks.
+            bool formatGiven = options != null && options.StorageFormatSet;
             this.options = options ?? new DatabaseOptions
             {
                 InitialCreate = true,
                 LazyLoadParent = true,
-                StorageFormat = InferStorageFormat(file)
             };
 
-            this.StorageFormat = this.options.StorageFormat;
             this.pageSize = this.options.PageSize > 0 ? this.options.PageSize : 524288;
 
             var (resolvedPath, resolvedRoot) = DatabaseFiles.Resolve(file);
+            // The database file's extension, not the path's: a folder named "shop.bin" picked Binary for its data.xod,
+            // and a database opened through its folder picked XML whatever its file (review of TASK-071).
+            this.StorageFormat = formatGiven ? this.options.StorageFormat : InferStorageFormat(resolvedPath);
             if (!File.Exists(resolvedPath) && this.options.InitialCreate)
             {
                 Directory.CreateDirectory(resolvedRoot);
                 IsNew = true;
             }
+            FaultInjection.Step("open-checked");
 
             this.path = resolvedPath;
             this.root = resolvedRoot;
@@ -111,7 +117,11 @@ namespace Xod.Engines.Xml
                 this.StorageFormat,
                 this.options.LockDatabase,
                 this.options.LockRetryTimeoutMs,
-                this.options.Durability == DurabilityMode.Buffered);
+                this.options.Durability == DurabilityMode.Buffered,
+                creating: IsNew,
+                checkFolder: () => DatabaseFiles.Recheck(file, resolvedPath));
+            // Under the hold: another context may have created the file since it was looked for.
+            IsNew = IsNew && !File.Exists(resolvedPath);
             // Every file mutation passes here. A password switch this context committed but couldn't finish is
             // finished first (or the write refused): the next open would put the staged copy, from before this
             // write, over it.
@@ -136,11 +146,27 @@ namespace Xod.Engines.Xml
             try
             {
                 string databaseFile = System.IO.Path.GetFileName(path);
+                // A new database's file is written with the database held alone, its folder checked under that hold
+                // (IOService.OpenAndRecover, ISS-096), until the end of this constructor.
+                if (IsNew)
+                    FaultInjection.Step("creating");
                 XFile xodFile = this.ioService.OpenFileOrCreate<Database>(databaseFile, !this.options.InitialCreate, this.options.InitialCreate);
                 if (xodFile == null)
                     exceptionService.Throw(new DatabaseFileException());
                 else
                     this.path = xodFile.Path;
+
+                // ISS-093: a database converted by XodMigrator keeps its name (a .xod converted to Binary), and was then
+                // written in the encoding the extension picks. Before any table is read: nothing format-bound is held.
+                // The record is a format's name as written (StorageFormat.ToString()), in any case; anything else (a
+                // number, a list of names, which Enum.TryParse took) is no record, and the extension decides.
+                string recordedName = xodFile?.Root()?.Attribute("Format")?.Value;
+                string known = Enum.GetNames(typeof(StorageFormat)).FirstOrDefault(n => string.Equals(n, recordedName, StringComparison.OrdinalIgnoreCase));
+                if (!formatGiven && known != null && Enum.Parse<StorageFormat>(known) != this.StorageFormat)
+                {
+                    this.StorageFormat = Enum.Parse<StorageFormat>(known);
+                    this.ioService.StorageSerializer = StorageSerializerFactory.Get(this.StorageFormat);
+                }
 
                 this.propertyKeys = new PropertyKeyService(ioService, databaseFile, this.options.PropertyEncryptionKey, () => this.password);
 
@@ -159,6 +185,9 @@ namespace Xod.Engines.Xml
                 this.logService = new LogService(root);
                 this.LazyLoad = this.options.LazyLoad;
                 this.LazyLoadParent = this.options.LazyLoadParent;
+
+                // A new database's file is on disk, recording its format: others may open it.
+                this.ioService.ShareHoldOnceCreated();
             }
             catch
             {
@@ -168,13 +197,14 @@ namespace Xod.Engines.Xml
             }
         }
 
-        private static StorageFormat InferStorageFormat(string filePath)
+        // A database file's extension (DatabaseFiles.Resolve names only .xod, .xodj and .xodb files).
+        private static StorageFormat InferStorageFormat(string databaseFile)
         {
-            string ext = System.IO.Path.GetExtension(filePath)?.ToLowerInvariant();
+            string ext = System.IO.Path.GetExtension(databaseFile)?.ToLowerInvariant();
             return ext switch
             {
-                ".xodj" or ".json" => StorageFormat.Json,
-                ".xodb" or ".bin" => StorageFormat.Binary,
+                ".xodj" => StorageFormat.Json,
+                ".xodb" => StorageFormat.Binary,
                 _ => StorageFormat.Xml
             };
         }
