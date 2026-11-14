@@ -3,8 +3,9 @@
 // logical-processor count, affinity mask, RAM size, GPU, OS build or .NET patch level. Results say "one machine".
 // The benchmark harness keeps the machine out of what it writes by construction (Machine.RecordPath writes it to
 // a record git ignores); this check covers what people and agents write by hand, which is text, so it reads text.
-// It is the one list of what counts: xod-site runs this file too, from the xod2 checkout beside it. It skips
-// itself (its patterns would match), so a model name or count written here goes unchecked: keep examples out.
+// It is the one list of what counts: xod-site runs this file too, from the xod2 checkout beside it. It checks
+// itself like any other file, so each pattern is written not to match its own text (R[y]zen, not the word);
+// xod-site's contract test (scripts/machine-details.test.mjs) runs it on this file.
 //
 //   node tools/no-machine-details.mjs              the files staged for commit (the pre-commit hook, .githooks)
 //   node tools/no-machine-details.mjs --all        every tracked file (a step of the gate)
@@ -16,7 +17,6 @@
 // exception here for one file. Images and other binary files are skipped: a screenshot is checked by looking.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const PATTERNS = [
@@ -29,7 +29,7 @@ const PATTERNS = [
   [/\b(Core\s+)?i[3579]-\d{4,5}[A-Z]{0,3}\d?\b/, 'a CPU model'], // also names that end in a digit
   [/\bCore\s+Ultra\s+[3579]\s+\d{3}[A-Z]{0,2}\b/i, 'a CPU model'],
   [/\bCore\s*\(TM\)|\bIntel\s*\(R\)/i, 'a CPU model'],
-  [/\b(Ryzen|Threadripper|Xeon|EPYC|Snapdragon)\b/i, 'a CPU model'],
+  [/\b(R[y]zen|Threadr[i]pper|X[e]on|E[P]YC|Snapdr[a]gon)\b/i, 'a CPU model'],
   [/\bApple\s+M[1-9]\b/, 'a CPU model'],
   [/\b(RTX|GTX|Radeon\s+RX)\s?\d{3,4}\b/i, 'a GPU model'],
   [/\b\d+\s?GB\s+(of\s+)?(RAM|DDR\d|memory\s+machine)\b|\b\d+\s?GB\s+(machine|laptop|desktop)\b/i, 'a RAM size'],
@@ -66,9 +66,8 @@ if (dirAt >= 0) {
   scope = 'files under ' + dir;
 } else {
   const repo = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
-  const self = path.relative(repo, fileURLToPath(import.meta.url)).split(path.sep).join('/');
   names = execFileSync('git', all ? ['ls-files', '-z'] : ['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'],
-    { cwd: repo, encoding: 'utf8' }).split('\0').filter((n) => n && n !== self); // this file holds the patterns
+    { cwd: repo, encoding: 'utf8' }).split('\0').filter(Boolean);
   read = (name) => {
     try {
       // Staged: the blob that will be committed, not the working file.
