@@ -8,7 +8,6 @@ An embedded database for .NET. Your objects go in, files you can read come out.
 [![NuGet downloads](https://img.shields.io/nuget/dt/Xod?label=downloads)](https://www.nuget.org/packages/Xod)
 [![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/mhsallam/xod/blob/main/LICENSE.md)
 ![.NET 8 and 9](https://img.shields.io/badge/.NET-8.0%20%7C%209.0-512BD4)
-![60 tests passing](https://img.shields.io/badge/tests-60%20passing-brightgreen)
 
 **[Documentation](https://xod.sabaeon.com/docs/)** · [Getting started](https://xod.sabaeon.com/docs/getting-started/) · [API reference](https://xod.sabaeon.com/docs/api/) · [Benchmarks](https://xod.sabaeon.com/benchmarks)
 
@@ -21,7 +20,7 @@ using Xod;
 
 using var db = new XodContext("app.xod");
 
-db.Insert(new Customer { Name = "Nadia", Orders = { new Order { Status = "open" } } });
+db.Insert(new Customer { Name = "Nadia", Orders = new() { new Order { Status = "open" } } });
 
 var open = db.Query<Order>(o => o.Status == "open").ToList();
 ```
@@ -75,8 +74,8 @@ public class Order
 ```
 
 Relationships are ordinary collections. Primary keys, unique keys and secondary indexes are attributes
-on the properties you already have. Writes are transactional and journal to `.xwal`, so a process killed
-mid-write comes back whole.
+on the properties you already have. When writes must land together or not at all, even across a process
+crash, use a transaction: a commit that a crash cuts short is undone at the next open.
 
 ## Numbers
 
@@ -122,14 +121,14 @@ The full numbers, including the cases above, are on the benchmark page.
 ## What is in the box
 
 Concurrency is per table: many readers and a queued writer inside the process that owns the folder.
-Transactions with a write-ahead journal; primary, unique and secondary indexes; one-to-many,
+Transactions with a commit journal; primary, unique and secondary indexes; one-to-many,
 many-to-many and self joins; cascade delete; `[Required]` validation; AES-256-GCM property encryption;
-`Select<T>(skip, take)` streaming; `record`, `DateOnly`, `TimeOnly` and `Dictionary<K,V>`; and a
+`Select<T>(skip, take)` paging; SQL `SELECT` from .NET and the `xod query` command; `record`, `DateOnly`, `TimeOnly` and `Dictionary<K,V>`; and a
 command-line tool for stats, conversion and encryption.
 
 The engine targets .NET 8 and .NET 9. The test suite covers the API, stress, referential integrity,
 crash safety, migration from a real 1.x database, format equivalence, a million rows, a differential
-check against SQLite and the public API surface: 54 tests, no skips, green on Windows and Linux. The
+check against SQLite and the public API surface, with no skips, on Windows and Linux. The
 release gate is in [docs/TEST-PLAN-2.0.md](https://github.com/mhsallam/xod/blob/main/docs/TEST-PLAN-2.0.md).
 
 ## Licence

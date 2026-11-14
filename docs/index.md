@@ -28,9 +28,10 @@ The project's memory. `xod2` is the active rework of XOD; `xod` and `xod.core` a
 - [PLAN-052](plans/PLAN-052-autonumbers-password-service-migrator.md) - autonumber settings and updates, one password writer, a migrator that is all or nothing (2026-11-12, not released; the Guid autonumber regression ISS-117 fixed 2026-11-13, section 8): ISS-047, ISS-048, ISS-059, ISS-069, ISS-072, ISS-075, ISS-080 to ISS-082, ISS-117
 - [PLAN-051](plans/PLAN-051-commit-failure-and-shared-access.md) - a failed commit undone at once; a database a password change has to itself (2026-11-12, not released): ISS-070, ISS-071, ISS-073, ISS-074, ISS-076 to ISS-079
 - [RELEASE-NOTES-NEXT](RELEASE-NOTES-NEXT.md) - behaviour changes waiting for the next release
+- [RELEASE-NOTES-2.0.2](RELEASE-NOTES-2.0.2.md) - what 2.0.2 changed (released 2026-11-14)
 - [PLAN-050](plans/PLAN-050-password-change.md) - a password change that is all or nothing (2026-11-12, not released): ISS-065 to ISS-068
 - [PLAN-049](plans/PLAN-049-property-encryption.md) - property encryption with a key of the database's own (2026-11-11, not released): ISS-050, ISS-058, ISS-063, ISS-064
 
 ## Repos
-- `xod2/` - XOD++ (local git, no remote)
+- `xod2/` - XOD++ (GitHub `mhsallam/xod`)
 - `xod/`, `xod.core/` - originals

@@ -13,7 +13,7 @@ namespace Xod
 {
     /// <summary>
     /// XOD++ (ZOD) Object-Oriented Relational Embedded Database Context.
-    /// Supports XML, JSON, and Binary storage engines, B-Tree indexing, ACID transactions, and AES-256-GCM encryption.
+    /// Supports XML, JSON and Binary storage engines, primary, unique and secondary indexes, transactions, SQL SELECT and AES-256-GCM property encryption.
     /// </summary>
     public class XodContext : IXodContext
     {
