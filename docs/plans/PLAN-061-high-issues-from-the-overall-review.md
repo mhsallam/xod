@@ -86,10 +86,11 @@ turned at least one red, and the file was restored after each:
 - **Gate** (the final tree, 2026-11-15, Windows): engine and crash writer build with 0 warnings; `Xod.Tests`
   467/467 on net8.0 and 475/475 on net9.0; conformance 24/24 on each; the independent reader `--check` and
   `--check-fresh` ok; `XodBench.Tests` 26/26; no machine details in the tracked files.
-- **Not run: Linux.** The Unix side of the hold (`flock(LOCK_SH)` through the rename, the probe's `LOCK_EX`) is
-  read from the runtime's source, not run here: Docker's engine didn't start, and the WSL distro has no .NET.
-  To run: the journal and commit-failure tests in `mcr.microsoft.com/dotnet/sdk:9.0`, on the container's own
-  file system.
+- **Linux** (2026-11-15, `mcr.microsoft.com/dotnet/sdk:9.0`, a non-root user, the container's own file system,
+  no network): the journal and commit-failure tests 15/15. The waiting test there shows the Unix side of the
+  hold: `flock(LOCK_SH)` follows the journal through its rename and the probe's `LOCK_EX` is refused, or the
+  write would have been refused as one that won't finish instead of waiting. NFS and SMB are not run (read from
+  the runtime's source: refused, not waited for).
 
 ### The independent review, and what came of it
 
