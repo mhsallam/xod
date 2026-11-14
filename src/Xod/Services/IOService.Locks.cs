@@ -287,7 +287,7 @@ namespace Xod.Services
         /// be refused (Windows refuses it for the sharing; Unix for the lock). Where it succeeds, the file system gave
         /// no lock (an NFS client and a lock file this user can only read), so nothing keeps others out: the hold is let
         /// go and refused as if another context held the database, which is the safe reading. Not where the caller
-        /// switched .NET's file locking off (System.IO.DisableFileLocking, read as the runtime reads it): that says
+        /// switched .NET's file locking off on Unix (System.IO.DisableFileLocking, read as the runtime reads it): that says
         /// nothing else opens the database, and is taken at its word, as before. Only a refusal for the sharing proves
         /// the hold (HeldByAnother); any other failure of the probe (too many open files) proves nothing, and is
         /// refused like an open that succeeded (review of TASK-068: every IOException counted as proof).
@@ -324,8 +324,10 @@ namespace Xod.Services
         // The runtime's own reading (SafeFileHandle.DisableFileLocking: AppContextConfigHelper.GetBooleanConfig(
         // "System.IO.DisableFileLocking", "DOTNET_SYSTEM_IO_DISABLEFILELOCKING"), dotnet/runtime release/9.0): the
         // environment variable when it says "1"/"true" or "0"/"false" (the words in any case), else the AppContext
-        // switch, else off.
-        private static readonly bool FileLockingSwitchedOff = ReadFileLockingSwitchedOff();
+        // switch, else off. Only the Unix file handle reads it (SafeFileHandle.Unix.cs: CanLockTheFile, so no flock,
+        // LOCK_SH or LOCK_EX); the Windows one passes FileShare to CreateFile whatever it says (SafeFileHandle.Windows.cs,
+        // release/9.0), so on Windows sharing still keeps other opens out and the probes still prove a hold.
+        internal static readonly bool FileLockingSwitchedOff = !OperatingSystem.IsWindows() && ReadFileLockingSwitchedOff();
 
         private static bool ReadFileLockingSwitchedOff()
         {

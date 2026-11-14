@@ -183,7 +183,7 @@ namespace Xod.Services
         /// against Apple's headers). A value that doesn't match reads the marker as not held, so as Behind unless
         /// empty: indexes rebuilt, never a stale one trusted.
         /// </summary>
-        private static bool HeldByAnother(IOException e)
+        internal static bool HeldByAnother(IOException e)
         {
             int code = e.HResult;
             if (OperatingSystem.IsWindows())

@@ -31,6 +31,8 @@ namespace Xod.Services
         // This commit's own journal: staged (the .tmp written) and in place. Only this commit's is ever deleted.
         private bool journalStaged;
         private bool journalWritten;
+        // This commit holds its journal open while it runs (WriteWalJournal, ISS-147).
+        private FileStream journalHold;
 
         public Guid TransactionId { get; } = Guid.NewGuid();
         public bool IsActive => !completed;
@@ -114,6 +116,7 @@ namespace Xod.Services
                 }
                 finally
                 {
+                    ReleaseJournalHold();
                     snapshots.Clear();
                     newlyCreatedFiles.Clear();
                     onDispose?.Invoke();
@@ -185,12 +188,20 @@ namespace Xod.Services
             FaultInjection.Step("journal-writing");
             try
             {
-                using (var fs = new FileStream(tmpWal, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                {
-                    journalStaged = true;
-                    doc.Save(fs);
-                    fs.Flush(flushToDisk: false);
-                }
+                // Held open from here until the journal is deleted (DeleteWalJournal), or this commit has failed and
+                // can't be undone (ReleaseJournalHold): a journal its context holds is a commit under way; one nobody
+                // holds won't finish (JournalIn, ISS-147). Shared for reading and deletion, so the move below and the
+                // deletion work under the hold (on Windows they need FileShare.Delete; on Unix the hold is flock
+                // LOCK_SH, which follows the file through the rename). A probe that shares nothing is refused while it
+                // is held: Windows for the sharing, Unix for the lock (.NET takes LOCK_EX for FileShare.None,
+                // SafeFileHandle.Unix.cs), as for the lock files (IOService.OpenOneLockFile). Not on a Unix network or
+                // unrecognised file system: .NET takes no LOCK_SH for a file opened for writing there (CanLockTheFile:
+                // nfs, smb, smb2, cifs, or a type it can't read, release/9.0), so this hold isn't seen and the commit
+                // reads as one that won't finish: writes beside it are refused, not let in.
+                journalHold = new FileStream(tmpWal, FileMode.CreateNew, FileAccess.Write, FileShare.Read | FileShare.Delete);
+                journalStaged = true;
+                doc.Save(journalHold);
+                journalHold.Flush(flushToDisk: false);
                 FaultInjection.Step("journal-staged");
                 File.Move(tmpWal, walFilePath, overwrite: false);
             }
@@ -203,7 +214,8 @@ namespace Xod.Services
             journalWritten = true;
         }
 
-        // This commit's journal, staged or in place: never another's.
+        // This commit's journal, staged or in place: never another's. Deleted under the hold, which goes after it,
+        // so no other context finds it there and unheld (ISS-147).
         private void DeleteWalJournal()
         {
             if (journalStaged)
@@ -215,6 +227,76 @@ namespace Xod.Services
             {
                 File.Delete(walFilePath);
                 journalWritten = false;
+            }
+            ReleaseJournalHold();
+        }
+
+        // The journal's hold goes: after its deletion, or with the commit over and the journal kept because it
+        // couldn't be undone. Kept, it now reads as one that won't finish, and every context refuses to write beside
+        // it until an open that has the database to itself undoes it (JournalIn).
+        private void ReleaseJournalHold()
+        {
+            journalHold?.Dispose();
+            journalHold = null;
+        }
+
+        /// <summary>This context's commit holds its journal: the one journal its own writes may go beside.</summary>
+        internal bool HoldsJournal => journalHold != null;
+
+        internal enum JournalState
+        {
+            /// <summary>No journal in the folder.</summary>
+            None,
+            /// <summary>A commit under way: its context holds the journal.</summary>
+            UnderWay,
+            /// <summary>A commit that won't finish (cut short by a crash, or failed and not undone): nobody holds its
+            /// journal, which the next open that has the database to itself undoes.</summary>
+            WontFinish,
+        }
+
+        /// <summary>
+        /// Whether the folder holds a commit's journal, and whether that commit is under way (ISS-147). Whatever is
+        /// written beside a journal that is later undone is undone with it, after its context was told it was made:
+        /// the files the journal names go back to their images from before that commit. A journal nobody holds is
+        /// undone at the next open that has the database to itself. A commit is told apart from a crash by the hold
+        /// (WriteWalJournal): a probe that shares nothing is refused while it is held. Where the hold can't be seen
+        /// (file locking switched off on Unix, a Unix network file system, or a probe that fails for another reason),
+        /// the journal is read as one that won't finish, the reading that writes nothing: a commit under way is then
+        /// refused beside rather than waited for. The reading is a guess where the probe fails for a reason other than
+        /// the sharing: a journal this user can't open reads as under way until the wait runs out, so the refusal's
+        /// message can name the wrong cause; what is refused is right either way.
+        /// </summary>
+        internal static JournalState JournalIn(string rootDirectory)
+        {
+            if (string.IsNullOrEmpty(rootDirectory))
+                return JournalState.None;
+            string journal = Path.Combine(rootDirectory, "transaction.xwal");
+            if (!File.Exists(journal))
+                return JournalState.None;
+            if (IOService.FileLockingSwitchedOff)
+                return JournalState.WontFinish;
+            try
+            {
+                using (new FileStream(journal, FileMode.Open, FileAccess.Read, FileShare.None)) { }
+                return JournalState.WontFinish;
+            }
+            catch (FileNotFoundException)
+            {
+                return JournalState.None; // its commit ended meanwhile
+            }
+            catch (IOException e) when (IOService.HeldByAnother(e))
+            {
+                return JournalState.UnderWay;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Windows refuses an open of a file whose deletion is pending (a commit that has just ended, under its
+                // hold): read as under way, and asked again.
+                return File.Exists(journal) ? JournalState.UnderWay : JournalState.None;
+            }
+            catch (IOException)
+            {
+                return File.Exists(journal) ? JournalState.WontFinish : JournalState.None;
             }
         }
 

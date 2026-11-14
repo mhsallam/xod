@@ -215,7 +215,7 @@ public static class Program
         }
 
         // A transaction of one batch, committed; XOD_CRASH_AT_STEP / XOD_FAIL_AT_STEP stop it part-way.
-        if (mode == "txcommit" || mode == "txfail")
+        if (mode == "txcommit" || mode == "txfail" || mode == "txfail-hold")
         {
             using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
             try
@@ -240,6 +240,16 @@ public static class Program
             }
             if (mode == "txcommit")
                 return 0;
+
+            // "txfail-hold": the commit failed and (with XOD_FAIL_AT_STEP=commit-written,undo) couldn't be undone, and
+            // this process stays alive, its context open, until the test sends a line (ISS-147).
+            if (mode == "txfail-hold")
+            {
+                Console.WriteLine("WAITING");
+                Console.Out.Flush();
+                Console.In.ReadLine();
+                return 0;
+            }
 
             // What this context sees after the failed commit, and whether it can go on writing (the next batch
             // after what it sees).

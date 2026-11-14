@@ -160,7 +160,8 @@ namespace Xod.Tests
                 byte[] dead = File.ReadAllBytes(journal);
 
                 var next = XodCrashSafetyTests.RunWriterProcess("txcommit", dir, ("XOD_TEST_BATCH", "3"));
-                Assert.Contains("COMMIT FAILED TransactionException", next.Output);
+                // Refused before it writes anything, since ISS-147 refuses every write beside a journal that won't finish.
+                Assert.Contains("COMMIT FAILED XodException: A commit that didn't finish", next.Output);
                 Assert.Equal(dead, File.ReadAllBytes(journal));
             }
 

@@ -183,6 +183,9 @@ file unlocked silently; `System.IO.DisableFileLocking` switches locking off (run
   snapshots in place of the files, as PLAN-046 asks of an outside reader: it can't tell a live journal from
   one a crash left); their commits are refused; their writes outside a transaction go through and are undone
   by that later recovery. Contexts without `LockDatabase` are otherwise uncoordinated (ISS-042).
+  *Since [`PLAN-061`](PLAN-061-high-issues-from-the-overall-review.md) (2026-11-15, `ISS-147`): a write
+  beside a journal its commit no longer holds is refused, and one beside a commit under way waits for it; what
+  that leaves (a commit that starts between a write's check and the write) is `ISS-164`.*
 - **A `.tmp` of a database file that the open can't tidy** (a file open elsewhere) stays, and every open
   without `LockDatabase` then takes the lock file exclusively for an instant, so another open at that instant
   fails at the default `LockRetryTimeoutMs` of 0.
