@@ -132,6 +132,7 @@ type Xod.DatabaseOptions
   prop Int32 TransactionTimeoutMs { get; set; }
   prop DurabilityMode Durability { get; set; }
   prop String PropertyEncryptionKey { get; set; }
+  prop SqlSchemaSource SqlSchema { get; set; }
 
 type Xod.DatabaseStatistics
   ctor()
@@ -561,6 +562,26 @@ type Xod.SecurityException
   prop Int32 HResult { get; set; }
   prop String StackTrace { get; }
 
+type Xod.SqlColumn (sealed)
+  prop String Name { get; }
+  prop String Type { get; }
+  method String ToString()
+
+type Xod.SqlResult (sealed)
+  prop IReadOnlyList`1 Columns { get; }
+  prop IReadOnlyList`1 Rows { get; }
+  prop IReadOnlyList`1 Warnings { get; }
+
+type Xod.SqlSchemaSource (sealed)
+  field Int32 value__
+  field SqlSchemaSource Classes
+  field SqlSchemaSource Recorded
+
+type Xod.SqlWarning (sealed)
+  prop String Code { get; }
+  prop String Message { get; }
+  method String ToString()
+
 type Xod.StorageFormat (sealed)
   field Int32 value__
   field StorageFormat Xml
@@ -681,6 +702,10 @@ type Xod.XodContext
   method IEnumerable`1 Select(Int32, Int32, Boolean, String)
   method Task`1 SelectAsync(String, CancellationToken)
   method IEnumerable`1 SelectBackward(String)
+  method SqlResult Sql(String, Object[])
+  method SqlResult Sql(String, IReadOnlyDictionary`2)
+  method IReadOnlyList`1 Sql(String, Object[])
+  method IReadOnlyList`1 Sql(String, IReadOnlyDictionary`2)
   method Boolean Update(T, T, UpdateFilter)
   method Boolean Update(Type, Object, Object, UpdateFilter)
   method Boolean Update(Object, Object, UpdateFilter)
@@ -703,3 +728,17 @@ type Xod.XodException
 
 type Xod.XodMigrator (static)
   method Int32 ConvertDatabase(String, String, StorageFormat, String)
+
+type Xod.XodSqlException
+  ctor(String code, String message, Int32 line, Int32 column)
+  prop String Code { get; }
+  prop Int32 Line { get; }
+  prop Int32 Column { get; }
+  prop MethodBase TargetSite { get; }
+  prop String Message { get; }
+  prop IDictionary Data { get; }
+  prop Exception InnerException { get; }
+  prop String HelpLink { get; set; }
+  prop String Source { get; set; }
+  prop Int32 HResult { get; set; }
+  prop String StackTrace { get; }

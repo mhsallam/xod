@@ -94,8 +94,12 @@ don't exist in the files, so they aren't columns.
 | list or array of scalars | `ARRAY` | `ANY(tags) = 'x'` (section 6) |
 
 - **Enums** compare by name, as stored. Ordering enums by their numeric value is not supported in v1.
-- **`DateTime` kind**: stored in round-trip form, which keeps `Z` for UTC and an offset for local times;
-  comparisons use the stored instant. (The file-format spec pins the exact forms.)
+- **`DateTime` kind**: stored in round-trip form, which keeps `Z` for UTC and an offset for local times.
+  Comparisons, grouping and `DISTINCT` use the clock time and ignore `Kind`, as C# does and as the index keys
+  do (`PLAN-046` section 8.3), so SQL, lambdas and the index agree. (Corrected when built, 2026-11-14,
+  `PLAN-060`: this said "the stored instant", which the index keys decided against.) A local value reads back
+  in the reading machine's zone (ISS-057), so a column that mixes UTC and local values orders by clock time,
+  and `xod query` in another zone can answer differently. (The file-format spec pins the exact forms.)
 - **Encrypted columns** (`[Crypto(AES256)]`) read as plain text only when the database is opened with
   its password; otherwise they are `NULL` and a warning names them. **Hashed columns** (`SHA*`, `MD5`)
   read as their hash; `VERIFY_HASH(column, 'plain')` returns `BOOLEAN`.
@@ -221,7 +225,7 @@ has been in a release and the conformance set covers them. Writes in the browser
 | Integer division | `7 / 2 = 3`; `7 / 2.0 = 3.5` | as C# |
 | `SUM` of `INTEGER` | `INTEGER`; overflow is an error, not a wrap | silent wrap gives wrong totals |
 | `AVG` | `DOUBLE`, or `DECIMAL` for a `DECIMAL` column | exact money stays exact |
-| Reserved words | the SQL-92 list plus `ILIKE`, `LIMIT`, `OFFSET`; quote with `"..."` | `Order`, `User`, `Group` are common class names |
+| Reserved words | PostgreSQL's reserved words plus `ILIKE`, `LIMIT`, `OFFSET` (`SqlLexer.Reserved`); quote with `"..."`. After a `.`, any word is a name (`l.Order.Customer`). Built so in PLAN-060: the SQL-92 list first named here also reserves `Year`, `Day` and `Value`, which the accepted cases use as column names | `Order`, `User`, `Group` are common class names |
 | Identifier quotes | `"Name"`; `[Name]` also accepted (**D6**) | `[...]` is what .NET developers know from SQL Server |
 | Parameters | `@name` and `?` | `@name` reads well from C#; `?` is what BI tools send |
 | `ROUND(x, n)` at a tie | half away from zero: `ROUND(2.5) = 3` (**G1**, `PLAN-047`) | as PostgreSQL and SQL Server; C#'s default is banker's rounding |
@@ -244,6 +248,15 @@ the conformance set, so every implementation reports the same failure for the sa
 | `XQ007` overflow | an `INTEGER` result out of range |
 | `XQ008` locked | an encrypted column read without the password (warning, not an error, for `SELECT`) |
 | `XQ009` read-only | a write on a read-only database (a packed `.xodx`, the browser) |
+| `XQ010` division-by-zero | `/` or `%` by zero on `INTEGER` or `DECIMAL`, or an `INTERVAL` divided by zero (`DOUBLE` gives IEEE `Infinity` or `NaN`) |
+| `XQ011` cardinality | a subquery used as a value gives more than one row |
+| `XQ012` parameter | a parameter without a value, more positional values than `?` marks, or a value of a .NET type no SQL type holds |
+| `XQ013` untyped | a table or column no schema lists, read as `TEXT` (warning) |
+| `XQ014` unparsed | a stored value that doesn't parse as its column's type, read as NULL (warning; `PLAN-046` E3) |
+
+Added when version 1 was built ([`PLAN-060`](PLAN-060-xod-sql-select-manifest-cli.md), 2026-11-14): `XQ010` to
+`XQ014`. `XQ003` also covers a column name two tables in scope have. `XQ001` also refuses writes and version-2
+syntax, saying they aren't in this version. The other choices made then are in `PLAN-060` section 3.
 
 ## 10. How it is built (outline, decided in step 3)
 
@@ -252,7 +265,8 @@ the conformance set, so every implementation reports the same failure for the sa
   and would tie semantics to the C# engine.
 - The planner uses the existing indexes for `=`, ranges and `IN` on key and indexed columns, and the
   per-page index ranges in `.xtab` to skip pages; everything else scans. Plans never change answers.
-- `EXPLAIN SELECT ...` shows the plan: which index, which pages, estimated rows.
+- `EXPLAIN SELECT ...` shows the plan: which index, which pages, estimated rows. As built (PLAN-060): one line
+  per table, naming the index and the conditions it answers with the rows it gives, or `scan`.
 
 ## 11. Conformance (the third step-1 spec, outline)
 
@@ -289,5 +303,7 @@ Decided 2026-11-11: the owner accepted all eight recommendations.
 
 ## Verdict
 
-Spec accepted; nothing built. Every statement about today's XOD is from the code (`ValueHelper`, `PropertyService`, the 1.2.5
+Spec accepted. Version 1 `SELECT` built on 2026-11-14 in [`PLAN-060`](PLAN-060-xod-sql-select-manifest-cli.md) (its verdict says what is verified); writes (D3) and version 2 are not built.
+
+Every statement about today's XOD is from the code (`ValueHelper`, `PropertyService`, the 1.2.5
 fixture) as of 2026-11-11; everything else is a proposal.

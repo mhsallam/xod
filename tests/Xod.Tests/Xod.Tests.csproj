@@ -23,6 +23,14 @@
     <ProjectReference Include="..\..\src\Xod\Xod.csproj" />
   </ItemGroup>
 
+  <!-- xod query (XodCliQueryTests) runs in process. The tool targets .NET 9 only, so its tests do too. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <ProjectReference Include="..\..\src\Xod.Cli\Xod.Cli.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' != 'net9.0'">
+    <Compile Remove="XodCliQueryTests.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- the crash-safety tests launch this as a child process, so `dotnet test` must build it first -->
     <ProjectReference Include="..\Xod.CrashWriter\Xod.CrashWriter.csproj" ReferenceOutputAssembly="false" />

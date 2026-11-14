@@ -4,6 +4,47 @@ What changes for users in the next release, collected as each fix lands. The ver
 release itself are the owner's decision; nothing here is published. Each item links the plan that
 records it.
 
+**The release, decided by the owner on 2026-11-14:** everything in the tree ships as **2.0.2**, once it is
+tested and verified. On 2026-11-14 the owner had the tree published to GitHub and the site updated; nothing
+is tagged or published to NuGet until the owner says so. The site's `**Next release:**` labels become 2.0.2 at the release.
+
+## New
+
+- **XOD SQL, version 1 (SELECT only)**, in .NET and in the CLI
+  ([PLAN-060](plans/PLAN-060-xod-sql-select-manifest-cli.md), the language of
+  [PLAN-045](plans/PLAN-045-query-language-spec.md)):
+  - `db.Sql("SELECT ...")` returns a `SqlResult`: the columns with their SQL types, the rows, and warnings.
+    `db.Sql<T>(...)` puts each row in a new `T`, column by property name.
+  - Parameters: `?` by position (`db.Sql(sql, "kitchen", 20m)`), or `@name` from a dictionary.
+  - The language: inner, left and cross joins; paths along references (`o.Customer.Name`); children
+    collections (`JOIN c.Orders o`); maps and lists (`Tags['k']`, `'x' = ANY(Labels)`, `CARDINALITY`);
+    `GROUP BY`, `HAVING`, `DISTINCT`, `ORDER BY` with `NULLS FIRST`/`LAST`, `LIMIT`, `OFFSET`; subqueries; the
+    functions of PLAN-045 section 5. `EXPLAIN SELECT ...` says how each table is read.
+  - An error is an `XodSqlException` with a stable `Code` (`XQ001` to `XQ012`); warnings are in
+    `SqlResult.Warnings` (`XQ008`, `XQ013`, `XQ014`).
+  - `INSERT`, `UPDATE` and `DELETE` are refused (`XQ001`): writes come in a later release (PLAN-045 D3).
+  - Conditions on a key, unique or indexed column of a table whose class the program has are answered by the
+    index `Query<T>` uses. The answer is the same with indexing on or off, rows in stored order.
+  - A `[Crypto(AES256)]` column reads as plain text only when the database was opened with its password or
+    `DatabaseOptions.PropertyEncryptionKey`. Otherwise it reads as NULL, with warning `XQ008`. A value 2.0
+    encrypted with its built-in key (ISS-050) reads as NULL with `XQ008` too; the lambda API still opens it.
+  - `DatabaseOptions.SqlSchema`: `Classes` (the default) types a table from its class when the program has
+    it; `Recorded` reads every table by the schema its file records, as `xod query` does.
+- **Each table file records the schema of its rows** (`<Schema>`, [PLAN-046](plans/PLAN-046-file-format-spec.md)
+  section 10). A table file is created with it, and every write checks the files it may write and replaces
+  a missing or different one, as part of the write (a rollback takes it back). A read never writes it. A
+  database written by 2.0.0 or 2.0.1 gets it at its next write. 2.0.0 and 2.0.1 keep the element when they
+  rewrite a table file, but don't update it.
+- **`xod query <db> "SELECT ..." [--format table|csv|json] [--password <pwd>]`**: reads the tables through the
+  schema their files record, without the application's classes. It writes no rows and no schema, and doesn't
+  create a missing database; opening it still holds `xod.lock` and, as any open does, puts back a commit a
+  crash cut short. A table whose file records no schema is
+  read with every column as text, with warning `XQ013`. `json` writes values as the conformance set encodes
+  them. An error prints `XQnnn: message` and exits with `1`.
+- **Every `xod` command writes UTF-8 when its output goes to a file or a pipe.** It used the console's code
+  page, where Arabic text, an em dash or an accented letter became `?` or a byte other tools misread. A
+  console window is unchanged.
+
 ## Behaviour changes
 
 - **Every context holds the database's lock file** (`<database file>.lock`): shared, or exclusively with
@@ -191,7 +232,8 @@ records it.
 
 The reviewer of `TASK-062` points out that the release adds a public type (`AutonumberSeedException`) and a
 capability, and breaks source that reads `IdentitySeed` as a number: under semantic versioning, a minor
-version rather than a patch. The owner decides.
+version rather than a patch. SQL adds more public types (`XodSqlException`, `SqlResult`, `SqlSchemaSource`) and
+`DatabaseOptions.SqlSchema`. The owner decided on 2026-11-14 to ship it as **2.0.2** (the top of this file).
 
 ## Site pages to update with the release
 
@@ -206,6 +248,24 @@ Drafted on 2026-11-13 in `xod-site`. The work is uncommitted and not deployed, a
   (TASK-070: an `Insert` taken back; `InsertRange`, `Update` and `Delete` still made, ISS-125).
 - **The pages describe a `Guid` autonumber as working,** which holds now that ISS-117 is fixed (committed
   2026-11-14).
+- **Rechecked on 2026-11-14** against the engine changes since the draft, `TASK-071` (`c614e30`) and `TASK-072`
+  (SQL, in the tree). Added, each labelled `**Next release:**`:
+  - the format a database's file records, and a folder's name no longer picking one (`storage`, `options`,
+    `api`, `upgrading`);
+  - `xod.lock`, and the open that creates a database holding its folder alone (`storage`, `transactions`,
+    `upgrading`);
+  - maps and lists that read back as written, and the map types that read back as their own (`models`,
+    `storage`, `upgrading`);
+  - the `<Schema>` element of each table file (`storage`, `upgrading`);
+  - SQL and `xod query` (`reading`, `cli`, `api`, `options`, `exceptions`, `limits`, `index`, `storage`);
+  - UTF-8 output from `xod` (`cli`, `upgrading`).
+
+  Not on the pages: `PLAN-056`'s index keys (`c5ccf66`), which changes how much an update writes, not what a
+  call does.
+
+  Also corrected: `transactions.md`'s durability paragraph. The draft said "a write that has returned
+  survives the process crashing", which is wrong for `Buffered` and, under ISS-147, for writes beside a commit
+  a crash cut short. The new wording was approved by the owner on 2026-11-14.
 - **The pages also correct older statements that were wrong in 2.0.x too:**
   - durability against a power cut;
   - "ACID", "write-ahead journal" and "streamed" reads;

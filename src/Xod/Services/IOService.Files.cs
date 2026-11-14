@@ -146,7 +146,7 @@ namespace Xod.Services
                 }
                 else if (!openOnly && type != null)
                 {
-                    XDocument doc = ItemWriterDelegate(type);
+                    XDocument doc = ItemWriterDelegate(type, normalizedName);
                     file = new XFile(doc, type, filePath, password);
                     // A new database's file is on disk when the open returns, in every mode: another open must find
                     // it, and a record another context writes into it at once (an AES256 key, SaveNow) must not be
@@ -460,6 +460,24 @@ namespace Xod.Services
             {
                 foreach (string name in cachedFiles.Keys.Concat(cachedRawPages.Keys))
                     if (name.EndsWith(".xpag", StringComparison.OrdinalIgnoreCase))
+                        names.Add(name);
+            }
+            return names;
+        }
+
+        /// <summary>The table files this context sees, as <see cref="PageFileNames"/> lists pages: on disk, and those
+        /// it holds not written yet. For SQL's list of tables (PLAN-060).</summary>
+        internal IReadOnlyCollection<string> TableFileNames()
+        {
+            // Ordinal: two names that differ only by case are two tables (where the file system allows it), and a
+            // query naming either is ambiguous (XQ003), not silently one of them.
+            var names = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (string path in Directory.GetFiles(root, "*.xtab"))
+                names.Add(Path.GetFileName(path));
+            lock (syncLock)
+            {
+                foreach (string name in cachedFiles.Keys)
+                    if (name.EndsWith(".xtab", StringComparison.OrdinalIgnoreCase))
                         names.Add(name);
             }
             return names;

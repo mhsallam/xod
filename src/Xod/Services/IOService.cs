@@ -66,7 +66,9 @@ namespace Xod.Services
         internal const string SetAsideSuffix = ".xdel";
         private readonly List<string> setAside = new List<string>();
 
-        internal Func<Type, XDocument> ItemWriterDelegate { get; set; }
+        // The document of a file this service creates: its type's, for the file of that name (a new table file
+        // records its rows' schema: XmlEngine.NewFileDocument).
+        internal Func<Type, string, XDocument> ItemWriterDelegate { get; set; }
         internal Action<string> BeforeFileMutate { get; set; }
         internal Func<bool> HasActiveTransaction { get; set; }
 

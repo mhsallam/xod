@@ -5,7 +5,8 @@
 //   node conformance/format/read.mjs --check               check every fixture against content*.json
 //   node conformance/format/read.mjs --write               rewrite content*.json (after a deliberate change)
 //   node conformance/format/read.mjs --check-fresh <root>  check the dataset as the library in the tree writes
-//                                                          it (after: dotnet run ... -- data <root>)
+//                                                          it (after: dotnet run ... -- data <root>), its
+//                                                          schema manifests against column-types.json too
 //
 // Node 18 or later, standard library only (node:crypto for AES-GCM and PBKDF2, node:zlib for Brotli).
 import fs from 'node:fs';
@@ -265,11 +266,14 @@ export function readDatabase(dir, password, columnTypes = {}, applicationKey = n
   const dbDoc = load(dbFile);
   if (dbDoc.root.name !== 'Database') throw new Error('not a database file: ' + dbFile);
 
-  const tables = {}, rowsByCode = new Map();
+  const tables = {}, rowsByCode = new Map(), manifests = {};
   for (const tf of fs.readdirSync(dir).filter((f) => f.endsWith('.xtab')).sort()) {
     const table = tf.slice(0, -5);
     const rows = [];
-    for (const page of child(load(tf).root, 'Pages').children) {
+    const tableDoc = load(tf);
+    const schema = child(tableDoc.root, 'Schema');
+    if (schema) manifests[table] = manifestTypes(schema);
+    for (const page of child(tableDoc.root, 'Pages').children) {
       const pageCode = page.attrs.file.replace(/\.xpag$/, '');
       for (const row of child(load(page.attrs.file).root, 'Rows').children) {
         const entity = row.children[0];
@@ -346,7 +350,40 @@ export function readDatabase(dir, password, columnTypes = {}, applicationKey = n
       indexEntries += Object.keys(got).length;
     }
   }
-  return { database: { ...dbDoc.root.attrs }, content, secrets: secrets.sort(), indexEntries, indexProblems, indexVersions: [...indexVersions].sort(), indexMarkers: [...indexMarkers].sort() };
+  return { database: { ...dbDoc.root.attrs }, content, manifests, secrets: secrets.sort(), indexEntries, indexProblems, indexVersions: [...indexVersions].sort(), indexMarkers: [...indexMarkers].sort() };
+}
+
+// ---- the schema manifest (PLAN-046 section 10): the column types a table file records, in the words of
+// column-types.json (which gave them by hand before the library wrote them).
+const INT_TYPES = new Set(['int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64']);
+function manifestTypes(schema) {
+  const types = {};
+  for (const c of schema.children.filter((e) => e.name === 'Column')) {
+    const t = c.attrs.type;
+    types[c.attrs.name] = INT_TYPES.has(t) ? 'int'
+      : t === 'enum' ? { enum: Object.fromEntries(c.children.filter((m) => m.name === 'Member').map((m) => [m.attrs.name, Number(m.attrs.value)])) }
+      : t === 'float64' ? 'double' : t === 'float32' ? 'float' : t === 'char' ? 'text' : t;
+  }
+  return types;
+}
+const canonJson = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort()) : x));
+
+// The library in the tree records every table's schema: each one agrees with the types given by hand, and the
+// database read with the manifests' types alone gives the same content and the same index keys.
+function checkManifests(r, handTypes, readAgain) {
+  const problems = [];
+  for (const table of Object.keys(r.content))
+    if (!r.manifests[table]) problems.push(table + ': no schema manifest');
+  for (const [table, cols] of Object.entries(handTypes ?? {}))
+    for (const [col, want] of Object.entries(cols)) {
+      const got = r.manifests[table]?.[col];
+      if (canonJson(got) !== canonJson(want))
+        problems.push(`${table}.${col}: the manifest says ${JSON.stringify(got)}, column-types.json ${JSON.stringify(want)}`);
+    }
+  const byManifest = readAgain(r.manifests);
+  if (stable(byManifest.content) !== stable(r.content)) problems.push("read with the manifests' types, the content differs");
+  for (const p of byManifest.indexProblems) problems.push("read with the manifests' types: " + p);
+  return problems;
 }
 
 // ---- [Crypto(AES256)] values (PLAN-046 section 7.6)
@@ -427,6 +464,7 @@ function main(args) {
           r.indexProblems.push('AES256 values read as ' + JSON.stringify(r.secrets) + ', not ' + JSON.stringify(fx.secrets));
         if (fresh && r.indexVersions.join() !== '2') r.indexProblems.push('index keys v' + r.indexVersions.join(', v') + '; the library in the tree writes v2 only');
         if (fresh && r.indexMarkers.some((m) => m !== -5)) r.indexProblems.push('index markers ' + r.indexMarkers.join(', ') + '; the library in the tree writes -5 only');
+        if (fresh) r.indexProblems.push(...checkManifests(r, types[fx.types], (t) => readDatabase(fx.dir, fx.password, t, fx.propertyKey)));
         const expectPath = path.join(here, fx.expect);
         if (args[0] === '--write' && fx.name !== 'json' && fx.name !== 'binary' && fx.name !== 'password') fs.writeFileSync(expectPath, stable(r.content));
         const same = fs.existsSync(expectPath) && fs.readFileSync(expectPath, 'utf8').replace(/\r\n/g, '\n') === stable(r.content);

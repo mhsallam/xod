@@ -165,6 +165,20 @@ the library now rebuilds rather than trusts; the reader checks them as v1.
 as `(int)c.Tier == 2`. The index planner drops the conversion on the property side and looks up the key
 for the number `2`, but the index stores `Gold`.
 
+### 5.1 Through SQL, 2026-11-14
+
+XOD SQL version 1 ([`PLAN-060`](PLAN-060-xod-sql-select-manifest-cli.md)) runs every case's `sql` through
+`db.Sql` (`SqlConformanceTests`), comparing the columns, their types and the rows, or the error code:
+
+| Fixture | Typed from the classes (committed 2.0.1 files) | From the manifest alone (written by the tree) |
+| :--- | :--- | :--- |
+| xml, json, binary, password | 138 pass, 0 fail, 1 not for the fixture | 138 pass, 0 fail, 1 not for the fixture |
+
+The 10 error cases and `crypto-002` now run: SQL reads an encrypted column only with a secret the caller
+gave, so its NULL holds without the password. The same tests run the stored-values fixture's forms through
+both decoders, with row 2 of each table missing the values a row written before its property existed lacks,
+and compare each row with what `Select<T>` reads.
+
 ## 6. Changing it
 
 - **A case:** edit `Cases.cs`, then `dotnet run --project conformance/Xod.Conformance -f net9.0 -- cases`.
@@ -217,15 +231,21 @@ Each guard was broken on purpose and seen red on 2026-11-11:
 - a `known` marker on a passing case failed with "looks fixed";
 - a one-word change in `format/content.json` failed `--check` for the four 2.0 fixtures.
 
+Since [`PLAN-060`](PLAN-060-xod-sql-select-manifest-cli.md) (2026-11-14), in the same test project, so no new
+CI step: `SqlConformanceTests` (section 5.1). `--check-fresh` also checks each fresh table's manifest. A
+manifest writer switched off failed `--check-fresh`, and so did a manifest giving one column the wrong type.
+
 The CI steps haven't run yet: nothing is pushed.
 
 ## 8. Not covered yet
 
 - **Writes** (`PLAN-045` D3): cases come when writes are designed in detail.
 - **Parameters** (`@name`, `?`), `EXPLAIN`, `CURRENT_DATE`/`CURRENT_TIMESTAMP`, and `SELECT *`. The order
-  of `*`'s columns waits for the manifest.
-- **The manifest** (`PLAN-046` section 10): nothing writes it yet. `column-types.json` stands in, and
-  goes away when the manifest is built.
+  of `*`'s columns waits for the manifest. Since PLAN-060 the C# library's unit tests cover them
+  (`tests/Xod.Tests/XodSqlTests.cs`); they aren't cases yet, so a second implementation isn't held to them.
+- **The manifest** (`PLAN-046` section 10): written since PLAN-060. `read.mjs --check-fresh` reads each fresh
+  table's manifest and fails when it disagrees with `column-types.json`. The committed fixtures were written
+  by 2.0.1 and have none, so `column-types.json` stays for them.
 - **Local `DateTime`:** its stored offset is the writing machine's, so expected answers would depend on
   where they were produced.
 - **Semantics `PLAN-045` leaves open, avoided in the data:** `LENGTH` of text outside the BMP,

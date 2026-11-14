@@ -384,6 +384,21 @@ namespace Xod.Engines.Xml
             if (tableFile == null)
                 yield break;
 
+            foreach (var (_, r) in StoredRows(tableFile, backward))
+            {
+                var entity = Read(type, r, include);
+                if (entity != null && (query == null || query(entity)))
+                    yield return entity;
+            }
+        }
+
+        /// <summary>
+        /// A table's rows in stored order (D5), each with the code of the page it is in: the pages its table file
+        /// lists, in that order, and each page's rows in order (backward: both reversed). Select and SQL read rows
+        /// through this one walk. <paramref name="wantPage"/>, when given, skips the pages it refuses unopened.
+        /// </summary>
+        private IEnumerable<(string Page, XElement Row)> StoredRows(XFile tableFile, bool backward = false, Func<string, bool> wantPage = null)
+        {
             IEnumerable<XElement> pages = tableFile.Pages();
             if (backward)
                 pages = pages.Reverse();
@@ -391,7 +406,12 @@ namespace Xod.Engines.Xml
             foreach (var pageElm in pages)
             {
                 string pageFileName = pageElm.Attribute("file")?.Value;
-                if (string.IsNullOrEmpty(pageFileName) || !ioService.FileExists(pageFileName))
+                if (string.IsNullOrEmpty(pageFileName))
+                    continue;
+                string pageCode = System.IO.Path.GetFileNameWithoutExtension(pageFileName);
+                if (wantPage != null && !wantPage(pageCode))
+                    continue;
+                if (!ioService.FileExists(pageFileName))
                     continue;
 
                 XFile pageFile = ioService.OpenFileOrCreate<TablePage>(pageFileName, openOnly: true);
@@ -403,11 +423,7 @@ namespace Xod.Engines.Xml
                     rows = rows.Reverse();
 
                 foreach (var r in rows)
-                {
-                    var entity = Read(type, r, include);
-                    if (entity != null && (query == null || query(entity)))
-                        yield return entity;
-                }
+                    yield return (pageCode, r);
             }
         }
 

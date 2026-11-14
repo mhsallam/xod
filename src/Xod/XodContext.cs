@@ -289,6 +289,40 @@ namespace Xod
             return Task.Run(() => Delete(item), cancellationToken);
         }
 
+        /// <summary>
+        /// Runs a XOD SQL query (PLAN-045): a <c>SELECT</c>, or <c>EXPLAIN SELECT</c>. Values are passed as
+        /// parameters, never built into the text: <c>?</c> takes <paramref name="args"/> in order.
+        /// </summary>
+        /// <exception cref="XodSqlException">The query doesn't parse, names what the database doesn't have, or
+        /// fails while it runs; <see cref="XodSqlException.Code"/> says which.</exception>
+        public SqlResult Sql(string sql, params object[] args)
+        {
+            return SqlEngine().Sql(sql, args, null);
+        }
+
+        /// <summary>Runs a XOD SQL query whose parameters are named (<c>@name</c>), with their values by name
+        /// (without the <c>@</c>, in any case).</summary>
+        public SqlResult Sql(string sql, IReadOnlyDictionary<string, object> args)
+        {
+            return SqlEngine().Sql(sql, null, args);
+        }
+
+        /// <summary>Runs a XOD SQL query and makes a <typeparamref name="T"/> of each row: each column sets the
+        /// property of its name (in any case), converted to the property's type.</summary>
+        public IReadOnlyList<T> Sql<T>(string sql, params object[] args) where T : new()
+        {
+            return Sql(sql, args).As<T>();
+        }
+
+        /// <summary>Runs a XOD SQL query with named parameters and makes a <typeparamref name="T"/> of each row.</summary>
+        public IReadOnlyList<T> Sql<T>(string sql, IReadOnlyDictionary<string, object> args) where T : new()
+        {
+            return Sql(sql, args).As<T>();
+        }
+
+        private XmlEngine SqlEngine() =>
+            engine as XmlEngine ?? throw new NotSupportedException("SQL runs on XOD's own engines (XML, JSON, Binary).");
+
         public IXodTransaction BeginTransaction()
         {
             return engine.BeginTransaction();

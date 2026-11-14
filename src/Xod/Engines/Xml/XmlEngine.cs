@@ -26,7 +26,9 @@ namespace Xod.Engines.Xml
         // in some mode, which the write lock excludes, so on any other thread it reads 0 (ISS-101: FlushToDisk read
         // ReaderWriterLockSlim.IsWriteLockHeld, which its documentation reserves for asserts and debugging).
         private int exclusiveDepth;
-        private readonly ConcurrentDictionary<string, ReaderWriterLockSlim> tableLocks = new(StringComparer.Ordinal);
+        // One lock per table, by its name in any case: SQL names a table by its file, which a case-insensitive file
+        // system may spell differently from its class's full name, by which its writers name it.
+        private readonly ConcurrentDictionary<string, ReaderWriterLockSlim> tableLocks = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, bool> standaloneTableCache = new(StringComparer.Ordinal);
         private readonly SemaphoreSlim transactionGate = new SemaphoreSlim(1, 1);
         private readonly object hydrationLock = new object();
@@ -133,15 +135,7 @@ namespace Xod.Engines.Xml
                 ioService.NoteFileMutation(f);
             };
             this.ioService.HasActiveTransaction = () => activeTransaction != null && activeTransaction.IsActive;
-            this.ioService.ItemWriterDelegate = t =>
-            {
-                object instance = ValueHelper.CreateInstance(t);
-                if (instance is Database dbMeta)
-                {
-                    dbMeta.Format = this.StorageFormat.ToString();
-                }
-                return new XDocument(Write(t, instance));
-            };
+            this.ioService.ItemWriterDelegate = NewFileDocument;
 
             try
             {
@@ -240,10 +234,30 @@ namespace Xod.Engines.Xml
             }
         }
 
-        private ReaderWriterLockSlim GetTableLock(Type type)
+        private ReaderWriterLockSlim GetTableLock(Type type) => GetTableLock(type?.FullName ?? "__global__");
+
+        // A table's lock by its file's name (Type.FullName): SQL reads tables it may have no class for.
+        private ReaderWriterLockSlim GetTableLock(string fullName) =>
+            tableLocks.GetOrAdd(fullName, _ => new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion));
+
+        // The table locks this thread holds (each with its table and how many times it entered it), kept by the
+        // helpers that take and give them back: EnterTableReadLock, EnterTableWriteLock, their exits, and SQL's
+        // (SqlSource). SQL reads it to take its own in order around what the thread already holds. Not the lock's
+        // IsReadLockHeld: its documentation reserves that for asserts and debugging (ISS-101).
+        private readonly ThreadLocal<Dictionary<ReaderWriterLockSlim, (string Table, int Count)>> heldTableLocks = new(() => new());
+
+        private void Holding(ReaderWriterLockSlim tableLock, string table)
         {
-            string key = type?.FullName ?? "__global__";
-            return tableLocks.GetOrAdd(key, _ => new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion));
+            var held = heldTableLocks.Value;
+            held[tableLock] = held.TryGetValue(tableLock, out var h) ? (h.Table, h.Count + 1) : (table, 1);
+        }
+
+        private void LettingGo(ReaderWriterLockSlim tableLock)
+        {
+            var held = heldTableLocks.Value;
+            if (!held.TryGetValue(tableLock, out var h)) return;
+            if (h.Count == 1) held.Remove(tableLock);
+            else held[tableLock] = (h.Table, h.Count - 1);
         }
 
         private bool IsStandaloneTable(Type type)
@@ -266,6 +280,7 @@ namespace Xod.Engines.Xml
             {
                 tableLock = GetTableLock(type);
                 EnterSecond(tableLock.EnterReadLock, rwLock.ExitReadLock);
+                Holding(tableLock, type.FullName);
             }
             else
             {
@@ -317,7 +332,11 @@ namespace Xod.Engines.Xml
         {
             try
             {
-                tableLock?.ExitReadLock();
+                if (tableLock != null)
+                {
+                    LettingGo(tableLock);
+                    tableLock.ExitReadLock();
+                }
             }
             finally
             {
@@ -395,6 +414,7 @@ namespace Xod.Engines.Xml
                 EnterSecond(() => EnterWrite(table.EnterWriteLock), rwLock.ExitReadLock);
                 tableLock = table;
                 standaloneWriteDepth.Value++;
+                Holding(table, type.FullName);
             }
             else
             {
@@ -402,6 +422,18 @@ namespace Xod.Engines.Xml
                 EnterExclusive();
                 globalWriteDepth++;
                 tableLock = null;
+            }
+
+            // Every write records its tables' schema (PLAN-060 section 2.4), under the locks the write holds, as a
+            // change to the table file like any other: a transaction commits or rolls it back with the rows.
+            try
+            {
+                RecordSchemas(type);
+            }
+            catch
+            {
+                ExitTableWriteLock(tableLock, usedGlobalWriteLock);
+                throw;
             }
         }
 
@@ -423,6 +455,7 @@ namespace Xod.Engines.Xml
                     if (tableLock != null)
                     {
                         standaloneWriteDepth.Value--;
+                        LettingGo(tableLock);
                         tableLock.ExitWriteLock();
                     }
                 }

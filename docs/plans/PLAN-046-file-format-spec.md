@@ -636,7 +636,8 @@ in (`zone`, section 8.1), so a database opened in another zone rebuilds its inde
   - `version`: of the manifest format;
   - `type`: `Type.FullName`, the file name;
   - `element`: the short name the rows use;
-  - `writer`: the library version that wrote it, for diagnosis only.
+  - `writer`: the library version that wrote it, for diagnosis only. Two manifests that differ only in
+    `writer` say the same; the library doesn't rewrite one for it.
 - **`<Column>`, one per stored scalar, map or list property:**
   - `name`.
   - `type`: one of `bool`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `int64`, `uint64`,
@@ -646,11 +647,22 @@ in (`zone`, section 8.1), so a database opened in another zone rebuilds its inde
   - `nullable`.
   - `at="attribute"` when stored as an attribute.
   - `key`: position in the primary key, from 1.
-  - `autonumber`, `unique`, `indexed`, `required`.
+  - `autonumber`, `unique`, `indexed`, `required`. `indexed` is written only for a column indexed on its
+    own: a key or unique column is indexed anyway.
   - `crypto`: `md5`, `sha1`, `sha256`, `sha512` or `aes256`.
   - `markup`.
-  - `default`: a `[DefaultValue]`, in scalar text form.
-  - `enum` columns list every member (name and numeric value), and `flags="true"` for `[Flags]`.
+  - `default`: what a read gives when the row leaves the value out, in scalar text form. It is written only
+    when it differs from what a reader gives anyway: NULL for a nullable column, the type's default value
+    (`0`, `false`, the enum member valued `0`) for one that isn't. It is what the library's reader
+    gives (`StoredValue.ReadBackOfMissing`): today, what a new instance holds (its initializer), since
+    `[DefaultValue]` has no effect (ISS-118). If ISS-118 makes it one, the manifest follows. On a `map` or `list` column, `default=""` means a missing one
+    reads as empty, not NULL.
+  - On a `map`: `keyType`, `valueType`, and `valueNullable="true"` when a value may be null
+    (`Dictionary<string, int?>`). On a `list`: `itemType`, and `itemNullable="true"` when an item may be null
+    (`List<int?>`). Without it, a value or item marked `nil` reads as its type's default (`0`), as the library
+    reads it; a text value or item, as NULL.
+  - `enum` columns (and a map or list of enums) list every member (name and numeric value), and
+    `flags="true"` for `[Flags]`.
 - **`<Relation>`, one per reference, children, complex or parent property:**
   - `kind`;
   - the target `table`;
@@ -663,6 +675,14 @@ in (`zone`, section 8.1), so a database opened in another zone rebuilds its inde
 - The library builds the manifest from the model when it loads a type, compares it with the stored one,
   and writes it **with the first write of that type in the context** if it differs or is missing. The
   table file is being written then anyway, so a read never writes. Read-only folders keep working.
+- **As built (PLAN-060, 2026-11-14):**
+  - A table file is created with its manifest.
+  - Every write operation, inside its table lock, checks the table files it may write: its class's and those
+    its relations reach. A missing or different manifest is replaced through the table file's normal save,
+    so a transaction commits it or rolls it back with the rows.
+  - A manifest found to say what the class says is remembered by its element. The next write costs a lookup;
+    a table file read again (after a rollback, or from disk) is checked again.
+  - A read, `db.Sql` and `xod query` included, never writes it.
 - A database written by 2.0.0/2.0.1 gets its manifest at the next write by a release that has it.
 - A model-less reader on a database **without** a manifest reads every column as text and says so, as
   `PLAN-045` section 3 requires. Inferring types is rejected (D1(b)).

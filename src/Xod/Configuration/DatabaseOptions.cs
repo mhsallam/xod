@@ -52,5 +52,12 @@ namespace Xod
         /// an <c>AES256</c> value can't be written, since anyone with XOD could read it back.
         /// </summary>
         public string PropertyEncryptionKey { get; set; }
+
+        /// <summary>
+        /// Where SQL (<see cref="XodContext.Sql(string, object[])"/>) takes each table's column types from: the
+        /// program's classes when it has them (the default), or always the schema the table file records, as
+        /// <c>xod query</c> reads a database without the classes.
+        /// </summary>
+        public SqlSchemaSource SqlSchema { get; set; } = SqlSchemaSource.Classes;
     }
 }

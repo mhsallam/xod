@@ -125,6 +125,94 @@ namespace Xod.Services
             return stored;
         }
 
+        /// <summary>
+        /// SQL's reading of a stored AES256 value (PLAN-045 section 4, PLAN-060): opened only with a secret the caller
+        /// gave this context (the password, or <c>DatabaseOptions.PropertyEncryptionKey</c>) and the keys they open,
+        /// never with 2.0's built-in constant (ISS-050), which opens a value with no secret at all. False when nothing
+        /// the caller gave opens it; SQL then reads NULL and warns (XQ008). A value stored before the property was
+        /// marked [Crypto] is its text.
+        /// </summary>
+        internal bool TryDecryptWithSecret(string stored, out string plain)
+        {
+            plain = null;
+            if (string.IsNullOrEmpty(stored))
+            {
+                plain = stored;
+                return true;
+            }
+
+            if (stored.StartsWith(ValuePrefix, StringComparison.Ordinal))
+            {
+                byte[] key;
+                lock (syncLock)
+                {
+                    key = dataKey ?? (CanOpen(DatabaseFile().Root()) ? dataKey : null);
+                }
+                byte[] opened = key == null ? null : Open(key, PayloadOrNull(stored, ValuePrefix), null);
+                if (opened == null)
+                    return false;
+                plain = Encoding.UTF8.GetString(opened);
+                return true;
+            }
+
+            if (stored.StartsWith(LegacyValuePrefix, StringComparison.Ordinal))
+            {
+                byte[] payload = PayloadOrNull(stored, LegacyValuePrefix);
+                foreach (byte[] key in SecretLegacyCandidates())
+                {
+                    byte[] opened = Open(key, payload, null);
+                    if (opened != null)
+                    {
+                        plain = Encoding.UTF8.GetString(opened);
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            plain = stored;
+            return true;
+        }
+
+        // The 2.0 keys a secret the caller gave opens: the current password's, and those recorded under the data key
+        // (which only a secret opens). Not the built-in constant's.
+        private IEnumerable<byte[]> SecretLegacyCandidates()
+        {
+            string current = password();
+            if (!string.IsNullOrEmpty(current))
+                yield return CryptoHelper.DeriveKey(current, CryptoHelper.LegacyPropertySalt);
+
+            List<byte[]> recorded;
+            lock (syncLock)
+            {
+                if (legacyKeys != null)
+                {
+                    recorded = legacyKeys;
+                }
+                else
+                {
+                    XFile file = DatabaseFile();
+                    recorded = file.Root().Elements(LegacyKeyElement).Any() && CanOpen(file.Root())
+                        ? LegacyKeysUnlocked(file)
+                        : new List<byte[]>();
+                }
+            }
+            foreach (byte[] key in recorded)
+                yield return key;
+        }
+
+        private static byte[] PayloadOrNull(string stored, string prefix)
+        {
+            try
+            {
+                return Convert.FromBase64String(stored.Substring(prefix.Length));
+            }
+            catch (FormatException)
+            {
+                return Array.Empty<byte>();
+            }
+        }
+
         // ---- password changes ----
 
         /// <summary>
