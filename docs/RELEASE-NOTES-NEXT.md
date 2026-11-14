@@ -237,7 +237,9 @@ version rather than a patch. SQL adds more public types (`XodSqlException`, `Sql
 
 ## Site pages to update with the release
 
-Drafted on 2026-11-13 in `xod-site`. The work is uncommitted and not deployed, and was checked against the tree as of that day.
+Drafted on 2026-11-13 in `xod-site` and checked against the tree as of that day; rechecked on 2026-11-14 (below).
+Committed (`xod-site` `2153a0d`) and deployed on 2026-11-14, on the owner's go: the docs describe 2.0.2 as the next
+release while 2.0.1 is the one on NuGet.
 
 - **Docs:** 17 pages in `src/pages/docs` and a new `upgrading.md`, the checklist for a 2.0.x application, with
   its entry in `src/content/docs-nav.ts`. Each claim was checked in the code, and the behaviour claims were
