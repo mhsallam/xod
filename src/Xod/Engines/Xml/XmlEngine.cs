@@ -164,7 +164,7 @@ namespace Xod.Engines.Xml
 
                 this.propertyKeys = new PropertyKeyService(ioService, databaseFile, this.options.PropertyEncryptionKey, () => this.password);
 
-                this.itemsCacheService = new ItemsCacheService(path);
+                this.itemsCacheService = new ItemsCacheService();
                 this.indexService = new IndexService(this.propertyService, this.ioService);
 
                 this.autonumberService = new AutonumberService(
@@ -286,6 +286,8 @@ namespace Xod.Engines.Xml
             {
                 tableLock = null;
             }
+            // Last, and it can't throw: ExitTableReadLock ends it (ISS-138).
+            itemsCacheService.BeginRead();
         }
 
         // The engine-wide read lock (refused once closed, ISS-103).
@@ -330,6 +332,7 @@ namespace Xod.Engines.Xml
 
         private void ExitTableReadLock(ReaderWriterLockSlim tableLock)
         {
+            itemsCacheService.EndRead();
             try
             {
                 if (tableLock != null)
@@ -444,6 +447,7 @@ namespace Xod.Engines.Xml
                 throw Closed();
             }
             exclusiveDepth++;
+            itemsCacheService.WriteStarted();
         }
 
         private void ExitExclusive()
@@ -478,6 +482,9 @@ namespace Xod.Engines.Xml
                 tableLock = table;
                 standaloneWriteDepth.Value++;
                 Holding(table, type.FullName);
+                // A standalone table's write can be made inside a read of another table on this thread (a query's
+                // predicate): what that read has shared ends here (ISS-138). The global write lock does the same.
+                itemsCacheService.WriteStarted();
             }
             else
             {
@@ -625,22 +632,15 @@ namespace Xod.Engines.Xml
         {
             try
             {
-                itemsCacheService?.Dispose();
+                ioService?.Dispose();
             }
             finally
             {
-                try
-                {
-                    ioService?.Dispose();
-                }
-                finally
-                {
-                    // The locks and the transaction gate aren't disposed: the close may hold rwLock, and another
-                    // thread may still wait on any of them (it then finds the context closed); disposing a lock held
-                    // or waited on throws (SynchronizationLockException). What they hold beyond memory is the wait
-                    // handles they create under contention, SafeHandles the finalizer releases.
-                    autonumberService?.Dispose();
-                }
+                // The locks and the transaction gate aren't disposed: the close may hold rwLock, and another
+                // thread may still wait on any of them (it then finds the context closed); disposing a lock held
+                // or waited on throws (SynchronizationLockException). What they hold beyond memory is the wait
+                // handles they create under contention, SafeHandles the finalizer releases.
+                autonumberService?.Dispose();
             }
         }
     }

@@ -194,7 +194,14 @@ namespace Xod
             return !bs.MoveNext();
         }
 
-        public static bool ElementMatch(this XElement a, XElement b)
+        /// <summary>Whether <paramref name="b"/> holds everything <paramref name="a"/> does, text compared
+        /// case-insensitively in the current culture.</summary>
+        [Obsolete("XOD no longer matches rows by it: it compares text case-insensitively in the current culture, where XOD's keys are exact (ISS-139).")]
+        public static bool ElementMatch(this XElement a, XElement b) => ElementMatch(a, b, StringComparison.CurrentCultureIgnoreCase);
+
+        /// <summary>Whether <paramref name="b"/> holds everything <paramref name="a"/> does: its name, its attributes,
+        /// a leaf's text, and a match for each child, text compared by <paramref name="comparison"/>.</summary>
+        internal static bool ElementMatch(this XElement a, XElement b, StringComparison comparison)
         {
             if (a == null || b == null) return false;
 
@@ -204,13 +211,13 @@ namespace Xod
             if (a.HasElements != b.HasElements)
                 return false;
 
-            if (!a.HasElements && !b.HasElements && !a.Value.Equals(b.Value, StringComparison.CurrentCultureIgnoreCase))
+            if (!a.HasElements && !b.HasElements && !a.Value.Equals(b.Value, comparison))
                 return false;
 
             foreach (XAttribute at in a.Attributes())
             {
                 var other = b.Attribute(at.Name);
-                if (other == null || !at.Value.Equals(other.Value, StringComparison.CurrentCultureIgnoreCase))
+                if (other == null || !at.Value.Equals(other.Value, comparison))
                     return false;
             }
 
@@ -219,7 +226,7 @@ namespace Xod
 
             foreach (var ae in a.Elements())
             {
-                var be = b.Elements().Where(s => ae.ElementMatch(s));
+                var be = b.Elements().Where(s => ae.ElementMatch(s, comparison));
                 if (!be.Any())
                     return false;
             }

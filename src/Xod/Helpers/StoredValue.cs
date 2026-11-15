@@ -99,6 +99,33 @@ namespace Xod.Helpers
             return value;
         }
 
+        /// <summary>
+        /// The value a read gives a scalar property from a stored row's entity element (ISS-060): <c>nil="true"</c>
+        /// is null; an empty text is an empty string where the property has that form, and otherwise counts as left
+        /// out; a value left out is what a read gives without it (<see cref="ReadBackOfMissing"/>); any other text is
+        /// read by <paramref name="parse"/> (the engine decrypts an AES256 string there). The one rule, for the read,
+        /// the index (IndexService.ReadBackFromRow) and the match by example (review of ISS-139: the index parsed an
+        /// empty text where a read leaves it out).
+        /// </summary>
+        internal static object ReadBack(PropertyInfoItem prop, System.Xml.Linq.XElement entity, Func<string, object> parse)
+        {
+            string text;
+            if (prop.ValuePosition == ValuePosition.Attribute)
+            {
+                text = entity?.Attribute(prop.PropertyName)?.Value;
+            }
+            else
+            {
+                var element = entity?.Element(prop.PropertyName);
+                if (element != null && IsNil(element))
+                    return null;
+                text = element?.Value;
+            }
+            if (text == null || (text.Length == 0 && !HasEmptyForm(prop)))
+                return ReadBackOfMissing(prop);
+            return parse(text);
+        }
+
         /// <summary>The value a read of the stored row gives back for an object's value. A local
         /// <c>DateTime</c> is stored with its offset and read back in the reading machine's zone, which
         /// moves a time in a daylight-saving gap; it is put through its stored text.</summary>

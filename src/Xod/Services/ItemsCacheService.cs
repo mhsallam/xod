@@ -1,18 +1,72 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace Xod.Services
 {
-    internal class ItemsCacheService : IDisposable
+    /// <summary>
+    /// The objects one read builds for the rows it references: the rows of that read that reference one row share
+    /// one object, built once. Nothing outlives the read (ISS-138). It used to live as long as the context, cleared
+    /// row by row by the writes that remembered to (not a standalone table's), never by another context's write, and
+    /// it handed one instance to every reader, so what a caller changed without saving the next read returned.
+    /// Keyed by the reference as stored ("page.row"): a row's code alone is unique only within its page, and pages
+    /// written by different runs can share one.
+    /// <para>
+    /// A read is the outermost read on its thread, from the engine's read entry (XmlEngine.EnterTableReadLock, the
+    /// SQL query) to its exit: <see cref="BeginRead"/> and <see cref="EndRead"/>, paired by those helpers. Nested
+    /// reads (a query inside a predicate) share their outer read's objects. A write ends the sharing for the rest of
+    /// the read it is made in (<see cref="WriteStarted"/>, from the engine's write entries): the rows the read takes
+    /// after it are built afresh. Outside a read nothing is kept, so a read made inside a write (a trigger's) shares
+    /// only within itself, and the threads a read lends rows to (a parallel read of a standalone table) keep nothing.
+    /// </para>
+    /// </summary>
+    internal sealed class ItemsCacheService
     {
         private const int CACHE_SIZE = 1024;
-        private readonly object syncLock = new object();
-        private readonly Dictionary<(Type Type, string Code), ItemCache> itemsByKey = new();
-        private readonly Queue<(Type Type, string Code)> evictionQueue = new(CACHE_SIZE + 16);
 
-        public ItemsCacheService(string path)
+        // Per thread: how deep in reads it is, and what its outermost read shares (null: nothing kept).
+        private sealed class ReadScope
         {
+            public int Depth;
+            public Dictionary<(Type Type, string Code), ItemCache> Items;
+            public Queue<(Type Type, string Code)> Order;
+        }
+
+        // Not disposed with the context: a close can come from inside a read (on its thread, or beside reads on
+        // others), which still ends after it (EndRead). Each read empties its own scope as it ends, so nothing is held
+        // past it but a depth per thread, and the ThreadLocal's finalizer frees its slots.
+        private readonly ThreadLocal<ReadScope> scopes = new ThreadLocal<ReadScope>(() => new ReadScope());
+
+        /// <summary>A read starts on this thread: the outermost one starts sharing afresh.</summary>
+        internal void BeginRead()
+        {
+            var scope = scopes.Value;
+            if (scope.Depth++ == 0)
+            {
+                scope.Items = new Dictionary<(Type Type, string Code), ItemCache>();
+                scope.Order = new Queue<(Type Type, string Code)>();
+            }
+        }
+
+        /// <summary>A read ends on this thread: the outermost one's objects go with it.</summary>
+        internal void EndRead()
+        {
+            var scope = scopes.Value;
+            if (--scope.Depth == 0)
+            {
+                scope.Items = null;
+                scope.Order = null;
+            }
+        }
+
+        /// <summary>A write starts on this thread: whatever its read has shared is no longer the disk's, and the
+        /// rest of that read shares nothing.</summary>
+        internal void WriteStarted()
+        {
+            var scope = scopes.Value;
+            scope.Items = null;
+            scope.Order = null;
         }
 
         internal object Get(Type type, string code, bool lazyLoad, string[] include)
@@ -20,27 +74,19 @@ namespace Xod.Services
             if (type == null || string.IsNullOrEmpty(code))
                 return null;
 
-            lock (syncLock)
-            {
-                if (!itemsByKey.TryGetValue((type, code), out var item))
-                    return null;
-
-                if (include == null)
-                {
-                    return item.Item;
-                }
-                if (include.Length == 0)
-                {
-                    return !item.LazyLoaded ? item.Item : null;
-                }
-                if (item.IncludedReferenceProperties != null &&
-                    include.All(t => item.IncludedReferenceProperties.Contains(t)))
-                {
-                    return item.Item;
-                }
-
+            var items = scopes.Value.Items;
+            if (items == null || !items.TryGetValue((type, code), out var item))
                 return null;
-            }
+
+            if (include == null)
+                return item.Item;
+            if (include.Length == 0)
+                return !item.LazyLoaded ? item.Item : null;
+            if (item.IncludedReferenceProperties != null &&
+                include.All(t => item.IncludedReferenceProperties.Contains(t)))
+                return item.Item;
+
+            return null;
         }
 
         internal void Add(ItemCache cacheItem)
@@ -48,68 +94,20 @@ namespace Xod.Services
             if (cacheItem?.Type == null || string.IsNullOrEmpty(cacheItem.Code))
                 return;
 
-            cacheItem.LoadTime = DateTime.UtcNow;
-            var key = (cacheItem.Type, cacheItem.Code);
-
-            lock (syncLock)
-            {
-                if (!itemsByKey.ContainsKey(key))
-                {
-                    while (itemsByKey.Count >= CACHE_SIZE && evictionQueue.Count > 0)
-                    {
-                        var oldest = evictionQueue.Dequeue();
-                        itemsByKey.Remove(oldest);
-                    }
-
-                    itemsByKey[key] = cacheItem;
-                    evictionQueue.Enqueue(key);
-
-                    if (cacheItem.ParentIsLeaf)
-                    {
-                        var toRemove = itemsByKey
-                            .Where(kv => kv.Value.ReadId == cacheItem.ParentReadId && kv.Value.LazyLoaded)
-                            .Select(kv => kv.Key)
-                            .ToList();
-                        foreach (var k in toRemove)
-                            itemsByKey.Remove(k);
-                    }
-                }
-            }
-        }
-
-        internal void Clear(Type type, string code)
-        {
-            if (type == null || string.IsNullOrEmpty(code))
+            var scope = scopes.Value;
+            var items = scope.Items;
+            if (items == null)
                 return;
 
-            lock (syncLock)
-            {
-                if (itemsByKey.Remove((type, code), out var item))
-                {
-                    var relations = itemsByKey.Values.Where(s => s.ParentReadId == item.ReadId).ToArray();
-                    foreach (var relation in relations)
-                        Clear(relation.Type, relation.Code);
-                }
-            }
-        }
+            var key = (cacheItem.Type, cacheItem.Code);
+            if (items.ContainsKey(key))
+                return;
 
-        internal void ClearCurrentCache()
-        {
-            lock (syncLock)
-            {
-                itemsByKey.Clear();
-                evictionQueue.Clear();
-            }
-        }
+            while (items.Count >= CACHE_SIZE && scope.Order.Count > 0)
+                items.Remove(scope.Order.Dequeue());
 
-        internal void ClearAllCache()
-        {
-            ClearCurrentCache();
-        }
-
-        public void Dispose()
-        {
-            ClearCurrentCache();
+            items[key] = cacheItem;
+            scope.Order.Enqueue(key);
         }
     }
 }

@@ -27,6 +27,7 @@ namespace Xod.Engines.Xml
             // write takes the engine's read lock and its table's write lock, which the query's table read locks keep
             // out (SqlSource). Both are held from the first table read to the last row computed.
             EnterRead();
+            itemsCacheService.BeginRead();
             try
             {
                 var now = DateTimeOffset.Now;
@@ -53,6 +54,7 @@ namespace Xod.Engines.Xml
             }
             finally
             {
+                itemsCacheService.EndRead();
                 rwLock.ExitReadLock();
             }
         }

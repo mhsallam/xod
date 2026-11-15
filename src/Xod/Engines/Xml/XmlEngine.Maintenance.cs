@@ -237,7 +237,6 @@ namespace Xod.Engines.Xml
                 if (!inTransaction)
                     FlushToDisk();
                 ioService.ClearCurrentCache();
-                itemsCacheService.ClearCurrentCache();
                 if (!inTransaction)
                     indexService.ClearAll();
             }
@@ -258,7 +257,6 @@ namespace Xod.Engines.Xml
         private void ForgetEverythingHeld()
         {
             ioService.DiscardPendingWrites();
-            itemsCacheService.ClearCurrentCache();
             indexService.ClearAll();
             propertyKeys.Reset();
         }

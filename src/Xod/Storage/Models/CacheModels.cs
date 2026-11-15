@@ -15,10 +15,6 @@ namespace Xod
         public object Item { get; set; }
         public bool LazyLoaded { get; set; }
         public string[] IncludedReferenceProperties { get; set; }
-        public DateTime LoadTime { get; set; }
-        public Guid ReadId { get; set; }
-        public Guid ParentReadId { get; set; }
-        public bool ParentIsLeaf { get; set; }
     }
 
     internal class FileCache

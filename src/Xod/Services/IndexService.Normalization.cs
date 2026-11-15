@@ -5,24 +5,10 @@ namespace Xod.Services
 {
     internal partial class IndexService
     {
-        /// <summary>The value a read of this row gives the property: its text parsed, or, when the row
-        /// leaves it out, the property's value without a row (StoredValue).</summary>
-        private static object ReadBackFromRow(PropertyInfoItem prop, System.Xml.Linq.XElement entityElement)
-        {
-            string raw;
-            if (prop.ValuePosition == ValuePosition.Attribute)
-            {
-                raw = entityElement.Attribute(prop.PropertyName)?.Value;
-            }
-            else
-            {
-                var element = entityElement.Element(prop.PropertyName);
-                if (element != null && StoredValue.IsNil(element))
-                    return null;
-                raw = element?.Value;
-            }
-            return raw == null ? StoredValue.ReadBackOfMissing(prop) : ValueHelper.ParseScalar(prop.PropertyType, raw);
-        }
+        /// <summary>The value a read of this row gives the property (StoredValue.ReadBack). An indexed property is
+        /// never encrypted, so its text is parsed as it stands.</summary>
+        private static object ReadBackFromRow(PropertyInfoItem prop, System.Xml.Linq.XElement entityElement) =>
+            StoredValue.ReadBack(prop, entityElement, text => ValueHelper.ParseScalar(prop.PropertyType, text));
 
         // Keys of the ints most tables hold, made once.
         private static readonly string[] SmallIntNormalizedCache = InitSmallIntCache();

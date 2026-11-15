@@ -1,8 +1,8 @@
 # PLAN-061: the High issues from the overall review
 
 - **Task ID**: `TASK-075`
-- **Status**: In progress. `ISS-147` done as a mitigation with named debt (section 2); the others are next, in
-  the order of section 1.
+- **Status**: In progress. `ISS-147` done as a mitigation with named debt (section 2); `ISS-138` and `ISS-139`
+  resolved (section 3); the others are next, in the order of section 1.
 - **Related**: [`REVIEW-2026-11-14`](../REVIEW-2026-11-14-overall.md) (`TASK-073`, which filed them),
   [`PLAN-051`](PLAN-051-commit-failure-and-shared-access.md) section 7 (the journal's recorded debt)
 
@@ -119,3 +119,90 @@ kept apart, which `ISS-164` records. Also left: `ISS-165`, `ISS-166`, and the be
 A write beside another context's journal fails with `XodException` when the write starts (or before a file
 write), where before it went in, or, for a commit beside it, failed with `TransactionException` at `Commit`. A
 write beside a commit under way now waits for it, up to `TransactionTimeoutMs`.
+
+## 3. `ISS-138` and `ISS-139`: objects read from an old cache, and rows matched by text
+
+### The causes
+
+- **`ISS-138`.** The objects a read builds for the rows it references were kept in a cache as long as the
+  context, keyed by type and row code. Nothing owned its freshness: each write had to clear what it changed, and
+  the clears skipped standalone types (the updates and deletes of a customer); another context's writes never
+  reached it; and every reader got the same instance. **The cache outlived the read, so its entries had to be
+  invalidated, and the invalidation was a duty of every writer.** A row code is also unique only within its page
+  (codes come from a counter that starts anywhere in each process), so two rows of two pages could share an entry.
+- **`ISS-139`.** Five places matched a stored row against an example by writing the example as XML and comparing
+  the text, case-insensitively in the current culture (`XmlExtensions.ElementMatch`), while the index compares
+  exact keys (`IndexKeys`). **Two owners decided whether two values are equal**, so a call gave other rows with
+  an index than without, and two rules decided which properties of an example take part.
+
+### The change
+
+- **A read's objects live as long as the read** (`ItemsCacheService`). One cache per outermost read on a thread,
+  begun and ended by the engine's read entries (`EnterTableReadLock`/`ExitTableReadLock`, the SQL query); nested
+  reads share it; any write ends it for the rest of the read it is made in (`WriteStarted`, from
+  `EnterExclusive` and `EnterTableWriteLock`); outside a read nothing is kept. So no write has anything to
+  invalidate, and the row-by-row clears are gone. Keyed by the stored reference (`page.row`). Not disposed with
+  the context: a close can come from inside a read, which still ends after it; the `ThreadLocal`'s finalizer
+  frees its slots (the runtime's `ThreadLocal.cs`, release/9.0, and the `ThreadLocal<T>.Dispose` note).
+- **One test of a row against an example** (`XmlEngine.Examples`): a scalar matches when the value a read gives
+  back from the row and the example's have one index key, by the index's own functions
+  (`IndexService.GetNormalizedPropertyValue`, `NormalizeIndexValue`); any other property by the form a shallow
+  write gives it, compared exactly; one rule for which properties take part (`SetsProperty`, the default of text
+  being the empty string as before). An example that sets nothing matches nothing, as it did (a Delete by an
+  example whose key was left unset takes no row). Every by-example path uses it.
+- **One reader of a stored scalar** (`StoredValue.ReadBack`) for the read, the index and the match: the index
+  parsed an empty text where a read leaves it out (found by the review).
+- `XmlExtensions.ElementMatch` (public) keeps its behaviour and is marked obsolete; its one implementation takes
+  the comparison.
+
+### Tests, seen red first
+
+`XodItemCacheTests` and `XodExampleMatchTests` (new), run against the unchanged tree (red) and this one:
+
+- the same context's update and delete of a referenced row seen through the reference; each read hands out its
+  own objects; a write inside a read seen by the rest of it; two rows of two pages with one row code are two
+  objects (red: the second got the first's object); a SQL query shares nothing with the reads after it;
+- by example: text exact, numbers by value, primary and unique keys as the index compares them, Update and
+  Delete by example, an encrypted property by its value, indexed and unindexed alike (red);
+- guards that passed before and must stay: the rows of one read share their referenced object; an example that
+  sets nothing matches nothing; a reference in an example doesn't take part.
+- Skipped: another context's update seen by a context that read the row before (`ISS-167`, the page cache).
+
+Each guard broken once (nine breaks, each turning at least one test red; the files restored after each): the
+cache living as long as the context; a write leaving the read sharing; keyed by row code; a SQL query never
+ending its read; text keys ignoring case; scalars matched by text; an example that sets nothing matching every
+row; an empty string taking part; a reference still taking part.
+
+### The independent review
+
+A read-only reviewer with probes, on the old and new code: `ISS-138` clean with named debt; `ISS-139` had a
+regression, fixed. Its findings:
+
+| Finding | Disposition |
+| :--- | :--- |
+| An example that sets only a reference matched every row (the shallow write leaves references out, and the match skipped them) | Fixed: what the written form leaves out doesn't take part, as before; tested |
+| The comment claimed references and collections match by their form | Corrected; the collection behaviour (predates) filed as `ISS-168` |
+| A second copy of "the value a read gives back" (the index's) | Fixed: `StoredValue.ReadBack`, and the index's key functions in the match |
+| A standalone write on another thread lands inside a read (predates; now one read's window) | Filed as `ISS-169` |
+| Behaviour changes without a note (exact text, AES256 matching) | In `RELEASE-NOTES-NEXT.md` |
+| An empty `try {}` left in `DisposeResources` | Removed |
+| Polymorphic references are never shared within a read (identity, not freshness); a keyless Update/Delete by example takes one page's matches (predates) | Named; the second in `ISS-168` |
+
+### The verdict
+
+- **`ISS-138`: clean, with named debt** (`ISS-167`, `ISS-169`). Nothing outlives a read, so no write can leave
+  it stale.
+- **`ISS-139`: clean, with named debt** (`ISS-168`). One owner of equality for every match.
+
+Measured on one machine (a scratch benchmark, 1,000 customers and 10,000 orders): reading every order with its
+customer and 5,000 reads by key took no longer than before; the reviewer's unindexed scans by example were no
+slower, except over an encrypted property, which decrypts each row (it never matched before).
+
+### How it was checked
+
+- **Linux** (2026-11-15, `mcr.microsoft.com/dotnet/sdk:9.0`, a non-root user, the container's own file system,
+  no network): the item-cache, example, trusted-index and SQL tests, 90 passed and the `ISS-167` test skipped.
+- **Gate** (the final tree, 2026-11-15, Windows): engine and crash writer build with 0 warnings; `Xod.Tests`
+  490 on net8.0 and 498 on net9.0, the `ISS-167` test skipped on each; conformance 24/24 on each; the
+  independent reader `--check` and `--check-fresh` ok; `XodBench.Tests` 26/26; no machine details in the tracked
+  files. The API snapshot changed by one line: `ElementMatch` marked obsolete.

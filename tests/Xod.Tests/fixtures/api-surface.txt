@@ -649,7 +649,7 @@ type Xod.ValuePosition (sealed)
 type Xod.XmlExtensions (static)
   method Boolean ElementAttributesEquals(XElement, XElement)
   method Boolean ElementEquals(XElement, XElement)
-  method Boolean ElementMatch(XElement, XElement)
+  method Boolean ElementMatch(XElement, XElement) [obsolete]
 
 type Xod.XodContext
   ctor(String file, String password, DatabaseOptions options)

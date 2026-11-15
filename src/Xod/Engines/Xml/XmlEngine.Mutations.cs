@@ -677,9 +677,6 @@ namespace Xod.Engines.Xml
                     object rowItem = ItemForRow(type, row, newItem, filter);
                     ValidateUniqueAndPrimaryConstraints(type, rowItem, existingCodeToIgnore: itemCode);
 
-                    if (meta == null || !meta.IsStandalone)
-                        itemsCacheService.Clear(type, rowCodeAtt?.Value);
-
                     var itemTrack = new ReadWriteTrack
                     {
                         Item = item,
@@ -1117,8 +1114,6 @@ namespace Xod.Engines.Xml
                             ? $"{pageCode}.{rowCodeAtt.Value}"
                             : "";
 
-                        if (meta == null || !meta.IsStandalone)
-                            itemsCacheService.Clear(type, rowCodeAtt?.Value);
                         indexService.RemoveRowElement(type, row, itemCode);
 
                         if (meta == null || meta.HasCascadeDeleteOrParentProperties)
@@ -1233,7 +1228,6 @@ namespace Xod.Engines.Xml
                     ioService.Delete(tableFile.Path);
                     autonumberService.ClearType(type);
                     indexService.Remove(type);
-                    itemsCacheService.ClearCurrentCache();
 
                     AfterAction?.Invoke(this, trigger);
                     return true;
@@ -1268,9 +1262,6 @@ namespace Xod.Engines.Xml
             if (ioService.TryDeleteRow(pageFileName, rowCode, out XElement rawRow, out bool pageEmpty))
             {
                 var meta = propertyService.GetMetadata(type);
-                if (meta == null || !meta.IsStandalone)
-                    itemsCacheService.Clear(type, rowCode);
-
                 indexService.RemoveRowElement(type, rawRow, itemCode);
 
                 string docFileName = $"{type.FullName}.xtab";

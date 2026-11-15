@@ -482,10 +482,11 @@ namespace Xod.Engines.Xml
                 return item;
             }
 
-            bool parentIsLeaf = false;
+            // The row as a reference names it ("page.row"): the key of what the read shares (ItemsCacheService). A
+            // row's code alone is unique only within its page. A row read for itself, not as a reference, has none.
+            string referenceCode = track?.Code;
             if (track?.Parent != null && RecursionError(track, track.Parent))
             {
-                parentIsLeaf = true;
                 track = null;
                 lazyLoad = true;
                 include = null;
@@ -495,8 +496,6 @@ namespace Xod.Engines.Xml
                 ? Array.Empty<string>()
                 : include.Replace(" ", "").Split(',');
 
-            string itemCode = row.Attribute("code")?.Value;
-            Guid readId = Guid.NewGuid();
 
             var props = meta != null
                 ? meta.ReadProperties
@@ -557,7 +556,7 @@ namespace Xod.Engines.Xml
                                     if (rowCode == null)
                                         return null;
 
-                                    object obj = itemsCacheService.Get(itemType, rowCode.Value, lazyLoad, includedRefProps);
+                                    object obj = itemsCacheService.Get(itemType, fullChildCode, lazyLoad, includedRefProps);
                                     if (obj != null)
                                         return obj;
 
@@ -634,7 +633,7 @@ namespace Xod.Engines.Xml
                             if (itemParts.Length != 2)
                                 continue;
 
-                            object cachedItem = itemsCacheService.Get(targetPropType, itemParts[1], lazyLoad, includedRefProps);
+                            object cachedItem = itemsCacheService.Get(targetPropType, stringValue, lazyLoad, includedRefProps);
                             if (cachedItem == null)
                             {
                                 var refTrack = new ReadWriteTrack
@@ -678,21 +677,14 @@ namespace Xod.Engines.Xml
                 }
             }
 
-            var cache = new ItemCache
+            itemsCacheService.Add(new ItemCache
             {
                 Type = type,
-                Code = itemCode,
+                Code = referenceCode,
                 Item = item,
                 LazyLoaded = lazyLoad,
                 IncludedReferenceProperties = include != "*" ? null : includedRefProps,
-                ReadId = readId,
-                ParentIsLeaf = parentIsLeaf
-            };
-
-            if (track != null)
-                cache.ParentReadId = track.ReadId;
-
-            itemsCacheService.Add(cache);
+            });
             return item;
         }
 
@@ -765,24 +757,8 @@ namespace Xod.Engines.Xml
         /// property has that form, and otherwise counts as left out; a value left out is what a read gives without
         /// it (StoredValue.ReadBackOfMissing). The rule <see cref="SetFromStoredScalar"/> applies to an item.
         /// </summary>
-        private object StoredScalar(PropertyInfoItem prop, XElement entity)
-        {
-            string text;
-            if (prop.ValuePosition == ValuePosition.Attribute)
-            {
-                text = entity?.Attribute(prop.PropertyName)?.Value;
-            }
-            else
-            {
-                XElement e = entity?.Element(prop.PropertyName);
-                if (e != null && StoredValue.IsNil(e))
-                    return null;
-                text = e?.Value;
-            }
-            if (text == null || (text.Length == 0 && !StoredValue.HasEmptyForm(prop)))
-                return StoredValue.ReadBackOfMissing(prop);
-            return ReadValue(prop, prop.PropertyType, text);
-        }
+        private object StoredScalar(PropertyInfoItem prop, XElement entity) =>
+            StoredValue.ReadBack(prop, entity, text => ReadValue(prop, prop.PropertyType, text));
 
         private object ReadValue(PropertyInfoItem prop, Type targetType, string stringValue)
         {
@@ -795,32 +771,6 @@ namespace Xod.Engines.Xml
             }
 
             return ValueHelper.ParseScalar(targetType, stringValue);
-        }
-
-        private static bool IsNonDefaultPropertyValue(PropertyInfoItem prop, object item)
-        {
-            switch (prop.ScalarKind)
-            {
-                case ScalarPropertyKind.Int32:
-                    return prop.IntGetter(item) != 0;
-                case ScalarPropertyKind.Int64:
-                    return prop.LongGetter(item) != 0L;
-                case ScalarPropertyKind.Decimal:
-                    return prop.DecimalGetter(item) != 0m;
-                case ScalarPropertyKind.Double:
-                    return prop.DoubleGetter(item) != 0.0;
-                case ScalarPropertyKind.Boolean:
-                    return prop.BoolGetter(item);
-                case ScalarPropertyKind.String:
-                    return !string.IsNullOrEmpty(prop.StringGetter(item));
-                case ScalarPropertyKind.Guid:
-                    return prop.GuidGetter(item) != Guid.Empty;
-                default:
-                {
-                    var val = prop.GetValue(item);
-                    return val != null && !val.Equals(ValueHelper.DefaultOf(prop.PropertyType));
-                }
-            }
         }
 
         private bool TryLookupCodesByProperties(
@@ -905,87 +855,37 @@ namespace Xod.Engines.Xml
 
             string docFileName = $"{type.FullName}.xtab";
             XFile tableFile = ioService.OpenFileOrCreate(docFileName, type, openOnly: true);
-            if (tableFile != null)
+            if (tableFile == null)
+                return Enumerable.Empty<object>();
+
+            var meta = propertyService.GetMetadata(type);
+            var test = ExampleTestFor(type, example);
+            if (TryLookupCodesByProperties(type, example, test.Set, out var candidateCodes, out bool isFullyCovered))
             {
-                var meta = propertyService.GetMetadata(type);
-                var itemProps = meta != null
-                    ? meta.ReadProperties
-                    : propertyService.Properties(type.FullName).Where(s => !s.IsReadOnly).ToArray();
+                if (candidateCodes.Count == 0)
+                    return Enumerable.Empty<object>();
 
-                var activeProps = new List<PropertyInfoItem>(2);
-                for (int i = 0; i < itemProps.Length; i++)
+                var results = new List<object>(candidateCodes.Count);
+                bool useFastReader = isFullyCovered && meta != null && meta.IsPureScalarStandalone;
+                foreach (var code in candidateCodes)
                 {
-                    var itemProp = itemProps[i];
-                    if (IsNonDefaultPropertyValue(itemProp, example))
-                        activeProps.Add(itemProp);
-                }
-
-                if (TryLookupCodesByProperties(type, example, activeProps, out var candidateCodes, out bool isFullyCovered))
-                {
-                    if (candidateCodes.Count == 0)
-                        return Enumerable.Empty<object>();
-
-                    if (isFullyCovered)
+                    if (useFastReader && TryReadEntityByCode(code, meta, out object fastEntity) && fastEntity != null)
                     {
-                        var results = new List<object>(candidateCodes.Count);
-                        bool useFastReader = meta != null && meta.IsPureScalarStandalone;
-                        foreach (var code in candidateCodes)
-                        {
-                            if (useFastReader && TryReadEntityByCode(code, meta, out object fastEntity) && fastEntity != null)
-                            {
-                                results.Add(fastEntity);
-                                continue;
-                            }
-
-                            XElement rawRow = GetRawData(code);
-                            if (rawRow != null)
-                                results.Add(Read(type, rawRow, include));
-                        }
-                        return results;
+                        results.Add(fastEntity);
+                        continue;
                     }
 
-                    var skipPropsPartial = new List<string>(itemProps.Length);
-                    for (int i = 0; i < itemProps.Length; i++)
-                    {
-                        if (!activeProps.Contains(itemProps[i]))
-                            skipPropsPartial.Add(itemProps[i].PropertyName);
-                    }
-
-                    XElement partialTest = skipPropsPartial.Count > 0
-                        ? Write(type, example, true, null, new UpdateFilter { Behavior = UpdateFilterBehavior.Skip, Properties = skipPropsPartial.ToArray() })
-                        : Write(type, example, true);
-
-                    var filteredResults = new List<object>();
-                    foreach (var code in candidateCodes)
-                    {
-                        XElement rawRow = GetRawData(code);
-                        if (rawRow != null && partialTest.ElementMatch(rawRow.Elements().FirstOrDefault()))
-                            filteredResults.Add(Read(type, rawRow, include));
-                    }
-                    return filteredResults;
+                    XElement rawRow = GetRawData(code);
+                    if (rawRow != null && (isFullyCovered || Matches(test, rawRow.Elements().FirstOrDefault())))
+                        results.Add(Read(type, rawRow, include));
                 }
-
-                var skipProps = new List<string>(itemProps.Length);
-                for (int i = 0; i < itemProps.Length; i++)
-                {
-                    if (!activeProps.Contains(itemProps[i]))
-                        skipProps.Add(itemProps[i].PropertyName);
-                }
-
-                XElement test = skipProps.Count > 0
-                    ? Write(type, example, true, null, new UpdateFilter { Behavior = UpdateFilterBehavior.Skip, Properties = skipProps.ToArray() })
-                    : Write(type, example, true);
-
-                var rows = tableFile.Pages()
-                    .Where(s => ioService.FileExists(s.Attribute("file").Value))
-                    .SelectMany(s => ioService.OpenFileOrCreate<TablePage>(s.Attribute("file").Value, openOnly: true).Rows());
-
-                return rows.Where(r => test.ElementMatch(r.Elements().FirstOrDefault()))
-                    .Select(r => Read(type, r, include))
-                    .ToList();
+                return results;
             }
 
-            return Enumerable.Empty<object>();
+            return TableRows(tableFile)
+                .Where(r => Matches(test, r.Elements().FirstOrDefault()))
+                .Select(r => Read(type, r, include))
+                .ToList();
         }
 
         private IEnumerable<object> SelectItemsByExamples(Type type, object[] examples, string include = null)
@@ -996,38 +896,21 @@ namespace Xod.Engines.Xml
             propertyService.LoadType(type);
             string docFileName = $"{type.FullName}.xtab";
             XFile tableFile = ioService.OpenFileOrCreate(docFileName, type, openOnly: true);
-            if (tableFile != null)
-            {
-                var tests = new List<XElement>();
-                foreach (var example in examples)
-                {
-                    var skipProps = new List<string>();
-                    var itemProps = propertyService.Properties(type.FullName).Where(s => !s.IsReadOnly);
-                    foreach (var itemProp in itemProps)
-                    {
-                        var examplePropVal = itemProp.Property.GetValue(example);
-                        if (examplePropVal == null || examplePropVal.Equals(ValueHelper.DefaultOf(itemProp.PropertyType)))
-                            skipProps.Add(itemProp.PropertyName);
-                    }
+            if (tableFile == null)
+                return Enumerable.Empty<object>();
 
-                    XElement test = skipProps.Count > 0
-                        ? Write(type, example, true, null, new UpdateFilter { Behavior = UpdateFilterBehavior.Skip, Properties = skipProps.ToArray() })
-                        : Write(type, example, true);
-
-                    tests.Add(test);
-                }
-
-                var rows = tableFile.Pages()
-                    .Where(s => ioService.FileExists(s.Attribute("file").Value))
-                    .SelectMany(s => ioService.OpenFileOrCreate<TablePage>(s.Attribute("file").Value, openOnly: true).Rows());
-
-                return rows.Where(r => tests.Any(t => t.ElementMatch(r.Elements().FirstOrDefault())))
-                    .Select(r => Read(type, r, include))
-                    .ToList();
-            }
-
-            return Enumerable.Empty<object>();
+            var tests = examples.Select(example => ExampleTestFor(type, example)).ToList();
+            return TableRows(tableFile)
+                .Where(r => tests.Any(t => Matches(t, r.Elements().FirstOrDefault())))
+                .Select(r => Read(type, r, include))
+                .ToList();
         }
+
+        // Every row of a table, page by page.
+        private IEnumerable<XElement> TableRows(XFile tableFile) =>
+            tableFile.Pages()
+                .Where(s => ioService.FileExists(s.Attribute("file").Value))
+                .SelectMany(s => ioService.OpenFileOrCreate<TablePage>(s.Attribute("file").Value, openOnly: true).Rows());
 
         private XRow GetRow(Type type, object example)
         {
@@ -1037,11 +920,7 @@ namespace Xod.Engines.Xml
             propertyService.LoadType(type);
             var pkProps = propertyService.Properties(type.FullName).Where(s => s.IsPrimaryKey).ToList();
             if (options.EnableIndexing && pkProps.Count > 0 &&
-                pkProps.All(p =>
-                {
-                    var val = p.GetValue(example);
-                    return val != null && !val.Equals(ValueHelper.DefaultOf(p.PropertyType));
-                }) &&
+                pkProps.All(p => SetsProperty(p, example)) &&
                 TryLookupCodesByProperties(type, example, pkProps, out var pkCodes, out bool pkCovered) &&
                 pkCovered)
             {
@@ -1091,19 +970,9 @@ namespace Xod.Engines.Xml
             if (tableFile != null)
             {
                 var result = new XRow();
-                var skipProps = new List<string>();
-                var activeProps = new List<PropertyInfoItem>();
-                var itemProps = propertyService.Properties(type.FullName).Where(s => !s.IsReadOnly);
-                foreach (var itemProp in itemProps)
-                {
-                    var examplePropVal = itemProp.Property.GetValue(item);
-                    if (examplePropVal == null || examplePropVal.Equals(ValueHelper.DefaultOf(itemProp.PropertyType)))
-                        skipProps.Add(itemProp.PropertyName);
-                    else
-                        activeProps.Add(itemProp);
-                }
+                var test = ExampleTestFor(type, item);
 
-                if (TryLookupCodesByProperties(type, item, activeProps, out var candidateCodes, out bool isFullyCovered))
+                if (TryLookupCodesByProperties(type, item, test.Set, out var candidateCodes, out bool isFullyCovered))
                 {
                     if (candidateCodes.Count == 0)
                         return null;
@@ -1132,10 +1001,6 @@ namespace Xod.Engines.Xml
                     }
                 }
 
-                XElement test = skipProps.Count > 0
-                    ? Write(type, item, true, null, new UpdateFilter { Behavior = UpdateFilterBehavior.Skip, Properties = skipProps.ToArray() })
-                    : Write(type, item, true);
-
                 var pages = tableFile.Pages().Where(s => ioService.FileExists(s.Attribute("file").Value));
                 foreach (var page in pages)
                 {
@@ -1144,7 +1009,7 @@ namespace Xod.Engines.Xml
                     {
                         bool found = pageFile.Rows().Any(r =>
                         {
-                            if (test.ElementMatch(r.Elements().FirstOrDefault()))
+                            if (Matches(test, r.Elements().FirstOrDefault()))
                             {
                                 result.Table = tableFile;
                                 result.Page = pageFile;
@@ -1176,11 +1041,7 @@ namespace Xod.Engines.Xml
             {
                 var pkProps = propertyService.Properties(type.FullName).Where(s => s.IsPrimaryKey).ToList();
                 if (options.EnableIndexing && pkProps.Count > 0 &&
-                    pkProps.All(p =>
-                    {
-                        var val = p.GetValue(example);
-                        return val != null && !val.Equals(ValueHelper.DefaultOf(p.PropertyType));
-                    }) &&
+                    pkProps.All(p => SetsProperty(p, example)) &&
                     TryLookupCodesByProperties(type, example, pkProps, out var pkCodes, out bool pkCovered) &&
                     pkCovered)
                 {
@@ -1217,18 +1078,7 @@ namespace Xod.Engines.Xml
                     Rows = new List<XElement>()
                 };
 
-                var skipProps = new List<string>();
-                var itemProps = propertyService.Properties(type.FullName).Where(s => !s.IsReadOnly);
-                foreach (var itemProp in itemProps)
-                {
-                    var examplePropVal = itemProp.Property.GetValue(item);
-                    if (examplePropVal == null || examplePropVal.Equals(ValueHelper.DefaultOf(itemProp.PropertyType)))
-                        skipProps.Add(itemProp.PropertyName);
-                }
-
-                XElement test = skipProps.Count > 0
-                    ? Write(type, item, true, null, new UpdateFilter { Behavior = UpdateFilterBehavior.Skip, Properties = skipProps.ToArray() })
-                    : Write(type, item, true);
+                var test = ExampleTestFor(type, item);
 
                 var pages = tableFile.Pages().Where(s => ioService.FileExists(s.Attribute("file").Value));
                 foreach (var page in pages)
@@ -1237,7 +1087,7 @@ namespace Xod.Engines.Xml
                     if (pageFile != null)
                     {
                         var matchedRows = pageFile.Rows()
-                            .Where(r => test.ElementMatch(r.Elements().FirstOrDefault()))
+                            .Where(r => Matches(test, r.Elements().FirstOrDefault()))
                             .ToList();
 
                         if (matchedRows.Count > 0)
