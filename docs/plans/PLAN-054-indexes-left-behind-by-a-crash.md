@@ -52,9 +52,9 @@ As reworked by `TASK-066`; what changed from `TASK-064` is said where it did.
 - **A write that failed stays to be made** (ISS-098, `TASK-066`): an index type leaves the set still to save only
   once saved (`IndexService.FlushDirtyIndexes`), and a page or table file leaves a batch's or the buffer's set
   only once written (`IOService.FlushPending`); what a failed flush took goes back to the buffer, written by the
-  next flush or dropped by a rollback (`DiscardPendingWrites`). A full page a batch writes on its own counted as
-  written when its write began; one whose write failed is now written whole by the next flush
-  (`AwaitBatchWrites`). Writing again a file that was written is harmless: each is written whole, or from where
+  next flush or dropped by a rollback (`DiscardPendingWrites`). A full page a batch wrote on its own counted as
+  written when its write began; one whose write failed was written whole by the next flush (`AwaitBatchWrites`;
+  that write is gone since `ISS-129`, `PLAN-061` section 5: a full page waits for the batch's end). Writing again a file that was written is harmless: each is written whole, or from where
   its last write that succeeded ended. After an index append that failed, the next save is a snapshot: the
   replay trusts a log whose last record ends a flush, so an append behind a torn record could be read wrongly.
 - **Readers** (`IOService.IndexesLeftBehind`, asked by every index load since `TASK-066`): a marker that isn't

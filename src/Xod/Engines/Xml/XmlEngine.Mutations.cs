@@ -251,9 +251,8 @@ namespace Xod.Engines.Xml
                 var meta = propertyService.GetMetadata(type);
                 if (meta != null && meta.IsPureScalarStandalone && !shallowWrite && writeTrack == null)
                 {
-                    bool inTx = activeTransaction != null && activeTransaction.IsActive;
                     long tRaw = WriteDiagnostics.Begin();
-                    bool rawOk = ioService.TryAppendRawRowToPage(tableFile, item, meta, exceptionService, pageSize, inTx, out itemPath, out XElement rawPageElement, out bool rawTableModified);
+                    bool rawOk = ioService.TryAppendRawRowToPage(tableFile, item, meta, exceptionService, pageSize, out itemPath, out XElement rawPageElement, out bool rawTableModified);
                     WriteDiagnostics.End(ref WriteDiagnostics.RawTicks, tRaw);
                     if (rawOk)
                     {

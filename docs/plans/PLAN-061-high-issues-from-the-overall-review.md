@@ -2,7 +2,8 @@
 
 - **Task ID**: `TASK-075`
 - **Status**: In progress. `ISS-147` done as a mitigation with named debt (section 2); `ISS-138` and `ISS-139`
-  resolved (section 3); `ISS-148`, `ISS-149` and `ISS-150` resolved (section 4); `ISS-129` and `ISS-151` next.
+  resolved (section 3); `ISS-148`, `ISS-149` and `ISS-150` resolved (section 4); `ISS-129` resolved (section 5);
+  `ISS-151` next.
 - **Related**: [`REVIEW-2026-11-14`](../REVIEW-2026-11-14-overall.md) (`TASK-073`, which filed them),
   [`PLAN-051`](PLAN-051-commit-failure-and-shared-access.md) section 7 (the journal's recorded debt)
 
@@ -322,3 +323,87 @@ reproduced as fixed). Its findings:
   lock, migrator and journal tests, 136 passed. The read-only-media test ran first with its folders passed as empty
   strings, which point both at one writable folder, and failed for that; run again with a folder mounted read-only
   (`XOD_RO_RW`, `XOD_RO_RO`), the lock tests passed 6/6, the gate left uncreated where the folder can't be written.
+
+## 5. `ISS-129`: a full page written in the background
+
+### The cause
+
+Outside a transaction, a raw page that filled during a batch was written by a task of its own
+(`System.Threading.Tasks.Task.Run`), from the page's pooled bytes, while the batch went on, and counted as written
+when the task began. Nothing owned those bytes for the task: opening the page as a document (every insert's key check
+does, with indexing off) gave them back to the pool (`IOService.OpenFileOrCreate`), the next new page rented them and
+wrote its rows into them, and the task wrote that. **A page had two writers, and one of them borrowed bytes it didn't
+own.** The `InsertRange` returned success; the table no longer opened.
+
+### The change
+
+- **One writer for a raw page.** A page that fills waits in the batch like any other and is written at the batch's
+  end by `FlushPending`, under the lock that every release of page bytes also takes (`IOService.RawPages`). The task,
+  its list (`pendingBatchWrites`), and its waits in `EndBatch`, `DiscardBatch` and `NothingPending` are gone, with the
+  internal `isInTransaction` parameter that fed it. Writing a raw page early saved no memory: a written page stays in
+  the page cache until eviction (measured, below).
+- **The hook once per page per batch.** The batch branch ran `BeforeFileMutate` for every row, after
+  `RawPagePendingUnlocked` had already run it when the page joined the batch (the rule documents follow,
+  `FilePendingUnlocked`); the second call is gone. Each page still passes the hook when it is written. Found by the
+  review.
+- **A full page document still written early** (`IOService.FlushFullPageInBatch`, `PLAN-019`): a document waiting in
+  the batch can't leave the file cache, a written one can, so a large encrypted batch holds only its tail page. The
+  write was always this context's own, under the lock, from the document it owns; it now takes the page out of the
+  batch only once written, and only when the batch waits with that very document (`PendingFiles.Waits`). It took the
+  page out first, so a write that failed or that the hook refused was lost to the batch (`ISS-098`'s shape; found by
+  the review, by reading, not reproduced).
+
+### Tests, seen red first
+
+- `XodBatchPageWriteTests` (new), the overall review's probe P9: 400 rows each larger than a 4 KB page, indexed,
+  unindexed and encrypted, read back after a reopen, each row once with its own text. Against the unfixed engine the
+  unindexed case failed in every run here (8 of 8, the table malformed) and the reviewer's (24 of 24 fresh processes
+  run 12 at a time, 7 of 7 one at a time); the overall review had seen it pass 36 times, so it depends on timing.
+- **The mechanism, made deterministic**: the unfixed engine (a scratch copy) with its background write held until the
+  batch's writer was done broke the table in 3 of 3 runs; of its 400 background writes, 399 wrote bytes their page had
+  already given back. The fixed engine read all 400 rows back in each run.
+- The guard: the background write put back (the unfixed engine files restored) turned the unindexed case red in 8 of
+  8 runs. It can only catch a background write coming back by chance; what keeps one out is that page bytes have one
+  writer, which the code's structure holds, not a check. The encrypted case covers the document path, but can't tell
+  the old early write from the new one (they differ only when the write fails, and no fault injection reaches a page
+  write).
+
+### The independent review
+
+A read-only reviewer with probes, on the old and new code, then on the revision:
+
+| Finding | Disposition |
+| :--- | :--- |
+| The document path's early write took the page out of the batch before writing it | Fixed: written first, taken out only once written, and only with that document |
+| Removing that early write (the first revision) let an encrypted batch's memory grow with the batch | Measured (300,000 encrypted rows: peak 642 MB with it, 788 MB without), so it stays |
+| The hook ran twice per row in a batch | Fixed: once per page per batch; checked that nothing relied on per-row calls (journal capture, the ISS-147 refusal, the crash marker, the password switch) |
+| A comment above `NothingPending` described the removed write; the test header understated how often the defect reproduced and cited a section not yet written | Removed; corrected; this section |
+| `PLAN-019` and `PLAN-054` still described the removed writes | Corrected where they say it |
+| The write-then-remove order has no test (an undo after a failed write changes the page and puts it back in the batch, which mostly masked the old order) | Named: held by reading; no fault injection reaches a page write. The doc comment now says the statement still fails |
+| A `Debug.Assert` that page writes hold the lock | Not taken (the reviewer agreed): it can't see a writer outside the one writer, and the Release gate doesn't run it |
+
+### The verdict
+
+**`ISS-129`: clean, with named debt** (the document path's write-then-remove order is held by reading, not by a
+test). A raw page has one writer, which borrows nothing; a page document's early write is this
+context's own, from what it owns, and leaves the batch only once made.
+
+Measured on one machine (a scratch benchmark, the old and new engines run alternately):
+
+| Case | Before | After |
+| :--- | :--- | :--- |
+| 200,000 plain rows, one `InsertRange` | 3.15 to 3.35 s | 0.98 to 1.18 s |
+| 1,500,000 plain rows | 49 s, peak 1,351 MB | 9 s, peak 1,352 MB |
+| 300,000 encrypted rows | 9.6 s, peak 642 MB | 4.9 to 5.1 s, peak 642 MB |
+| 10,000 unindexed rows | 5.96 to 6.17 s | 5.86 to 6.16 s |
+
+Most of the gain is the hook no longer running for every row.
+
+### How it was checked
+
+- **Gate** (the final tree, 2026-11-15, Windows): engine and crash writer build with 0 warnings; `Xod.Tests` 503 on
+  net8.0 and 511 on net9.0, the `ISS-167` test skipped on each; conformance 24/24 on each; the independent reader
+  `--check` and `--check-fresh` ok; `XodBench.Tests` 26/26; no machine details in the tracked files.
+- **Linux** (2026-11-15, `mcr.microsoft.com/dotnet/sdk:9.0`, a non-root user, the container's own file system, no
+  network; the final tree): the batch, volume, statement-undo, one-write, failed-write, commit-failure, stress, core,
+  crash-safety, index-crash and password-change tests, 115 passed.

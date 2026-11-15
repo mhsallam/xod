@@ -36,6 +36,9 @@ namespace Xod.Services
         /// <summary>A write of this file waits, with whichever document.</summary>
         internal bool Contains(XFile file) => byName.ContainsKey(NameOf(file));
 
+        /// <summary>A write of this file waits with this document.</summary>
+        internal bool Waits(XFile file) => byName.TryGetValue(NameOf(file), out XFile waiting) && ReferenceEquals(waiting, file);
+
         /// <summary>
         /// Takes out the write of this document. False when the file waits with another document, or not at all.
         /// </summary>

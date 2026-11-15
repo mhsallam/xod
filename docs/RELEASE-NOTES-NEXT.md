@@ -16,6 +16,7 @@ records it. The last release: [2.0.2](RELEASE-NOTES-2.0.2.md).
 
 ## Fixed
 
+- **An `InsertRange` can no longer leave a table unreadable** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-129`). Outside a transaction, a page that filled was written in the background from a buffer another step could give back and reuse, so it could hold other pages' rows: the call succeeded and the table no longer opened (most often with `EnableIndexing = false`). A full page is now written with the rest of the batch. A batched insert is also faster: a check that ran for every row runs once per page.
 - **A password change can no longer be overtaken by another's** (the review of `ISS-148`). A context that held the database alone for a password change, an AES256 key or a new database gave that hold up and took its shared hold back, holding nothing for an instant; another context could change the password in that instant, and the first then wrote under the old one. Now no other context can hold the database alone in between.
 - **Pages a crashed transaction set aside no longer come back in plaintext after `Secure`** (`ISS-149`): the change is refused until they are put back.
 - **Two contexts writing their first `[Crypto(AES256)]` values no longer lose one's key** (`ISS-150`), a key made inside a transaction is no longer taken back by its rollback (or a commit undone after a crash) once another context has written values under it, and a key whose save failed (the database file held open by another program) is no longer used unsaved.

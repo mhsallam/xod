@@ -688,7 +688,6 @@ namespace Xod.Services
             TypeMetadata meta,
             ExceptionService exceptionService,
             int pageMaxSizeBytes,
-            bool isInTransaction,
             out string itemPath,
             out XElement pageElement,
             out bool tableModified)
@@ -849,41 +848,21 @@ namespace Xod.Services
                 if (IsBatchOrBuffered)
                     tableModified = true;
 
-                bool becameFull = false;
                 if (rawPage.Length >= pageMaxSizeBytes)
                 {
                     page.SetAttributeValue("full", "true");
                     tableModified = true;
-                    becameFull = true;
                     WriteDiagnostics.FullPages++;
                 }
 
                 WriteDiagnostics.End(ref WriteDiagnostics.AppendTicks, tAppend);
-                string fullPath = Path.Combine(root, pageFileName);
                 if (batchDepth > 0)
                 {
-                    BeforeFileMutate?.Invoke(fullPath);
-                    if (becameFull && !isInTransaction)
-                    {
-                        dirtyBatchRawPages.Remove(pageFileName);
-                        byte[] bytesToWrite = rawPage.Bytes;
-                        int lenToWrite = rawPage.Length;
-                        rawPage.IsNewFile = false;
-                        rawPage.DiskSyncedLength = lenToWrite;
-                        rawPage.DirtyStartOffset = int.MaxValue;
-                        pendingBatchWrites.Add((System.Threading.Tasks.Task.Run(() =>
-                        {
-                            using (var fs = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.None))
-                            {
-                                fs.Write(bytesToWrite, 0, lenToWrite);
-                                fs.Flush(flushToDisk: false);
-                            }
-                        }), pageFileName, rawPage));
-                    }
-                    else
-                    {
-                        dirtyBatchRawPages.Add(pageFileName);
-                    }
+                    // Waits in the batch (RawPagePendingUnlocked, above), full or not, and is written with the rest of it
+                    // at its end by the batch's one writer (FlushPending). ISS-129: a page that filled was written by a
+                    // task of its own, from its pooled bytes, while the batch went on; opening the page as a document
+                    // meanwhile gave those bytes back to the pool, the next page rented them and wrote its rows into
+                    // them, and the task wrote that: other pages' rows in a full page, the table unreadable.
                 }
                 else if (bufferedDurability)
                 {

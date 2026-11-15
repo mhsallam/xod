@@ -555,6 +555,17 @@ namespace Xod.Services
             System.Threading.Tasks.Parallel.ForEach(toFlush, FlushFileToDiskCore);
         }
 
+        /// <summary>
+        /// Writes a page document a batch filled before the batch ends (PLAN-019), outside a transaction: a document
+        /// waiting in the batch can't leave the file cache, a written one can, so a large batch doesn't hold every
+        /// page it filled (the table file, and a page a later change puts back in the batch, still wait). The write is
+        /// this context's, under the lock, from the document it owns. The page leaves the batch only once written
+        /// (ISS-098): when the write fails or the hook refuses it, the page still waits, and the exception fails the
+        /// row's statement, whose undo changes the page again (ISS-129's review; the order is held by reading: no
+        /// fault injection reaches a page write).
+        /// The raw path has no such write: a raw page stays in the page cache once written, so writing it early
+        /// saves no memory (IOService.RawPages, ISS-129).
+        /// </summary>
         internal void FlushFullPageInBatch(XFile pageFile)
         {
             if (pageFile == null)
@@ -562,9 +573,10 @@ namespace Xod.Services
 
             lock (syncLock)
             {
-                if (batchDepth > 0 && dirtyBatchFiles.Remove(pageFile))
+                if (batchDepth > 0 && dirtyBatchFiles.Waits(pageFile))
                 {
                     FlushFileToDisk(pageFile);
+                    dirtyBatchFiles.Remove(pageFile);
                 }
             }
         }
