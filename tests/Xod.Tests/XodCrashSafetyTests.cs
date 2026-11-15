@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Xod;
 using Xunit;
 
@@ -87,24 +89,6 @@ namespace Xod.Tests
             return writer;
         }
 
-        private Process StartWriter(string mode, string dir)
-        {
-            var psi = new ProcessStartInfo("dotnet")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add(WriterDll());
-            psi.ArgumentList.Add(mode);
-            psi.ArgumentList.Add(dir);
-
-            var process = Process.Start(psi);
-            Assert.NotNull(process);
-            return process!;
-        }
-
         private (int ExitCode, string Output) RunWriter(string mode, string dir, int? crashAfterRows = null) =>
             crashAfterRows.HasValue
                 ? RunWriterProcess(mode, dir, ("XOD_CRASH_AFTER_ROWS", crashAfterRows.Value.ToString()))
@@ -126,7 +110,34 @@ namespace Xod.Tests
             psi.ArgumentList.Add(dir);
             foreach (var (name, value) in env)
                 psi.Environment[name] = value;
-            return Process.Start(psi)!;
+            return Launch(psi);
+        }
+
+        // Each writer's standard error, read from its start. A writer that fails can write more there than a pipe
+        // holds (an aggregate of a parallel flush's exceptions passed 11 KB), and one read only once its standard
+        // output had ended waited forever: the writer blocked on the full pipe and never closed its output.
+        private static readonly ConditionalWeakTable<Process, Task<string>> Errors = new();
+
+        private static Process Launch(ProcessStartInfo psi)
+        {
+            var process = Process.Start(psi)!;
+            Errors.Add(process, process.StandardError.ReadToEndAsync());
+            return process;
+        }
+
+        /// <summary>The rest of a writer's output, its standard error after it, once it has exited. One that hasn't
+        /// within <paramref name="timeoutMs"/> is killed, and the test fails.</summary>
+        internal static string FinishWriter(Process process, int timeoutMs = 120_000)
+        {
+            var output = process.StandardOutput.ReadToEndAsync();
+            if (!process.WaitForExit(timeoutMs))
+            {
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                process.WaitForExit();
+                Assert.Fail("The writer didn't exit within " + timeoutMs + " ms: " + output.Result + Errors.GetValue(process, p => Task.FromResult("")).Result);
+            }
+            process.WaitForExit();
+            return output.Result + Errors.GetValue(process, p => Task.FromResult("")).Result;
         }
 
         /// <summary>Runs the crash writer to completion (or its crash); <paramref name="env"/> sets the fault
@@ -147,9 +158,8 @@ namespace Xod.Tests
             foreach (var (name, value) in env)
                 psi.Environment[name] = value;
 
-            using var process = Process.Start(psi)!;
-            string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-            process.WaitForExit(120_000);
+            using var process = Launch(psi);
+            string output = FinishWriter(process);
             return (process.ExitCode, output);
         }
 

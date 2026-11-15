@@ -37,8 +37,7 @@ namespace Xod.Tests
         {
             writer.StandardInput.WriteLine();
             writer.StandardInput.Flush();
-            string rest = writer.StandardOutput.ReadToEnd() + writer.StandardError.ReadToEnd();
-            Assert.True(writer.WaitForExit(120_000));
+            string rest = XodCrashSafetyTests.FinishWriter(writer);
             return rest;
         }
 

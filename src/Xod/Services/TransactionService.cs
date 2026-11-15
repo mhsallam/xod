@@ -27,6 +27,8 @@ namespace Xod.Services
         private readonly Action<string> onFaulted;
         private readonly Action dropIndexFiles;
         private readonly Action onDispose;
+        private readonly Func<IDisposable> holdCommitGate;
+        private readonly Func<string, byte[]> bytesOnDisk;
         private bool completed;
         // This commit's own journal: staged (the .tmp written) and in place. Only this commit's is ever deleted.
         private bool journalStaged;
@@ -48,9 +50,13 @@ namespace Xod.Services
         /// <param name="onDispose">Ends the transaction in the engine.</param>
         /// <param name="dropIndexFiles">Drops the folder's index files, after a commit undone once it had written
         /// them (they may hold its keys): the index service, the one that deletes them in a live context.</param>
+        /// <param name="holdCommitGate">Holds the commit gate exclusively until disposed (IOService.CommitGate, ISS-164).</param>
+        /// <param name="bytesOnDisk">A file's bytes on disk now, as this transaction left it (IOService.BytesOnDisk).</param>
         internal XodTransaction(string rootDirectory, Action<Action> exclusive, Action onCommit, Action<Action> onRollback, Action<string> onFaulted, Action onDispose,
-            Action dropIndexFiles)
+            Action dropIndexFiles, Func<IDisposable> holdCommitGate = null, Func<string, byte[]> bytesOnDisk = null)
         {
+            this.holdCommitGate = holdCommitGate;
+            this.bytesOnDisk = bytesOnDisk;
             this.dropIndexFiles = dropIndexFiles;
             this.exclusive = exclusive ?? (a => a());
             this.rootDirectory = rootDirectory;
@@ -104,11 +110,18 @@ namespace Xod.Services
             exclusive(() =>
             {
                 completed = true;
+                IDisposable gate = null;
                 try
                 {
                     bool writing = false;
                     try
                     {
+                        // From here until the journal is gone, or the undo is done, no other context that takes the
+                        // commit gate writes a data file (ISS-164): so none is written beside the journal, and the
+                        // comparison below stays true. A commit that changed no file writes none, and doesn't wait.
+                        if (snapshots.Count > 0 || newlyCreatedFiles.Count > 0)
+                            gate = holdCommitGate?.Invoke();
+                        RefuseOverAnotherContextsWrites();
                         WriteWalJournal();
                         writing = true;
                         onCommit?.Invoke();
@@ -125,12 +138,57 @@ namespace Xod.Services
                 finally
                 {
                     ReleaseJournalHold();
+                    gate?.Dispose();
                     snapshots.Clear();
                     newlyCreatedFiles.Clear();
                     onDispose?.Invoke();
                 }
             });
         }
+
+        /// <summary>
+        /// ISS-164: the files this transaction changes must be on disk as it first read them (its before-images). One
+        /// another context wrote since would be overwritten by this commit, with the file as this transaction read it
+        /// before that write, and put back so by its undo: the other context's write, acknowledged, lost. The commit is
+        /// refused instead, before its journal, so nothing of it is written. Asked under the commit gate, so no write
+        /// of a context that takes it lands between this and the commit's own. It sees writes made after this
+        /// transaction first changed a file; a page this context read and kept before that is ISS-167's.
+        /// </summary>
+        private void RefuseOverAnotherContextsWrites()
+        {
+            if (bytesOnDisk == null)
+                return;
+            foreach (var kvp in snapshots)
+            {
+                byte[] now = OnDisk(kvp.Key);
+                if (now == null || !now.AsSpan().SequenceEqual(kvp.Value))
+                    throw new TransactionException(Overwritten(kvp.Key));
+            }
+            foreach (string created in newlyCreatedFiles)
+            {
+                if (OnDisk(created) != null)
+                    throw new TransactionException(Overwritten(created));
+            }
+        }
+
+        // A file that can't be read (another program holds it) can't be compared: the commit is refused, before its
+        // journal, as for a file another context wrote.
+        private byte[] OnDisk(string file)
+        {
+            try
+            {
+                return bytesOnDisk(file);
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                throw new TransactionException("'" + Path.GetFileName(file) + "' couldn't be read to compare it with what this transaction first read (" +
+                    e.Message + "). The commit is refused, and nothing of it was written.", e);
+            }
+        }
+
+        private static string Overwritten(string file) =>
+            "Another context wrote '" + Path.GetFileName(file) + "' after this transaction first changed it. The commit is refused, and nothing " +
+            "of it was written: it would have overwritten that write with the file as this transaction read it.";
 
         // filesWritten: the commit got past its journal, so some of its files may be written. Before that nothing
         // was, and nothing is put back: another context may have written those files since this one read them.
@@ -316,9 +374,9 @@ namespace Xod.Services
         /// (ISS-110: deleted here, one another program held failed the undo).
         /// <para>
         /// It writes pages without the mutation hook that marks the indexes behind (ISS-043, IOService.IndexesBehind),
-        /// and needs none. In a rollback the context's marker is already set (the transaction's first page write set
+        /// and needs none. In a failed commit's undo the context's marker is already set (the transaction's first page change set
         /// it, and nothing empties it while the transaction's batch is open: XmlEngine.FlushToDisk) and stays until a
-        /// flush after the rollback, while the index files go back with the pages. At the open, recovery runs alone,
+        /// flush after the undo, while the index files go back with the pages. At the open, recovery runs alone,
         /// before any index is loaded, and drops the indexes itself.
         /// </para>
         /// </summary>
@@ -411,7 +469,10 @@ namespace Xod.Services
                 completed = true;
                 try
                 {
-                    onRollback?.Invoke(() => RestoreBeforeImages(snapshots, newlyCreatedFiles));
+                    // Nothing to put back on disk but the files the transaction set aside (onRollback ends its batch,
+                    // which does): it wrote no data file (IOService.RefuseWriteInsideTransaction). Writing its
+                    // before-images back here took back what other contexts had written to those files since (ISS-164).
+                    onRollback?.Invoke(() => { });
                 }
                 finally
                 {

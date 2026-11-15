@@ -124,12 +124,15 @@ namespace Xod.Engines.Xml
                 checkFolder: () => DatabaseFiles.Recheck(file, resolvedPath));
             // Under the hold: another context may have created the file since it was looked for.
             IsNew = IsNew && !File.Exists(resolvedPath);
+            this.ioService.CommitGateWaitMs = this.options.TransactionTimeoutMs > 0 ? this.options.TransactionTimeoutMs : 30000;
             // Every file mutation passes here. A password switch this context committed but couldn't finish is
             // finished first (or the write refused): the next open would put the staged copy, from before this
             // write, over it.
             this.ioService.BeforeFileMutate = f =>
             {
                 ThrowIfWritesRefused(f);
+                if (f != null && !IOService.IsIndex(f))
+                    FaultInjection.Step("write-checked", System.Threading.Interlocked.Increment(ref writesChecked));
                 passwordSwitch.FinishPendingSwitch();
                 activeTransaction?.CaptureBeforeMutate(f);
                 ioService.NoteFileMutation(f);
@@ -374,6 +377,9 @@ namespace Xod.Engines.Xml
                 NotBesideAnotherJournal();
         }
 
+        // How many file mutations of this context passed their checks (FaultInjection "write-checked:n").
+        private int writesChecked;
+
         /// <summary>
         /// ISS-147: another context's commit journal is looked for when a write operation starts and before each file
         /// write that passes the engine's hook (BeforeFileMutate), an index file's save aside. That journal is undone,
@@ -385,13 +391,12 @@ namespace Xod.Engines.Xml
         /// refuses every write until an open that has the database to itself undoes it. This context's own commit holds
         /// the one journal its writes go beside.
         /// <para>
-        /// A mitigation, not a guarantee (ISS-147's named debt): a look is not a hold. A commit that writes its journal
-        /// after this look and before the file write it guards still has that write beside it, and its undo takes the
-        /// write back; the window is wider for writes made on other threads (parallel statements, pages written from
-        /// the pool). Nor does it keep apart a write made before the other commit wrote its journal, to a file that
-        /// commit had already read: that commit's success overwrites it. Two contexts writing one database
-        /// aren't kept apart (a folder belongs to one process; the site's Processes section); the fix that would is a
-        /// commit gate every write holds shared and a commit exclusive, filed as ISS-164.
+        /// Before a file write the look is made holding the commit gate shared (IOService.InCommitGate, ISS-164), and a
+        /// commit holds it exclusively from before its journal until the journal is gone: so the look is a hold, and no
+        /// journal of a commit under way can appear between it and the write. What it still finds is a journal that
+        /// won't finish, and one written by a context that doesn't take the gate (XOD 2.0.2 and earlier, or a file
+        /// system without locks, where the gate keeps nothing apart). A write made before a commit, to a file that
+        /// commit had already changed, is the commit's to refuse (XodTransaction.RefuseOverAnotherContextsWrites).
         /// </para>
         /// </summary>
         private void NotBesideAnotherJournal()

@@ -70,12 +70,15 @@ namespace Xod.Engines.Xml
                                 {
                                     ioService.DiscardBatch();
                                 }
-                                catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException)
+                                catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException || e is CommitGateBusyException)
                                 {
                                     // A file the transaction deleted is still set aside (ISS-107): the index files
                                     // name its rows, which this context can't read. Put back by the next open alone.
+                                    // Also when another context's commit held the commit gate too long to put it back.
                                     transactionFault = "A rollback couldn't put back a file its transaction had deleted (" + e.Message +
-                                        "); it is put back when the database is next opened by a context that has it to itself. Until then this context refuses writes.";
+                                        "); the next open by a context that has the database to itself puts it back, unless another context made " +
+                                        "that file again meanwhile (a table at its fixed name), when the open keeps the newer one (ISS-166). " +
+                                        "Until then this context refuses writes.";
                                     throw;
                                 }
                             }
@@ -91,6 +94,8 @@ namespace Xod.Engines.Xml
                     },
                     onFaulted: message => transactionFault = message,
                     dropIndexFiles: indexService.DropIndexFiles,
+                    holdCommitGate: ioService.HoldCommitGateExclusively,
+                    bytesOnDisk: ioService.BytesOnDisk,
                     onDispose: () =>
                     {
                         activeTransaction = null;

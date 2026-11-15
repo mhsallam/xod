@@ -81,14 +81,15 @@ namespace Xod.Tests
             });
         }
 
-        // Nothing besides the database's own files (and the lock files: the database file's, the folder's "xod.lock"
-        // and the gate "xod.gate.lock", PLAN-046 section 9) is left in the folder.
+        // Nothing besides the database's own files (and the lock files: the database file's, the folder's "xod.lock",
+        // the gate "xod.gate.lock", PLAN-046 section 9, and the commit gate "xod.commit.lock", ISS-164) is left in the folder.
         private static void NothingLeftOver(string dir)
         {
             var extra = Directory.GetFiles(dir)
                 .Where(f => !DatabaseExtensions.Contains(Path.GetExtension(f)) && !f.EndsWith(".xod.lock", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(Path.GetFileName(f), "xod.lock", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(Path.GetFileName(f), "xod.gate.lock", StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(Path.GetFileName(f), "xod.gate.lock", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(Path.GetFileName(f), "xod.commit.lock", StringComparison.OrdinalIgnoreCase))
                 .Select(Path.GetFileName)
                 .ToList();
             Assert.Empty(extra);
@@ -396,8 +397,7 @@ namespace Xod.Tests
             {
                 child.StandardInput.WriteLine();
                 child.StandardInput.Flush();
-                rest = child.StandardOutput.ReadToEnd() + child.StandardError.ReadToEnd();
-                Assert.True(child.WaitForExit(120_000));
+                rest = XodCrashSafetyTests.FinishWriter(child);
             }
             Assert.Contains("WROTE", rest);
 
@@ -433,8 +433,7 @@ namespace Xod.Tests
                 child.StandardInput.WriteLine(); // past the pause
                 child.StandardInput.WriteLine(); // past WAITING: the child writes a batch
                 child.StandardInput.Flush();
-                rest = child.StandardOutput.ReadToEnd() + child.StandardError.ReadToEnd();
-                Assert.True(child.WaitForExit(120_000));
+                rest = XodCrashSafetyTests.FinishWriter(child);
             }
             Assert.Contains("CHANGED", rest);
             Assert.Contains("WROTE", rest);
@@ -463,8 +462,7 @@ namespace Xod.Tests
 
             writer.StandardInput.WriteLine();
             writer.StandardInput.Flush();
-            string rest = writer.StandardOutput.ReadToEnd() + writer.StandardError.ReadToEnd();
-            Assert.True(writer.WaitForExit(120_000));
+            string rest = XodCrashSafetyTests.FinishWriter(writer);
             Assert.True(writer.ExitCode == 0, rest);
             Assert.Contains("CHANGED", rest);
 

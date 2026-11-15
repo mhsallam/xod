@@ -19,7 +19,8 @@ namespace Xod.Services
     /// to hold one database, before the hold; a conversion's too), <c>creating</c> (a new database's file about
     /// to be written, the database held alone), <c>recover-restoring</c> (before a transaction journal's snapshot
     /// is written back). Holds: <c>hold-alone</c> (an exclusive hold, its folder's lock taken, not yet the
-    /// database file's). So a fault lands at an exact, repeatable point instead of a random one.</summary>
+    /// database file's). Writes: <c>write-checked:n</c> (the nth file mutation of a context, an index's aside, past its
+    /// checks and not yet made). So a fault lands at an exact, repeatable point instead of a random one.</summary>
     internal static class FaultInjection
     {
         private static readonly int CrashAfterRows = Parse();

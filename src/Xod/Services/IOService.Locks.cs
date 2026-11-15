@@ -361,7 +361,8 @@ namespace Xod.Services
         /// created (its folder can't be written, its medium is read-only) or opened (its permissions): no hold, and no
         /// telling whether others have the database open.
         /// </summary>
-        private static FileStream OpenOneLockFile(string lockFilePath, string databasePath, bool exclusive, int retryTimeoutMs)
+        // prove: an exclusive hold is proven (ProveExclusive); the commit gate isn't (IOService.CommitGate).
+        private static FileStream OpenOneLockFile(string lockFilePath, string databasePath, bool exclusive, int retryTimeoutMs, bool prove = true)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             int delayMs = 5;
@@ -401,7 +402,7 @@ namespace Xod.Services
                     continue;
                 }
 
-                if (exclusive)
+                if (exclusive && prove)
                     ProveExclusive(stream, lockFilePath, databasePath);
                 return stream;
             }

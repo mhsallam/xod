@@ -359,7 +359,9 @@ namespace Xod.Tests
         // A transaction's delete that empties a page sets the page aside (.xdel). Held by another program, it can't be
         // deleted at the commit, which then fails and is undone (the journal puts the page back). The open after the
         // context's close finds a file set aside and no marker (the close caught the indexes up), and must still clear
-        // it. Windows only: elsewhere a file held open can be deleted, and the commit passes.
+        // it. Windows only: elsewhere a file held open can be deleted, and the commit passes. Held shared for reading:
+        // the commit reads the page first, to compare it with what it set aside (ISS-164), and a page it can't read
+        // refuses the commit before its journal.
         [Fact]
         public void A_set_aside_file_a_commit_couldn_t_delete_is_cleared_by_the_next_open()
         {
@@ -375,7 +377,7 @@ namespace Xod.Tests
                 foreach (var m in db.Select<TrustMember>().ToList())
                     db.Delete(m);
                 string aside = Assert.Single(Directory.GetFiles(dir, "*.xpag.xdel"));
-                using (new FileStream(aside, FileMode.Open, FileAccess.Read, FileShare.None))
+                using (new FileStream(aside, FileMode.Open, FileAccess.Read, FileShare.Read))
                     Assert.ThrowsAny<Exception>(() => tx.Commit());
             }
             Assert.Empty(Directory.GetFiles(dir, "*.xidxdirty"));
@@ -587,8 +589,8 @@ namespace Xod.Tests
                 string[] aside = Directory.GetFiles(dir, "*.xpag.xdel");
                 if (aside.Length == 1)
                 {
-                    // The commit fails after its files are written (a file it set aside can't be deleted): undone.
-                    using (new FileStream(aside[0], FileMode.Open, FileAccess.Read, FileShare.None))
+                    // The commit fails after its files are written (a file it set aside can't be deleted, though it can be read: ISS-164): undone.
+                    using (new FileStream(aside[0], FileMode.Open, FileAccess.Read, FileShare.Read))
                         commit = Record.Exception(() => tx.Commit());
                 }
                 else

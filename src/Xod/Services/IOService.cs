@@ -137,7 +137,8 @@ namespace Xod.Services
 
             // Once every file of the batch is written: until then its commit can still be undone, from its journal,
             // which holds these files' bytes. One that can't be deleted fails the commit, which is then undone; one
-            // left by a failed write is deleted by the next open alone, its file put back by the journal.
+            // left by a failed write is deleted by the next open alone, its file put back by the journal. Only a
+            // transaction sets files aside, so this is its commit, which holds the commit gate (DeleteSetAside asks).
             DeleteSetAside(aside);
         }
 
@@ -150,10 +151,11 @@ namespace Xod.Services
             return taken;
         }
 
-        private static void DeleteSetAside(List<string> aside)
+        private void DeleteSetAside(List<string> aside)
         {
             if (aside == null)
                 return;
+            RequireCommitGate(aside[0]);
             Exception first = null;
             foreach (string file in aside)
             {
@@ -170,17 +172,20 @@ namespace Xod.Services
                 throw new IOException("A file the transaction deleted couldn't be deleted at its commit: " + first.Message, first);
         }
 
-        // Each put back where it was; one that can't be is left for the next open alone (RecoverInterruptedWrites).
-        private static void PutBackSetAside(List<string> aside)
+        // Each put back where it was (PutBackOne: a page another context wrote there since is kept, and what was set
+        // aside dropped); one that can't be, a table file another context made again among them, is left for the next
+        // open alone (RecoverInterruptedWrites).
+        private void PutBackSetAside(List<string> aside)
         {
             if (aside == null)
                 return;
+            RequireCommitGate(aside[0]);
             Exception first = null;
             foreach (string file in aside)
             {
                 try
                 {
-                    File.Move(file + SetAsideSuffix, file, overwrite: false);
+                    PutBackOne(file, dropWhenBack: IsPage(file));
                 }
                 catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
                 {
@@ -209,10 +214,13 @@ namespace Xod.Services
             rawPages.Clear();
             try
             {
-                if (toFlush.Count > 0)
-                    FlushFilesList(toFlush);
-                if (rawToFlush.Count > 0)
-                    FlushRawPagesList(rawToFlush);
+                InCommitGate(() =>
+                {
+                    if (toFlush.Count > 0)
+                        FlushFilesList(toFlush);
+                    if (rawToFlush.Count > 0)
+                        FlushRawPagesList(rawToFlush);
+                });
             }
             catch
             {
@@ -254,10 +262,13 @@ namespace Xod.Services
                 if (files.Count == 0 && rawPages.Count == 0)
                     return;
                 FaultInjection.Step("statement-saving");
-                if (files.Count > 0)
-                    FlushFilesList(files);
-                if (rawPages.Count > 0)
-                    FlushRawPagesList(rawPages);
+                InCommitGate(() =>
+                {
+                    if (files.Count > 0)
+                        FlushFilesList(files);
+                    if (rawPages.Count > 0)
+                        FlushRawPagesList(rawPages);
+                });
                 saved.Written(files, rawPages);
                 dirtyBufferedFiles.Written(files);
                 dirtyBufferedRawPages.ExceptWith(rawPages);
@@ -298,7 +309,8 @@ namespace Xod.Services
             }
 
             // The files the batch deleted come back (ISS-107): nothing of it was committed.
-            PutBackSetAside(aside);
+            if (aside != null)
+                InCommitGate(() => PutBackSetAside(aside));
         }
 
         internal void FlushBufferedFiles()
@@ -385,6 +397,7 @@ namespace Xod.Services
                 {
                     ReleaseHold();
                     ReleaseCreationGate(); // a creation that failed before ShareHoldOnceCreated
+                    ReleaseCommitGate();
                 }
             }
         }

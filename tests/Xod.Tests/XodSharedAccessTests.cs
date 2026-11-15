@@ -105,8 +105,7 @@ namespace Xod.Tests
             File.SetLastWriteTimeUtc(memberIndex, newest);
             writer.StandardInput.WriteLine();
             writer.StandardInput.Flush();
-            string rest = writer.StandardOutput.ReadToEnd() + writer.StandardError.ReadToEnd();
-            Assert.True(writer.WaitForExit(120_000));
+            string rest = XodCrashSafetyTests.FinishWriter(writer);
             Assert.Contains("WROTE", rest); // the context goes on writing, and the undone commit's key isn't taken
 
             using var db = new XodContext(Path.Combine(dir, "crash.xod"));
@@ -131,8 +130,7 @@ namespace Xod.Tests
 
             writer.StandardInput.WriteLine();
             writer.StandardInput.Flush();
-            string rest = writer.StandardOutput.ReadToEnd() + writer.StandardError.ReadToEnd();
-            Assert.True(writer.WaitForExit(120_000));
+            string rest = XodCrashSafetyTests.FinishWriter(writer);
             Assert.Contains("COMMITTED", rest);
 
             CrashDb.HoldsBatches(dir, "first", 2);
@@ -365,8 +363,7 @@ namespace Xod.Tests
 
                 writer.StandardInput.WriteLine();
                 writer.StandardInput.Flush();
-                string rest = writer.StandardOutput.ReadToEnd() + writer.StandardError.ReadToEnd();
-                Assert.True(writer.WaitForExit(120_000));
+                string rest = XodCrashSafetyTests.FinishWriter(writer);
                 Assert.Contains("REFUSED", rest);
                 Assert.Contains("first.xod", rest);
                 Assert.DoesNotContain("OPENED", rest);
@@ -408,8 +405,7 @@ namespace Xod.Tests
             {
                 writer.StandardInput.WriteLine();
                 writer.StandardInput.Flush();
-                rest = writer.StandardOutput.ReadToEnd() + writer.StandardError.ReadToEnd();
-                Assert.True(writer.WaitForExit(120_000));
+                rest = XodCrashSafetyTests.FinishWriter(writer);
             }
             Assert.Contains("OPENED", rest);
             Assert.Equal(new[] { "second.xod" }, DatabaseFilesIn(dir));
@@ -464,8 +460,7 @@ namespace Xod.Tests
             {
                 opener.StandardInput.WriteLine();
                 opener.StandardInput.Flush();
-                opened = opener.StandardOutput.ReadToEnd() + opener.StandardError.ReadToEnd();
-                Assert.True(opener.WaitForExit(120_000));
+                opened = XodCrashSafetyTests.FinishWriter(opener);
                 Assert.True(File.Exists(journal), "the refused open recovered the folder: " + opened);
             }
             Assert.Contains("REFUSED", opened);
@@ -507,8 +502,7 @@ namespace Xod.Tests
             {
                 child.StandardInput.WriteLine();
                 child.StandardInput.Flush();
-                rest = child.StandardOutput.ReadToEnd() + child.StandardError.ReadToEnd();
-                Assert.True(child.WaitForExit(120_000));
+                rest = XodCrashSafetyTests.FinishWriter(child);
             }
             Assert.Contains("WROTE", rest);
             CrashDb.HoldsBatches(dir, "first", 2);
@@ -540,16 +534,14 @@ namespace Xod.Tests
             {
                 opener.StandardInput.WriteLine();
                 opener.StandardInput.Flush();
-                opened = opener.StandardOutput.ReadToEnd() + opener.StandardError.ReadToEnd();
-                Assert.True(opener.WaitForExit(120_000));
+                opened = XodCrashSafetyTests.FinishWriter(opener);
             }
             finally
             {
                 committer.StandardInput.WriteLine();
                 committer.StandardInput.Flush();
             }
-            string committed = committer.StandardOutput.ReadToEnd() + committer.StandardError.ReadToEnd();
-            Assert.True(committer.WaitForExit(120_000));
+            string committed = XodCrashSafetyTests.FinishWriter(committer);
             Assert.Contains("REFUSED", opened);
             Assert.Contains("pw.xod", opened);
             Assert.Contains("COMMITTED", committed);
@@ -574,7 +566,7 @@ namespace Xod.Tests
                 if (line.StartsWith(prefix, StringComparison.Ordinal))
                     return read.ToString();
             }
-            throw new InvalidOperationException(prefix + " never came: " + read + p.StandardError.ReadToEnd());
+            throw new InvalidOperationException(prefix + " never came: " + read + XodCrashSafetyTests.FinishWriter(p));
         }
 
         // Each file of the folder and its bytes; null for one another handle holds without sharing (a live marker).

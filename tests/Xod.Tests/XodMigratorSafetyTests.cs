@@ -151,8 +151,7 @@ namespace Xod.Tests
                 writer.StandardInput.WriteLine();
                 writer.StandardInput.Flush();
             }
-            string rest = writer.StandardOutput.ReadToEnd() + writer.StandardError.ReadToEnd();
-            Assert.True(writer.WaitForExit(120_000));
+            string rest = XodCrashSafetyTests.FinishWriter(writer);
             Assert.Contains("COMMITTED", rest);
             Assert.False(Directory.Exists(target));
             CrashDb.HoldsBatches(dir, "first", 2);
@@ -190,8 +189,7 @@ namespace Xod.Tests
 
             writer.StandardInput.WriteLine();
             writer.StandardInput.Flush();
-            string rest = writer.StandardOutput.ReadToEnd() + writer.StandardError.ReadToEnd();
-            Assert.True(writer.WaitForExit(120_000));
+            string rest = XodCrashSafetyTests.FinishWriter(writer);
             Assert.Contains("CONVERTED", rest);
             CrashDb.HoldsBatches(target, "first", 1);
         }
@@ -265,8 +263,7 @@ namespace Xod.Tests
             File.Copy(Path.Combine(dir, "pw.xod"), Path.Combine(dir, "copy.xod"));
             convert.StandardInput.WriteLine();
             convert.StandardInput.Flush();
-            string rest = convert.StandardOutput.ReadToEnd() + convert.StandardError.ReadToEnd();
-            Assert.True(convert.WaitForExit(120_000));
+            string rest = XodCrashSafetyTests.FinishWriter(convert);
             Assert.Contains("more than one database file", rest);
             Assert.DoesNotContain("CONVERTED", rest);
             Assert.False(Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any());

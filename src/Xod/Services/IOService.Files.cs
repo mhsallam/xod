@@ -75,10 +75,7 @@ namespace Xod.Services
                 string target = aside.Substring(0, aside.Length - SetAsideSuffix.Length);
                 try
                 {
-                    if (File.Exists(target))
-                        File.Delete(aside);
-                    else
-                        File.Move(aside, target, overwrite: false);
+                    PutBackOne(target, dropWhenBack: true);
                 }
                 catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
                 {
@@ -87,6 +84,25 @@ namespace Xod.Services
                 }
             }
         }
+
+        /// <summary>
+        /// One file set aside put back, by the open (above) and by a rollback (IOService.PutBackSetAside). A file there
+        /// again is never overwritten. With <paramref name="dropWhenBack"/>, what was set aside is then dropped: the
+        /// open's rule, taken as a journal's undo or a newer write (for a table file a new table is just as likely, and
+        /// its rows are lost: ISS-166). A rollback drops it only for a page: its name is random, so only a context that
+        /// read that page writes it there again, a newer write of it. For a table or index file, whose names are fixed,
+        /// another context may have made a new one; the put-back fails (IOException), the context refuses writes, and
+        /// what was set aside waits for the next open.
+        /// </summary>
+        private static void PutBackOne(string file, bool dropWhenBack)
+        {
+            if (dropWhenBack && File.Exists(file))
+                File.Delete(file + SetAsideSuffix);
+            else
+                File.Move(file + SetAsideSuffix, file, overwrite: false);
+        }
+
+        private static bool IsPage(string file) => file.EndsWith(".xpag", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>The names of the index files in the database folder.</summary>
         internal string[] IndexFileNames() =>
@@ -524,6 +540,8 @@ namespace Xod.Services
 
         private void FlushFileToDiskCore(XFile file)
         {
+            RequireCommitGate(file.Path);
+            RefuseWriteInsideTransaction(file.Path);
             byte[] serializedBytes = storageSerializer.Serialize(file.Document);
             byte[] payloadBytes = !string.IsNullOrEmpty(password)
                 ? FileCryptoHelper.EncryptBytes(serializedBytes, password)
@@ -575,7 +593,7 @@ namespace Xod.Services
             {
                 if (batchDepth > 0 && dirtyBatchFiles.Waits(pageFile))
                 {
-                    FlushFileToDisk(pageFile);
+                    InCommitGate(() => FlushFileToDisk(pageFile));
                     dirtyBatchFiles.Remove(pageFile);
                 }
             }
@@ -689,33 +707,56 @@ namespace Xod.Services
 
             lock (syncLock)
             {
+                // Not waited for: an index file, outside every journal (the gate's guard doesn't ask it either), and a
+                // file that isn't on disk, such as the page of a statement being undone that never reached it: only
+                // what this context holds changes. Such a delete doesn't touch the disk afterwards either, so a file
+                // another context makes there meanwhile is left alone.
+                if (IsIndex(fullPath))
+                    DeleteUnlocked(fullPath, normalizedName, onDisk: true);
+                else if (!File.Exists(fullPath))
+                    DeleteUnlocked(fullPath, normalizedName, onDisk: false);
+                else
+                    InCommitGate(() => DeleteUnlocked(fullPath, normalizedName, onDisk: true));
+            }
+        }
+
+        // Delete's work, under syncLock and, for a data file on disk, the commit gate. onDisk false: only what this
+        // context holds is dropped, without the mutation hook either: its checks (another context's journal, this
+        // context's own refusals) and its records (a transaction's before-image, the indexes behind) are about a change
+        // on disk, and there is none. Through the hook, the undo of a statement refused beside another context's
+        // commit was refused too, and faulted the context.
+        private void DeleteUnlocked(string fullPath, string normalizedName, bool onDisk)
+        {
+            if (onDisk)
+            {
                 BeforeFileMutate?.Invoke(fullPath);
-                dirtyBatchFiles.Remove(normalizedName);
-                dirtyBufferedFiles.Remove(normalizedName);
-                dirtyBatchRawPages.Remove(normalizedName);
-                dirtyBufferedRawPages.Remove(normalizedName);
-                saved.Remove(normalizedName);
-                cachedFiles.Remove(normalizedName);
-                if (cachedRawPages.TryGetValue(normalizedName, out var oldRawPage))
+                RequireCommitGate(fullPath);
+            }
+            dirtyBatchFiles.Remove(normalizedName);
+            dirtyBufferedFiles.Remove(normalizedName);
+            dirtyBatchRawPages.Remove(normalizedName);
+            dirtyBufferedRawPages.Remove(normalizedName);
+            saved.Remove(normalizedName);
+            cachedFiles.Remove(normalizedName);
+            if (cachedRawPages.TryGetValue(normalizedName, out var oldRawPage))
+            {
+                cachedRawPages.Remove(normalizedName);
+                oldRawPage?.ReleasePooledBuffer();
+            }
+            if (onDisk && File.Exists(fullPath))
+            {
+                // ISS-107: inside a transaction the file is set aside, not deleted: its batch holds the rest of
+                // the transaction's changes (the table that listed this page), and a rollback, or a commit refused
+                // before its journal, puts nothing back but what it set aside. Deleted at once, a page a delete
+                // emptied was lost though nothing was committed.
+                if (batchDepth > 0 && HasActiveTransaction != null && HasActiveTransaction())
                 {
-                    cachedRawPages.Remove(normalizedName);
-                    oldRawPage?.ReleasePooledBuffer();
+                    File.Move(fullPath, fullPath + SetAsideSuffix, overwrite: true);
+                    setAside.Add(fullPath);
                 }
-                if (File.Exists(fullPath))
+                else
                 {
-                    // ISS-107: inside a transaction the file is set aside, not deleted: its batch holds the rest of
-                    // the transaction's changes (the table that listed this page), and a rollback, or a commit refused
-                    // before its journal, puts nothing back but what it set aside. Deleted at once, a page a delete
-                    // emptied was lost though nothing was committed.
-                    if (batchDepth > 0 && HasActiveTransaction != null && HasActiveTransaction())
-                    {
-                        File.Move(fullPath, fullPath + SetAsideSuffix, overwrite: true);
-                        setAside.Add(fullPath);
-                    }
-                    else
-                    {
-                        File.Delete(fullPath);
-                    }
+                    File.Delete(fullPath);
                 }
             }
         }

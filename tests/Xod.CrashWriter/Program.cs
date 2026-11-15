@@ -96,6 +96,8 @@ public static class Program
             options.Durability = DurabilityMode.Buffered;
         if (Environment.GetEnvironmentVariable("XOD_TEST_LOCK") == "1")
             options.LockDatabase = true;
+        if (int.TryParse(Environment.GetEnvironmentVariable("XOD_TEST_TX_TIMEOUT"), out int txTimeout))
+            options.TransactionTimeoutMs = txTimeout;
 
         // XodMigrator (ISS-072): the password database converted to Binary, into XOD_TEST_TARGET (the folder
         // itself when unset).
@@ -215,6 +217,27 @@ public static class Program
         }
 
         // A transaction of one batch, committed; XOD_CRASH_AT_STEP / XOD_FAIL_AT_STEP stop it part-way.
+        // ISS-164: one customer of the password database renamed outside a transaction (with XOD_PAUSE_AT_STEP=
+        // write-checked:1, paused past the check of its first file write). Flushed before it reports: with buffered
+        // durability the write is made there.
+        if (mode == "rename-one")
+        {
+            using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
+            try
+            {
+                var customer = db.Find<CrashCustomer>(c => c.Id == 3);
+                customer.Name = "renamed";
+                bool found = db.Update(customer);
+                db.Flush();
+                Console.WriteLine(found ? "UPDATED" : "NOT FOUND");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("REFUSED " + e.GetType().Name + ": " + e.Message);
+            }
+            return 0;
+        }
+
         if (mode == "txcommit" || mode == "txfail" || mode == "txfail-hold")
         {
             using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);

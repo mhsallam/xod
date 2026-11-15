@@ -1529,6 +1529,11 @@ namespace Xod.Services
 
         private void FlushRawPagesList(List<string> pageNames)
         {
+            if (pageNames.Count > 0)
+            {
+                RequireCommitGate(Path.Combine(root, pageNames[0]));
+                RefuseWriteInsideTransaction(Path.Combine(root, pageNames[0]));
+            }
             var items = new List<(string FullPath, RawPageBuffer Page)>(pageNames.Count);
             for (int i = 0; i < pageNames.Count; i++)
             {
