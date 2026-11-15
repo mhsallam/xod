@@ -82,22 +82,61 @@ namespace Xod.Helpers
                 }
             }
 
-            // Legacy XOD 1.x fallback (AES-CBC with ASCII key slice)
+            // A file of XOD 1.x (2015-2017): AES-CBC, no header (ISS-151).
+            string legacyKey = Legacy1xKey(key);
+            if (legacyKey == null)
+                throw new SecurityException();
             try
             {
                 using Aes aes = Aes.Create();
-                aes.Key = Encoding.ASCII.GetBytes(key.PadRight(32, '0')).Take(32).ToArray();
-                aes.IV = Encoding.ASCII.GetBytes(key.PadRight(16, '0')).Take(16).ToArray();
+                aes.Key = Encoding.ASCII.GetBytes(legacyKey).Take(32).ToArray();
+                aes.IV = Encoding.ASCII.GetBytes(legacyKey).Take(16).ToArray();
                 using var ms = new MemoryStream(encryptedData);
                 using var cryptoStream = new CryptoStream(ms, aes.CreateDecryptor(), CryptoStreamMode.Read);
                 using var outStream = new MemoryStream();
                 cryptoStream.CopyTo(outStream);
-                return outStream.ToArray();
+                return WithoutDeclaration(outStream.ToArray());
             }
             catch (Exception)
             {
                 throw new SecurityException();
             }
+        }
+
+        /// <summary>
+        /// The text of a 1.x file, without its XML declaration. 1.x encrypted a document's text as ASCII
+        /// (<c>EncryptContent</c>), under the declaration a <c>StringWriter</c> gives it, <c>encoding="utf-16"</c>,
+        /// and read it back as text, which ignores the declaration; a parser of bytes believes it and fails. Without
+        /// it the ASCII bytes read as UTF-8, of which ASCII is part.
+        /// </summary>
+        private static byte[] WithoutDeclaration(byte[] text)
+        {
+            ReadOnlySpan<byte> span = text;
+            if (!span.StartsWith("<?xml"u8))
+                return text;
+            int end = span.IndexOf("?>"u8);
+            return end < 0 ? text : span.Slice(end + 2).ToArray();
+        }
+
+        /// <summary>
+        /// The key XOD 1.x keyed its files with, from the 2.x one: the decimal digits of each byte of SHA-256 of the
+        /// password's ASCII bytes, run together; its first 32 characters are the AES key, its first 16 the IV
+        /// (<c>xod.core/src/Helpers/CryptoHelper.cs</c>, <c>FileCryptoHelper.cs</c>). The 2.x key is SHA-256 of the
+        /// password's UTF-8 bytes, in hex, which for an ASCII password are its ASCII bytes, so the 1.x hash is the
+        /// same and its digits follow. A password with other characters was hashed by 1.x with each of them as '?',
+        /// so its database opens with that form of it (versions before September 2016 hashed the system's code
+        /// page: such a password doesn't open). Null when <paramref name="key"/> isn't a 2.x key, or gives fewer than
+        /// 32 digits (it can't: 32 bytes give at least 32).
+        /// </summary>
+        internal static string Legacy1xKey(string key)
+        {
+            if (key == null || key.Length != 64)
+                return null;
+            byte[] hash;
+            try { hash = Convert.FromHexString(key); }
+            catch (FormatException) { return null; }
+            string digits = string.Concat(hash.Select(b => b.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            return digits.Length >= 32 ? digits : null;
         }
 
         internal static string DecryptContent(string inputFile, string key)

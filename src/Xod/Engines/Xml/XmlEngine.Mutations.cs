@@ -367,7 +367,8 @@ namespace Xod.Engines.Xml
             return itemPath;
         }
 
-        private XElement Write(Type type, object item, bool shallowWrite = false, ReadWriteTrack writeTrack = null, UpdateFilter filter = null)
+        // storedRow: the row an update replaces, for the digests it keeps (StoredDigest).
+        private XElement Write(Type type, object item, bool shallowWrite = false, ReadWriteTrack writeTrack = null, UpdateFilter filter = null, XElement storedRow = null)
         {
             if (item == null)
                 return null;
@@ -392,18 +393,37 @@ namespace Xod.Engines.Xml
                     : props.Where(s => filter.Properties.Contains(s.PropertyName));
 
                 foreach (var prop in filterProps)
-                    WriteProperty(type, item, xItem, prop, shallowWrite, writeTrack);
+                    WriteProperty(type, item, xItem, prop, shallowWrite, writeTrack, storedRow);
             }
             else
             {
                 for (int i = 0; i < props.Length; i++)
-                    WriteProperty(type, item, xItem, props[i], shallowWrite, writeTrack);
+                    WriteProperty(type, item, xItem, props[i], shallowWrite, writeTrack, storedRow);
             }
 
             return xItem;
         }
 
-        private XElement WriteProperty(Type type, object item, XElement xItem, PropertyInfoItem prop, bool shallowWrite = false, ReadWriteTrack writeTrack = null)
+        /// <summary>
+        /// The XOD 1.x digest a row stores for <paramref name="prop"/>, when <paramref name="value"/> is it: a read
+        /// gives a one-way value back as stored, and an update of the row writes it again. 1.x's digests are decimal
+        /// digits, which <see cref="CryptoHelper.HashProperty"/> can't tell from a value, so they were hashed again
+        /// (ISS-151). Kept only when the value has a 1.x digest's form and is what the row stores: a value the row
+        /// stores in plaintext (a database of 2.0.1 or earlier, ISS-064, or a property given [Crypto] later) is hashed,
+        /// as before. Null otherwise, and the value is hashed. A digit-only plaintext of that form that the row stores
+        /// stays (ISS-171).
+        /// </summary>
+        private static string StoredDigest(XElement storedRow, PropertyInfoItem prop, string value)
+        {
+            if (storedRow == null || value == null || !CryptoHelper.IsLegacy1xDigest(value, prop.Encryption))
+                return null;
+            string stored = prop.ValuePosition == ValuePosition.Attribute
+                ? storedRow.Attribute(prop.PropertyName)?.Value
+                : storedRow.Element(prop.PropertyName)?.Value;
+            return string.Equals(stored, value, StringComparison.Ordinal) ? stored : null;
+        }
+
+        private XElement WriteProperty(Type type, object item, XElement xItem, PropertyInfoItem prop, bool shallowWrite = false, ReadWriteTrack writeTrack = null, XElement storedRow = null)
         {
             object value = prop.GetValue(item);
             if (prop.IsRequired && IsMissingRequiredValue(value))
@@ -442,7 +462,7 @@ namespace Xod.Engines.Xml
                     formattedValue = prop.Encryption switch
                     {
                         CryptoMethod.MD5 or CryptoMethod.SHA1 or CryptoMethod.SHA256 or CryptoMethod.SHA512 =>
-                            CryptoHelper.HashProperty(formattedValue, prop.Encryption),
+                            StoredDigest(storedRow, prop, formattedValue) ?? CryptoHelper.HashProperty(formattedValue, prop.Encryption),
                         CryptoMethod.AES256 => propertyKeys.Encrypt(formattedValue, prop.PropertyName),
                         _ => formattedValue
                     };
@@ -621,7 +641,7 @@ namespace Xod.Engines.Xml
 
                         XElement xOldRow = rawRow.Element(type.Name);
                         RecordAutonumberChanges(type, rawRow, rowItem);
-                        XElement xNewRow = Write(type, rowItem, false, itemTrack, filter);
+                        XElement xNewRow = Write(type, rowItem, false, itemTrack, filter, xOldRow);
                         KeepLeftOutValues(xOldRow, xNewRow, filter);
 
                         if (!xOldRow.ElementEquals(xNewRow))
@@ -686,7 +706,7 @@ namespace Xod.Engines.Xml
 
                     XElement xOldRow = row.Element(type.Name);
                     RecordAutonumberChanges(type, row, rowItem);
-                    XElement xNewRow = Write(type, rowItem, false, itemTrack, filter);
+                    XElement xNewRow = Write(type, rowItem, false, itemTrack, filter, xOldRow);
                     KeepLeftOutValues(xOldRow, xNewRow, filter);
 
                     if (!row.Element(type.Name).ElementEquals(xNewRow))

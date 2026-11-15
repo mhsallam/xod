@@ -93,9 +93,75 @@ namespace Xod.Helpers
                 _ => plainText
             };
 
-            return CryptographicOperations.FixedTimeEquals(
+            if (CryptographicOperations.FixedTimeEquals(
                 Encoding.UTF8.GetBytes(computed),
-                Encoding.UTF8.GetBytes(storedHash.ToLowerInvariant()));
+                Encoding.UTF8.GetBytes(storedHash.ToLowerInvariant())))
+                return true;
+
+            // A digest XOD 1.x stored (ISS-151).
+            string legacy = Legacy1xDigest(plainText, method);
+            return legacy != null && CryptographicOperations.FixedTimeEquals(
+                Encoding.ASCII.GetBytes(legacy), Encoding.UTF8.GetBytes(storedHash));
+        }
+
+        /// <summary>
+        /// Whether <paramref name="value"/> has the form of a digest XOD 1.x stored (<see cref="Legacy1xDigest"/>):
+        /// decimal digits that read as exactly the hash's bytes, each 0 to 255 written without a leading zero (16 for
+        /// MD5, 20 for SHA1). A value of that form can't be told from a digest by itself: the caller also asks that
+        /// it is what the row stores (XmlEngine.StoredDigest).
+        /// </summary>
+        internal static bool IsLegacy1xDigest(string value, CryptoMethod method)
+        {
+            int bytes = method switch { CryptoMethod.MD5 => 16, CryptoMethod.SHA1 => 20, _ => 0 };
+            if (bytes == 0 || string.IsNullOrEmpty(value) || value.Length < bytes || value.Length > bytes * 3)
+                return false;
+            foreach (char c in value)
+                if (c < '0' || c > '9')
+                    return false;
+
+            // Can the digits be cut into exactly that many byte values? reach[i]: the counts of bytes the first i
+            // digits can make (a bit per count).
+            var reach = new ulong[value.Length + 1];
+            reach[0] = 1;
+            for (int i = 0; i < value.Length; i++)
+            {
+                if (reach[i] == 0)
+                    continue;
+                for (int len = 1; len <= 3 && i + len <= value.Length; len++)
+                {
+                    if (len > 1 && value[i] == '0')
+                        break;
+                    if (len == 3 && int.Parse(value.AsSpan(i, 3), provider: System.Globalization.CultureInfo.InvariantCulture) > 255)
+                        break;
+                    reach[i + len] |= reach[i] << 1;
+                }
+            }
+            return (reach[value.Length] & (1UL << bytes)) != 0;
+        }
+
+        /// <summary>
+        /// The digest XOD 1.x stored for a <c>[Crypto]</c> value (MD5, its default, or SHA1): the decimal digits of
+        /// each byte of the hash of the value's ASCII bytes, run together (<c>xod.core/src/Helpers/CryptoHelper.cs</c>).
+        /// From September 2016 1.x hashed ASCII, each other character as '?'; before, the system's code page, so a
+        /// value with other characters from those versions doesn't verify. Null for a method 1.x didn't have.
+        /// </summary>
+        internal static string Legacy1xDigest(string plainText, CryptoMethod method)
+        {
+            if (plainText == null)
+                return null;
+            byte[] bytes = Encoding.ASCII.GetBytes(plainText);
+            byte[] hash = method switch
+            {
+                CryptoMethod.MD5 => MD5.HashData(bytes),
+                CryptoMethod.SHA1 => SHA1.HashData(bytes),
+                _ => null
+            };
+            if (hash == null)
+                return null;
+            var digits = new StringBuilder(hash.Length * 3);
+            foreach (byte b in hash)
+                digits.Append(b.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return digits.ToString();
         }
 
         private static bool IsLowerHexDigest(string value, int expectedLength)

@@ -320,27 +320,34 @@ namespace Xod.Sql
             _ => new DateTime(t.Ticks - t.Ticks % TimeSpan.TicksPerSecond, t.Kind),
         };
 
-        /// <summary>VERIFY_HASH(stored, plain): the plain text hashed by the column's method (or, for a column whose
-        /// method isn't known, the one its length gives), compared with the stored hash.</summary>
+        /// <summary>VERIFY_HASH(stored, plain): the plain text verified against the stored hash by
+        /// <see cref="CryptoHelper.VerifyHash"/> (a digest of XOD 1.x's form too, ISS-151), by the column's method; for
+        /// a column whose method isn't known, the one its length gives, or else a 1.x digest's two.</summary>
         private static object VerifyHash(string stored, string plain, string method)
         {
-            method ??= stored.Length switch
+            if (stored == null || plain == null)
+                return false;
+            CryptoMethod? known = method switch
             {
-                32 => "md5",
-                40 => "sha1",
-                64 => "sha256",
-                128 => "sha512",
+                "md5" => CryptoMethod.MD5,
+                "sha1" => CryptoMethod.SHA1,
+                "sha256" => CryptoMethod.SHA256,
+                "sha512" => CryptoMethod.SHA512,
+                null => stored.Length switch
+                {
+                    32 => CryptoMethod.MD5,
+                    40 => CryptoMethod.SHA1,
+                    64 => CryptoMethod.SHA256,
+                    128 => CryptoMethod.SHA512,
+                    _ => null,
+                },
                 _ => null,
             };
-            string hash = method switch
-            {
-                "md5" => CryptoHelper.GetMD5HashData(plain),
-                "sha1" => CryptoHelper.GetSHA1HashData(plain),
-                "sha256" => CryptoHelper.GetSHA256HashData(plain),
-                "sha512" => CryptoHelper.GetSHA512HashData(plain),
-                _ => null,
-            };
-            return hash != null && string.Equals(hash, stored, StringComparison.OrdinalIgnoreCase);
+            if (known.HasValue && CryptoHelper.VerifyHash(plain, stored, known.Value))
+                return true;
+            return method == null &&
+                (CryptoHelper.IsLegacy1xDigest(stored, CryptoMethod.MD5) && CryptoHelper.VerifyHash(plain, stored, CryptoMethod.MD5) ||
+                 CryptoHelper.IsLegacy1xDigest(stored, CryptoMethod.SHA1) && CryptoHelper.VerifyHash(plain, stored, CryptoMethod.SHA1));
         }
     }
 }

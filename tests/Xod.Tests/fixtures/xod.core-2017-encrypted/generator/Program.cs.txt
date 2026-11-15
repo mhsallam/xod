@@ -1,0 +1,24 @@
+using System; using System.Collections.Generic; using System.IO; using System.Linq; using Xod;
+// Written by the 2017 xod.core code (commit b50d400): an encrypted database whose members carry 1.x [Crypto] digests.
+public class Legacy1xMember
+{
+    [PrimaryKey] public int Id { get; set; }
+    public string Name { get; set; }
+    [Crypto] public string Pin { get; set; }                    // MD5, the 1.x default
+    [Crypto(CryptoMethod.SHA1)] public string Secret { get; set; }
+}
+public static class P {
+  public static int Main(string[] a) {
+    string dir = a[0]; Directory.CreateDirectory(dir);
+    using (var db = new XodContext(Path.Combine(dir, "legacy.xod"), a[1] == "-" ? null : a[1], new DatabaseOptions { InitialCreate = true }))
+      for (int i = 1; i <= 12; i++)
+        db.Insert(new Legacy1xMember { Id = i, Name = "member " + i, Pin = "pin-" + i, Secret = "secret " + i });
+    using (var db = new XodContext(Path.Combine(dir, "legacy.xod"), a[1] == "-" ? null : a[1]))
+    {
+      var all = db.Select<Legacy1xMember>().ToList();
+      Console.WriteLine($"1.x reads back {all.Count}; member 3 Pin={all.First(m => m.Id == 3).Pin} Secret={all.First(m => m.Id == 3).Secret}");
+    }
+    foreach (var f in Directory.GetFiles(dir).OrderBy(f => f)) Console.WriteLine($"  {Path.GetFileName(f)} {new FileInfo(f).Length}");
+    return 0;
+  }
+}

@@ -1,9 +1,9 @@
 # PLAN-061: the High issues from the overall review
 
 - **Task ID**: `TASK-075`
-- **Status**: In progress. `ISS-147` done as a mitigation with named debt (section 2); `ISS-138` and `ISS-139`
+- **Status**: Done (2026-11-15). `ISS-147` done as a mitigation with named debt (section 2); `ISS-138` and `ISS-139`
   resolved (section 3); `ISS-148`, `ISS-149` and `ISS-150` resolved (section 4); `ISS-129` resolved (section 5);
-  `ISS-151` next.
+  `ISS-151` resolved, its digests as a mitigation with `ISS-171` filed (section 6).
 - **Related**: [`REVIEW-2026-11-14`](../REVIEW-2026-11-14-overall.md) (`TASK-073`, which filed them),
   [`PLAN-051`](PLAN-051-commit-failure-and-shared-access.md) section 7 (the journal's recorded debt)
 
@@ -407,3 +407,90 @@ Most of the gain is the hook no longer running for every row.
 - **Linux** (2026-11-15, `mcr.microsoft.com/dotnet/sdk:9.0`, a non-root user, the container's own file system, no
   network; the final tree): the batch, volume, statement-undo, one-write, failed-write, commit-failure, stress, core,
   crash-safety, index-crash and password-change tests, 115 passed.
+
+## 6. `ISS-151`: encrypted XOD 1.x databases, and 1.x digests
+
+### The causes
+
+- **The file key.** XOD 1.x (2015 to 2017) keyed its files with AES-CBC under the first 32 (key) and 16 (IV)
+  characters of the decimal digits of each byte of SHA-256 of the password. 2.x's fallback for a file without its
+  header was given 2.x's key, the same hash in hex, and padded it: **the 1.x reader used the 2.x key**, so the right
+  password was refused. No XOD++ version ever wrote such a file (the first commit already wrote AES-GCM), so that
+  fallback matched no writer. Behind it, a second fault: 1.x encrypted a document's text as ASCII under the
+  declaration a `StringWriter` gives it, `encoding="utf-16"`, and read it back as text, which ignores the declaration;
+  2.x parses bytes, which believes it.
+- **The digests.** 1.x stored an MD5 or SHA1 digest as the decimal digits of each byte, run together. A read gives a
+  one-way value back as stored, a plain string, and an update writes it again: **each write guesses whether the value
+  is already a digest**, and the guess (`CryptoHelper.HashProperty`, `ISS-007`) knew only the hex form, so the first
+  update of any other property hashed every 1.x digest of the row again.
+
+### The change
+
+- **The 1.x key from the 2.x one** (`FileCryptoHelper.Legacy1xKey`, used by the one decrypting function every reader
+  calls: an open, the index load, the password switch, `XodMigrator`). For an ASCII password the bytes 1.x hashed
+  are the UTF-8 bytes 2.x hashes, so the 1.x digits follow from 2.x's hash; no second key travels beside it. The 1.x
+  reader drops the text's declaration (`WithoutDeclaration`); the ASCII bytes read as UTF-8.
+- **A 1.x digest a row stores is kept by its update** (`XmlEngine.StoredDigest`): both update paths pass the row they
+  replace to the writer, and a one-way value is kept as stored when it has a 1.x digest's form (digits that read as
+  exactly the hash's bytes, `CryptoHelper.IsLegacy1xDigest`) and is what the row stores. Anything else is hashed as
+  before.
+- **Verification of either form**: `CryptoHelper.VerifyHash` (a public method; it now also accepts a 1.x digest of
+  the value) and SQL's `VERIFY_HASH`, which compared the hex form on its own and now goes through it.
+- `MIGRATION-GUIDE` section 2.1: what opens, what is kept, the limits, and that a bare `[Crypto]` is SHA256 in 2.x
+  (MD5 in 1.x); its "all attributes work identically" was larger than the code.
+
+### Tests, seen red first
+
+`XodLegacy1xCryptoTests` (new), against three databases written by the 2017 `xod.core` code (commit `b50d400`, built
+unchanged against a current .NET; each fixture's README says how): encrypted, without a password, and under the
+password `pässwort`.
+
+- Red against the unfixed engine: the encrypted database opens with its password (and reads its 12 rows and their 1.x
+  digests); it opens again after 2.x wrote it; it takes a new password; it converts (`XodMigrator`) with its digests;
+  an update of another property keeps the digests, by either update path (the key path only without a password: an
+  encrypted page isn't read as raw bytes); a 1.x digest verifies; SQL verifies one; a changed value on a 1.x row is
+  hashed while its other digest stays.
+- Guards: another password is refused; a value a row stores in plaintext (a 2.0.1 database, `ISS-064`) is hashed by
+  an update; the `pässwort` database opens with `p?sswort`, not `pässwort`.
+- The fixes in two steps: with the key fixed alone the files still didn't open (the declaration); with the files open,
+  the digest tests were red on their own (the MD5 and SHA1 digests hashed into hex).
+
+Each guard broken once (nine breaks, each turning at least one test red; the files restored after each): the old
+fallback key; the declaration kept; no stored digest kept; each update path without its stored row; `VerifyHash`
+without the 1.x form; no form check (the review's regression); the form check without its split into bytes (48 nines
+then passed as a digest); SQL comparing the hex form.
+
+### The independent review
+
+A read-only reviewer with probes, on the old and new code, then on the revision:
+
+| Finding | Disposition |
+| :--- | :--- |
+| Keeping any stored value equal to the incoming one kept plaintext stored under `[Crypto]` unhashed for good (reproduced) | Fixed: only a value of a 1.x digest's form; tested |
+| A 1.x digest in a child without a primary key is hashed again when its parent is updated (reproduced); an object read from 1.x inserted elsewhere, an `Update` by example over rows, a key rewrite | Filed as `ISS-171` (Medium): the cause, a digest read back as a plain string, stays |
+| SQL `VERIFY_HASH` compared the hex form on its own (reproduced) | Fixed: through `CryptoHelper.VerifyHash`; tested |
+| 1.x hashed a digest again at each update of its row, and before September 2016 hashed in the system's code page | Named in `MIGRATION-GUIDE` and the code's comments |
+| A comment gave a reason that can't happen (a key of fewer than 32 digits) | Corrected |
+| A mixed database keeps its 1.x files under an unsalted hash until a password change | The guide recommends one after migrating |
+| Second pass: the regression gone, `IsLegacy1xDigest` correct (checked against 20,000 real digests of each method and 30,000 random digit strings); no test reached its split into bytes | A case added (48 nines), and broken once |
+| Second pass: a doc comment on the wrong method; the guide silent on a digit-only plaintext that stays (a 16-digit card number under MD5); a model changing SHA1 to MD5 | Moved; the guide and `ISS-171` say so |
+| Second pass: SQL `VERIFY_HASH` accepts every 2.x hash it did; a null stored value now gives false (it threw for a column of unknown method) | No change; in the release notes |
+| The key derivation matches every 1.x version for an ASCII password; a wrong password gives `SecurityException` (3,000 tried); a 2.x file can't take the 1.x path; `VerifyHash` weakens nothing for 2.x | No change |
+
+### The verdict
+
+- **The file key: clean, with named debt.** One reader derives the 1.x key from the one 2.x key. A password with
+  characters outside ASCII opens in the form 1.x hashed (`?` for each), and one from before September 2016 doesn't
+  open (`MIGRATION-GUIDE`).
+- **The digests: mitigation (the real fix filed as `ISS-171`).** An update of a row keeps the 1.x digests it stores,
+  and both verifiers accept them; a write without the stored row still hashes them, because a one-way value read back
+  is a plain string that each write must guess about.
+
+### How it was checked
+
+- **Gate** (the final tree, 2026-11-15, Windows): engine and crash writer build with 0 warnings; `Xod.Tests` 515 on
+  net8.0 and 523 on net9.0, the `ISS-167` test skipped on each; conformance 24/24 on each; the independent reader
+  `--check` and `--check-fresh` ok; `XodBench.Tests` 26/26; no machine details in the tracked files.
+- **Linux** (2026-11-15, `mcr.microsoft.com/dotnet/sdk:9.0`, a non-root user, the container's own file system, no
+  network; the final tree): the 1.x, SQL, stored-value, property-encryption, password-change, migration and migrator
+  tests, 163 passed.
