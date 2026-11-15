@@ -1,2 +1,8 @@
 # The pre-commit hook is run by sh, which a CRLF checkout would break.
 .githooks/* text eol=lf
+
+# Database fixtures are stored byte for byte: a line-ending conversion would make them other than what wrote them.
+tests/Xod.Tests/fixtures/**/*.xod -text
+tests/Xod.Tests/fixtures/**/*.xtab -text
+tests/Xod.Tests/fixtures/**/*.xpag -text
+tests/Xod.Tests/fixtures/**/*.xidx -text
