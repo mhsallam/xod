@@ -1,0 +1,12 @@
+#!/bin/sh
+# A commit message reads as the author's own, about the code: no "the owner", no approval or decision
+# credited to anyone, no agent, reviewer, session or tool, and no attribution trailer.
+# Enabled per clone with
+#   git config core.hooksPath .githooks
+msg=$(grep -v '^#' "$1")
+found=$(printf '%s\n' "$msg" | grep -inE "the owner|owner's|the user\b|as asked|\bclaude\b|anthropic|\bAI\b|\bLLM\b|\bmodel's\b|sub-?agents?\b|\bagents?\b|reviewers?\b|\bsession\b|co-authored-by|generated with")
+if [ -n "$found" ]; then
+  echo "commit-msg: the message names who decided or who did the work. Write the change and its reason, in your own voice:" >&2
+  printf '%s\n' "$found" | sed 's/^/  line /' >&2
+  exit 1
+fi
