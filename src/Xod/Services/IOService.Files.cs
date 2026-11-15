@@ -25,7 +25,7 @@ namespace Xod.Services
 
             try
             {
-                foreach (var tmpFile in Directory.GetFiles(root, "*.tmp"))
+                foreach (var tmpFile in Directory.GetFiles(root, "*.tmp").Where(IsAtomicWriteLeft))
                 {
                     string targetPath = tmpFile.Substring(0, tmpFile.Length - 4);
                     var tmpInfo = new FileInfo(tmpFile);
@@ -70,7 +70,7 @@ namespace Xod.Services
         /// </summary>
         private static void PutBackSetAsideFiles(string root)
         {
-            foreach (string aside in Directory.GetFiles(root, "*" + SetAsideSuffix))
+            foreach (string aside in Directory.GetFiles(root, "*" + SetAsideSuffix).Where(IsSetAsideLeft))
             {
                 string target = aside.Substring(0, aside.Length - SetAsideSuffix.Length);
                 try
@@ -387,11 +387,18 @@ namespace Xod.Services
         }
 
         /// <summary>
-        /// Writes the file now, outside any batch, buffer or transaction: for a record that must outlast
-        /// whatever is in progress (an AES256 data key: a stored key no value uses is harmless, values whose
-        /// key was never stored are lost). A rollback doesn't undo it. Like every write here, it replaces the
-        /// file by a rename and doesn't flush it to the device. It passes no mutation hook: it writes the database
-        /// file, never a page or table, so the indexes are no further behind (ISS-043).
+        /// Writes the database file now, outside any batch, buffer or transaction: for a record that must outlast
+        /// whatever is in progress (an AES256 data key: a stored key no value uses is harmless, values whose key was
+        /// never stored are lost), and a new database's file. It passes the mutation hook like every write (a password
+        /// switch this context left pending is finished first, or its staged copy would later replace this write), and
+        /// a transaction keeps no image of the database file, so its rollback or undo doesn't take the key back
+        /// (TransactionService.CaptureBeforeMutate). Only once written is the document the cached one, and the file no
+        /// longer waiting to be written: a write that fails changes nothing this context reads, so a key whose save
+        /// failed isn't found in the cache by the next attempt and used unsaved (second review of ISS-150); a change
+        /// that made the file wait is in this write (it used to be written again by the next flush, outside the hold
+        /// the key was made under). The caller passes a document of its own, not the cached one, which this caches
+        /// (PropertyKeyService.DatabaseFile). Like every write here, it replaces the file by a rename and doesn't flush
+        /// it to the device.
         /// </summary>
         internal void SaveNow(XFile file)
         {
@@ -400,8 +407,11 @@ namespace Xod.Services
 
             lock (syncLock)
             {
-                CacheSavedUnlocked(file);
+                BeforeFileMutate?.Invoke(file.Path);
                 FlushFileToDiskCore(file);
+                CacheSavedUnlocked(file);
+                dirtyBufferedFiles.Remove(file);
+                dirtyBatchFiles.Remove(file);
             }
         }
 

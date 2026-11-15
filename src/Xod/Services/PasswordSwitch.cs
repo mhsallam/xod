@@ -73,10 +73,7 @@ namespace Xod.Services
                 return;
             }
 
-            // A switch this context committed and couldn't finish: finished first, or this one is refused
-            // (staging over its files would lose them).
-            FinishPendingSwitch();
-            RefuseOverUnfinishedWrites(root);
+            CheckCanSwitch();
 
             string[] files = Directory.GetFiles(root).Where(Helpers.DatabaseFiles.IsOfDatabase).OrderBy(f => f, StringComparer.Ordinal).ToArray();
             string journal = this.Path + JournalSuffix;
@@ -159,11 +156,23 @@ namespace Xod.Services
             new XodException("The password change is made, but a file could not be replaced yet (" + cause.Message +
                 "). The next write in this context, or the next open, replaces it; until then this context can't read it.", cause);
 
-        // A transaction journal or an atomic write cut short is put back by the next open, as it was written:
-        // under the password it had. A switch now would end with those files under the old password.
-        private static void RefuseOverUnfinishedWrites(string root)
+        /// <summary>
+        /// Throws, changing nothing, unless a switch can run now. A switch this context committed and couldn't finish
+        /// is finished first, or this one is refused (staging over its files would lose them). And what a crash left
+        /// (a transaction journal, an atomic write cut short, a file a transaction set aside, a switch's own record or
+        /// staged file) refuses it: the next open alone puts it back as it was written, under the password it had, so
+        /// a switch now would end with those files under the old password; a page a transaction set aside came back in
+        /// plaintext under a secured database (ISS-149). The list is the open's own (IOService.WriteLeft), whose
+        /// predicates the recovery uses too. <see cref="SwitchTo"/> asks first; the engine
+        /// asks before it changes anything for the switch (the AES256 key's protections, ISS-150).
+        /// </summary>
+        internal void CheckCanSwitch()
         {
-            string unfinished = Directory.GetFiles(root, "*.xwal").Concat(Directory.GetFiles(root, "*.tmp")).FirstOrDefault();
+            FinishPendingSwitch();
+            string root = System.IO.Path.GetDirectoryName(this.Path);
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+                return;
+            string unfinished = IOService.WriteLeft(root);
             if (unfinished != null)
                 throw new XodException("A write that didn't finish (" + System.IO.Path.GetFileName(unfinished) +
                     ") is recovered when the database is next opened. Reopen the database before changing its password.");
@@ -221,9 +230,18 @@ namespace Xod.Services
         {
             if (!switchPending)
                 return;
-            RecoverSwitch(System.IO.Path.GetDirectoryName(this.Path));
-            switchPending = false;
+            // One thread finishes it: writes on other threads (a standalone table's, under the engine's read lock) pass
+            // here too, and two finishing at once moved the same staged file twice; the second failed its write.
+            lock (finishing)
+            {
+                if (!switchPending)
+                    return;
+                RecoverSwitch(System.IO.Path.GetDirectoryName(this.Path));
+                switchPending = false;
+            }
         }
+
+        private readonly object finishing = new object();
 
         /// <summary>
         /// Run when the database opens, before any file is read: finishes a password change that was committed
@@ -238,25 +256,12 @@ namespace Xod.Services
 
             foreach (string journal in Directory.GetFiles(root, "*" + JournalSuffix))
             {
-                string text;
-                try
-                {
-                    using var fs = new FileStream(journal, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    using var reader = new StreamReader(fs, Encoding.UTF8);
-                    text = reader.ReadToEnd();
-                }
-                catch (IOException e) when (File.Exists(journal))
-                {
-                    // Held by the context switching the password: its staged files are live.
-                    throw new XodException("A password change is in progress in another context or process; open the database when it ends.", e);
-                }
-                string[] lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                bool committed = lines.Length >= 2 && lines[0] == JournalHeader && lines[^1] == JournalCommit;
-                if (committed)
+                string[] committed = CommittedFiles(journal);
+                if (committed != null)
                 {
                     try
                     {
-                        SwitchStaged(root, lines.Skip(1).Take(lines.Length - 2), expectAll: false);
+                        SwitchStaged(root, committed, expectAll: false);
                     }
                     catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
                     {
@@ -270,6 +275,64 @@ namespace Xod.Services
             // Staged files no commit record names: a change that never committed.
             foreach (string staged in Directory.GetFiles(root, "*" + StagedSuffix))
                 File.Delete(staged);
+        }
+
+        /// <summary>
+        /// ISS-148: run by an open that takes the database beside other contexts (IOService.OpenAndRecover), which
+        /// recovers nothing. A switch committed and not finished (a file it replaces was open elsewhere; its context
+        /// finishes it at its next write, or the next open alone does) refuses the open: until then the database's
+        /// files are under two passwords, and a context opened under the old one went on writing under it, to files
+        /// the switch never replaced. The commit record on disk says so, not the switching context's memory, so an open
+        /// beside it reads it (an open alone finishes the switch instead, IOService.RecoverInterruptedWrites, and a
+        /// context taking its shared hold back after holding the database alone holds the gate meanwhile, so no switch
+        /// ran in between: IOService.GateName). A record that never committed doesn't refuse: its files are all under
+        /// the old password, as they are read. The caller already holds its shared hold, so no switch (which needs the
+        /// database alone) can commit after this look.
+        /// </summary>
+        internal static void RefuseBesideUnfinishedSwitch(string root)
+        {
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+                return;
+            foreach (string journal in Directory.GetFiles(root, "*" + JournalSuffix))
+            {
+                if (CommittedFiles(journal) != null)
+                    throw new XodException("A password change made by another context or process isn't finished: a file it replaces " +
+                        "was open elsewhere. The database opens once that context writes again or closes.");
+            }
+        }
+
+        // The one reading of a commit record: the files a committed switch replaces, or null for a switch that never
+        // committed (a record cut short) or a record gone meanwhile (its context finished it). Throws while the record
+        // is held: the context switching the password has it open, and its staged files are live. Read sharing its
+        // deletion, so the context finishing the switch deletes it beside this read instead of failing. A record this
+        // context can't read (its permissions, or one being deleted) throws: only a missing record is gone, since one
+        // read as gone lets an open go on beside a switch, or lets the recovery delete a committed switch's record and
+        // staged files (second review of ISS-148).
+        private static string[] CommittedFiles(string journal)
+        {
+            string text;
+            try
+            {
+                using var fs = new FileStream(journal, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+                using var reader = new StreamReader(fs, Encoding.UTF8);
+                text = reader.ReadToEnd();
+            }
+            catch (FileNotFoundException)
+            {
+                return null;
+            }
+            catch (UnauthorizedAccessException e)
+            {
+                throw new XodException("A password change's record (" + System.IO.Path.GetFileName(journal) + ") can't be read: " + e.Message +
+                    " The database opens once it can be.", e);
+            }
+            catch (IOException e) when (File.Exists(journal))
+            {
+                throw new XodException("A password change is in progress in another context or process; open the database when it ends.", e);
+            }
+            string[] lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            bool committed = lines.Length >= 2 && lines[0] == JournalHeader && lines[^1] == JournalCommit;
+            return committed ? lines.Skip(1).Take(lines.Length - 2).ToArray() : null;
         }
 
         private static void WriteDurably(string file, byte[] content)

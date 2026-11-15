@@ -94,6 +94,10 @@ namespace Xod.Services
             {
                 OpenAndRecover(lockDatabase, lockRetryTimeoutMs, creating, checkFolder);
             }
+            else
+            {
+                noFolderAtOpen = true;
+            }
         }
 
         internal string RootDirectory => root;
@@ -433,6 +437,7 @@ namespace Xod.Services
                 finally
                 {
                     ReleaseHold();
+                    ReleaseCreationGate(); // a creation that failed before ShareHoldOnceCreated
                 }
             }
         }

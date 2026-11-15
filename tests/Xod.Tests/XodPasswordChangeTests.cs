@@ -81,13 +81,14 @@ namespace Xod.Tests
             });
         }
 
-        // Nothing besides the database's own files (and the lock files: the database file's, and the folder's
-        // "xod.lock", PLAN-046 section 9) is left in the folder.
+        // Nothing besides the database's own files (and the lock files: the database file's, the folder's "xod.lock"
+        // and the gate "xod.gate.lock", PLAN-046 section 9) is left in the folder.
         private static void NothingLeftOver(string dir)
         {
             var extra = Directory.GetFiles(dir)
                 .Where(f => !DatabaseExtensions.Contains(Path.GetExtension(f)) && !f.EndsWith(".xod.lock", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(Path.GetFileName(f), "xod.lock", StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(Path.GetFileName(f), "xod.lock", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(Path.GetFileName(f), "xod.gate.lock", StringComparison.OrdinalIgnoreCase))
                 .Select(Path.GetFileName)
                 .ToList();
             Assert.Empty(extra);
@@ -221,6 +222,25 @@ namespace Xod.Tests
             Reads(path, "first", StorageFormat.Xml);
         }
 
+        // ISS-149: likewise a file a transaction set aside (deleted, "<file>.xdel") when its process died before the
+        // commit: the next open alone puts it back, as it was written. A switch converted only the database's files and
+        // refused only over journals and ".tmp" files, so the page came back in plaintext under a secured database, and
+        // its table couldn't be read. The switch now refuses over everything the open recovers.
+        [Fact]
+        public void A_password_change_over_a_file_a_transaction_set_aside_is_refused()
+        {
+            string path = NewDatabase("set-aside", StorageFormat.Xml, null);
+            string dir = Path.GetDirectoryName(path);
+            string page = DatabaseFiles(dir).First(f => f.EndsWith(".xpag", StringComparison.Ordinal));
+            using (var db = new XodContext(path, null, Options(StorageFormat.Xml)))
+            {
+                File.Move(page, page + ".xdel");
+                Assert.ThrowsAny<XodException>(() => db.Secure("second"));
+            }
+            Reads(path, null, StorageFormat.Xml);
+            NothingLeftOver(dir);
+        }
+
         // Opening a folder picks the database file, not a file a password change or a write left beside it.
         [Fact]
         public void Opening_a_folder_picks_the_database_file()
@@ -339,6 +359,88 @@ namespace Xod.Tests
             Assert.Contains("WROTE", run.Output);
 
             CrashDb.HoldsBatches(dir, "second", 2);
+            NothingLeftOver(dir);
+        }
+
+        // ISS-148: a change committed that couldn't replace a file (the database file here, so it still opens with the old
+        // password) is finished by its context's next write. Meanwhile it was pending in that context's memory only, and
+        // another context opened the database with the old password and created a table under it, which the change never
+        // replaced: unreadable once it finished. Now the commit record on disk refuses an open beside it.
+        [Fact]
+        public void Another_context_does_not_open_beside_a_change_that_did_not_finish()
+        {
+            string dir = CrashDb.New(tempRoot, "beside-unfinished");
+            using var child = XodCrashSafetyTests.StartWriterProcess("pwchange-hold", dir, ("XOD_FAIL_AT_STEP", "switching:pw.xod"));
+            var read = new StringBuilder();
+            string line;
+            while ((line = child.StandardOutput.ReadLine()) != null && line != "WAITING")
+                read.AppendLine(line);
+            Assert.NotNull(line);
+
+            string rest;
+            try
+            {
+                Assert.Contains("PENDING", read.ToString());
+                Assert.Contains(Directory.GetFiles(dir), f => f.EndsWith(".xpwlog", StringComparison.Ordinal));
+                foreach (string password in new[] { "first", "second" })
+                {
+                    var refused = Assert.ThrowsAny<XodException>(() =>
+                    {
+                        using var other = new XodContext(Path.Combine(dir, "pw.xod"), password);
+                        other.Insert(new PwItem { Name = "beside" });
+                    });
+                    Assert.Contains("isn't finished", refused.Message);
+                }
+            }
+            finally
+            {
+                child.StandardInput.WriteLine();
+                child.StandardInput.Flush();
+                rest = child.StandardOutput.ReadToEnd() + child.StandardError.ReadToEnd();
+                Assert.True(child.WaitForExit(120_000));
+            }
+            Assert.Contains("WROTE", rest);
+
+            CrashDb.HoldsBatches(dir, "second", 2);
+            using (var db = new XodContext(Path.Combine(dir, "pw.xod"), "second"))
+                Assert.Empty(db.Select<PwItem>());
+            CrashDb.DoesNotOpen(dir, "first");
+            NothingLeftOver(dir);
+        }
+
+        // Review of ISS-148: a context that held the database alone for its change gives that hold up and takes its shared
+        // hold back, holding nothing in between. Another context, open meanwhile, changed the password in that instant;
+        // the first took its shared hold back with nothing to tell it, and wrote under the password it had. Now the first
+        // holds the gate from before it lets go until it holds again, and the other's change, which needs the database
+        // alone, is refused meanwhile. (The first is paused there, at "retaking-hold".)
+        [Fact]
+        public void No_change_runs_while_another_context_takes_its_hold_back()
+        {
+            string dir = CrashDb.New(tempRoot, "change-in-the-gap");
+            using var child = XodCrashSafetyTests.StartWriterProcess("pwchange-hold", dir, ("XOD_PAUSE_AT_STEP", "retaking-hold"));
+            string line;
+            while ((line = child.StandardOutput.ReadLine()) != null && !line.StartsWith("PAUSED", StringComparison.Ordinal)) { }
+            Assert.NotNull(line);
+
+            string rest;
+            try
+            {
+                using (var other = new XodContext(Path.Combine(dir, "pw.xod"), "second"))
+                    Assert.ThrowsAny<XodException>(() => other.ChangePassword("second", "third"));
+            }
+            finally
+            {
+                child.StandardInput.WriteLine(); // past the pause
+                child.StandardInput.WriteLine(); // past WAITING: the child writes a batch
+                child.StandardInput.Flush();
+                rest = child.StandardOutput.ReadToEnd() + child.StandardError.ReadToEnd();
+                Assert.True(child.WaitForExit(120_000));
+            }
+            Assert.Contains("CHANGED", rest);
+            Assert.Contains("WROTE", rest);
+
+            CrashDb.HoldsBatches(dir, "second", 2);
+            CrashDb.DoesNotOpen(dir, "third");
             NothingLeftOver(dir);
         }
 

@@ -75,6 +75,14 @@ namespace Xod.Services
             if (IOService.IsIndex(filePath))
                 return;
 
+            // Nor the database file: what a transaction writes to it is the AES256 data key, made for a value the
+            // transaction holds, and the key must outlast the transaction (IOService.SaveNow). Kept in its image, a
+            // rollback, a commit undone or the undo of a journal after a crash took the key back after another
+            // context had written values under it: unreadable (review of ISS-150). Nothing else writes the database
+            // file once it is created.
+            if (Helpers.DatabaseFiles.IsDatabaseFile(filePath))
+                return;
+
             if (snapshots.ContainsKey(filePath) || newlyCreatedFiles.Contains(filePath))
                 return;
 

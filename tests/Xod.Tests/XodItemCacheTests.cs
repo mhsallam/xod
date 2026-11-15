@@ -129,7 +129,7 @@ namespace Xod.Tests
         {
             using var db = new XodContext(NewDb("sql"));
             var c = Seed(db);
-            Assert.Equal(1, db.Sql("SELECT COUNT(*) FROM CacheOrder").Rows.Count);
+            Assert.Single(db.Sql("SELECT COUNT(*) FROM CacheOrder").Rows);
             var first = db.Find<CacheOrder>(o => o.Id == 1);
             Assert.Equal("Old", first.Customer.Name);
             Assert.NotSame(first.Customer, db.Find<CacheOrder>(o => o.Id == 1).Customer);

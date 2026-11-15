@@ -38,6 +38,7 @@ model, a Rust core, the browser) to read the files XOD 2.0 writes, and to know w
 | `<name>.xod.xpwlog` | password change in progress | the commit record of a password change | 9 |
 | `xod.lock` | open database (the folder's) | held by every open context with the database file's lock, of the same kind; never deleted (since the next release) | 9 |
 | `<name>.xod.lock` | open database | held by every open context: shared, or exclusively with `DatabaseOptions.LockDatabase`; never deleted | 9 |
+| `xod.gate.lock` | a hold alone being taken or given back | held exclusively around every hold alone, and by a context from before it gives up its shared hold until it holds again; never deleted (since the next release) | 9 |
 | `<name>.xod.<id>.xidxdirty` | a context that writes: whether its indexes are behind its pages | one byte while they are behind, empty once caught up; created at the context's first page or table write, held locked while it is open, deleted at its clean close | 9 |
 
 - **`<Table>`** is the class's `Type.FullName` (`MyApp.Shop.Customer.xtab`). Rows name the class by its
@@ -358,7 +359,9 @@ A local `DateTime` stores the offset of the machine that wrote it. The text alon
 - A `[Crypto]` property can't be indexed, unique or a key: its index would hold the plaintext (ISS-063).
 - **Encrypted** (`AES256`), as the next release writes it: `enc:aes256k:` + base64(nonce 12 | tag 16 |
   ciphertext), AES-256-GCM under the database's **data key**, no associated data.
-  - The data key is 32 random bytes, made when the first value is written, stored in the database file
+  - The data key is 32 random bytes, made only with the database held alone (`ISS-150`): when the database is
+    created by a context with a secret, after a password change, or else when the first value is written
+    (refused then while another context has the database open). Stored in the database file
     (section 5) as `PropertyKey`: AES-256-GCM (associated data the ASCII `XOD property key v1`) under
     `PBKDF2-HMAC-SHA256(secret, salt, 100000, 32)`, `salt` 16 random bytes.
   - `protector="application"`: the secret is the application's key (`DatabaseOptions.PropertyEncryptionKey`,
@@ -566,6 +569,7 @@ in (`zone`, section 8.1), so a database opened in another zone rebuilds its inde
   found the other file and was refused. XOD 2.0.0 and 2.0.1 don't take it. A new database's file is created
   only with both lock files held exclusively, until the database file is written: a folder's one database is
   checked under a hold, and holds the answer only while no other context can create one.
+- **The gate** `xod.gate.lock` (since the next release, the review of `ISS-148` and `ISS-150`): every hold alone is taken through it (the gate, then the two lock files, exclusively, none of them waited for while another is held; only the shared hold taken back at the end of a swap is waited for, up to `LockRetryTimeoutMs`, behind a holder alone of XOD 2.0.2 or earlier, which takes no gate), and let go of once the hold is taken. A context that gives up its shared hold to hold the database alone and then takes the shared hold back (a password change, an AES256 key made, a database created) holds the gate from before it lets go until it holds again: between the two it holds no lock file, and another context could otherwise hold the database alone in that instant, change its password, and let go unseen. A folder where the gate can't be created (it can't be written) has none; nothing that changes a password or makes a key runs there. XOD 2.0.2 and earlier don't take it.
 - **The lock file** `<database file>.lock` (since PLAN-051): every open context holds it, shared (read
   access, others may read and write) or, with `LockDatabase`, exclusively (no sharing; opened with write access where the file allows it, since an NFS client locks exclusively only a file open for writing, and read access otherwise, so a read-only lock file holds on a local file system; an exclusive hold counts only once a second open of the file is refused, so a file system that gives no lock refuses it: since the review of PLAN-053); either kind fails while the other is held. A password change holds it exclusively for the whole change. An open recovers
   (the password-change, `.tmp` and journal steps) only while holding it exclusively: with `LockDatabase`, or

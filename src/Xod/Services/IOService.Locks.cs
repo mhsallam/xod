@@ -11,9 +11,15 @@ namespace Xod.Services
         // others have the database open, and a password change can require the database to itself (ISS-071): one
         // open under the old password would go on writing under it. The files are never deleted (see ReleaseHold).
         private bool exclusivePresence;
+        // The database's folder wasn't there when this context opened: no hold was taken, and nothing was there for
+        // another context to have open (HasDatabaseToItself). Fixed at the open, not asked again of the file system,
+        // where a folder briefly unreadable reads as missing.
+        private bool noFolderAtOpen;
         private int lockRetryTimeoutMs;
-        // Held alone to create the database file (OpenAndRecover), until the engine has written it (ShareHoldOnceCreated).
+        // Held alone to create the database file (OpenAndRecover), until the engine has written it (ShareHoldOnceCreated),
+        // with the gate (GateName) until then.
         private bool holdingToCreate;
+        private FileStream creationGate;
 
         /// <summary>
         /// Why this context holds no lock on the database, or null while it holds one. A context without a hold
@@ -64,9 +70,10 @@ namespace Xod.Services
             if (creating || RecoveryPending(root))
             {
                 DatabaseHold alone = null;
+                FileStream gate = null;
                 try
                 {
-                    alone = OpenLockFile(exclusive: true, retryTimeoutMs: 0);
+                    alone = OpenAloneKeepingGate(path, out gate);
                 }
                 catch (DatabaseLockedException)
                 {
@@ -100,16 +107,23 @@ namespace Xod.Services
                     catch
                     {
                         alone.Dispose();
+                        gate?.Dispose();
                         throw;
                     }
                     if (creating)
                     {
+                        // The gate stays held until the hold alone is given back for a shared one
+                        // (ShareHoldOnceCreated): no other context holds the database alone in between.
                         this.lockStream = alone;
                         this.exclusivePresence = true;
                         this.holdingToCreate = true;
+                        this.creationGate = gate;
                         return;
                     }
+                    // A recovery only: the open goes on under a shared hold, and checks the database under it below
+                    // (and the engine reads the database file under this context's password), so no gate is kept.
                     alone.Dispose();
+                    gate?.Dispose();
                 }
             }
 
@@ -135,6 +149,9 @@ namespace Xod.Services
                 if (creating && !File.Exists(path))
                     throw new DatabaseLockedException(path, new IOException("Another context or process has the folder '" + root +
                         "' open, so a new database file can't be created in it."));
+                // Nothing is recovered beside others, but a password change committed and not finished is never opened
+                // beside: its files are under two passwords (ISS-148).
+                PasswordSwitch.RefuseBesideUnfinishedSwitch(root);
             }
             catch
             {
@@ -153,25 +170,61 @@ namespace Xod.Services
             if (!holdingToCreate)
                 return;
             holdingToCreate = false;
-            ReleaseHold();
-            exclusivePresence = false;
-            TakeBackSharedHold();
+            try
+            {
+                ReleaseHold();
+                exclusivePresence = false;
+                TakeBackSharedHold();
+            }
+            finally
+            {
+                ReleaseCreationGate();
+            }
+        }
+
+        private void ReleaseCreationGate()
+        {
+            creationGate?.Dispose();
+            creationGate = null;
         }
 
         // What a crash may have left: a write cut short, or a context's indexes behind its pages (ISS-043).
         internal static bool RecoveryPending(string root) =>
             WritesPending(root) || Directory.EnumerateFiles(root, "*" + IndexesBehindSuffix).Any();
 
-        // A transaction journal (or one cut short), a password change, an atomic write of a database file, a file a
-        // transaction set aside (ISS-107).
-        private static bool WritesPending(string root) =>
-            Directory.EnumerateFiles(root).Any(f =>
+        private static bool WritesPending(string root) => WriteLeft(root) != null;
+
+        /// <summary>
+        /// What a write cut short leaves for the next open alone to recover (<see cref="RecoverInterruptedWrites"/>): a
+        /// transaction journal, a password change's record or staged file, an atomic write of a database file or a
+        /// journal (<see cref="IsAtomicWriteLeft"/>), a file a transaction set aside (<see cref="IsSetAsideLeft"/>,
+        /// ISS-107). The first such file, or null. Read by the open, to know whether to recover, and by a password
+        /// change, which is refused over any of them (ISS-149). The recovery picks the atomic writes and set-asides by
+        /// the same predicates, so the two agree on those; the journal and the password change's files are matched by
+        /// their suffix in both. (The indexes' markers are no write left: RecoveryPending adds them.)
+        /// </summary>
+        internal static string WriteLeft(string root) =>
+            Directory.EnumerateFiles(root).FirstOrDefault(f =>
                 f.EndsWith(".xwal", StringComparison.OrdinalIgnoreCase) ||
-                f.EndsWith(".xwal.tmp", StringComparison.OrdinalIgnoreCase) ||
-                (f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) && Helpers.DatabaseFiles.IsOfDatabase(f.Substring(0, f.Length - 4))) ||
-                (f.EndsWith(SetAsideSuffix, StringComparison.OrdinalIgnoreCase) && Helpers.DatabaseFiles.IsOfDatabase(f.Substring(0, f.Length - SetAsideSuffix.Length))) ||
+                IsAtomicWriteLeft(f) ||
+                IsSetAsideLeft(f) ||
                 f.EndsWith(PasswordSwitch.JournalSuffix, StringComparison.OrdinalIgnoreCase) ||
                 f.EndsWith(PasswordSwitch.StagedSuffix, StringComparison.OrdinalIgnoreCase));
+
+        // An atomic write cut short: "<file>.tmp" of a database file or of the transaction journal. Another program's
+        // ".tmp" in the folder is none of the database's, and the recovery leaves it alone.
+        private static bool IsAtomicWriteLeft(string file)
+        {
+            if (!file.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
+                return false;
+            string target = file.Substring(0, file.Length - 4);
+            return target.EndsWith(".xwal", StringComparison.OrdinalIgnoreCase) || Helpers.DatabaseFiles.IsOfDatabase(target);
+        }
+
+        // A database file a transaction set aside ("<file>.xdel").
+        private static bool IsSetAsideLeft(string file) =>
+            file.EndsWith(SetAsideSuffix, StringComparison.OrdinalIgnoreCase) &&
+            Helpers.DatabaseFiles.IsOfDatabase(file.Substring(0, file.Length - SetAsideSuffix.Length));
 
         /// <summary>
         /// Lets go of the database. The lock file stays, whoever held it: on Unix a context that opened it just
@@ -204,6 +257,78 @@ namespace Xod.Services
         /// both.
         /// </summary>
         internal static DatabaseHold OpenLockFile(string databasePath, bool exclusive, int retryTimeoutMs)
+        {
+            if (!exclusive)
+                return OpenHold(databasePath, exclusive: false, retryTimeoutMs);
+
+            // Alone: through the gate (GateName), each try taking the gate and both lock files without waiting, so no
+            // holder of the gate ever waits for another (a context going from its shared hold to alone and back holds
+            // the gate meanwhile, and must not wait behind one that waits for it to let go).
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int delayMs = 5;
+            while (true)
+            {
+                try
+                {
+                    DatabaseHold hold = OpenAloneKeepingGate(databasePath, out FileStream gate);
+                    gate?.Dispose();
+                    return hold;
+                }
+                catch (DatabaseLockedException) when (retryTimeoutMs > 0 && sw.ElapsedMilliseconds < retryTimeoutMs)
+                {
+                    System.Threading.Thread.Sleep((int)Math.Min(delayMs, Math.Max(1, retryTimeoutMs - sw.ElapsedMilliseconds)));
+                    delayMs = Math.Min(delayMs * 2, 50);
+                }
+            }
+        }
+
+        /// <summary>
+        /// The gate (review of ISS-148 and ISS-150), <c>xod.gate.lock</c> beside the folder's lock file, never deleted.
+        /// Every hold alone is taken through it, and a context that gives its shared hold up to hold the database alone
+        /// and then takes the shared hold back (a password change, an AES256 key made, a database created) holds the
+        /// gate from before it lets go until it holds again. Between letting go and holding again it holds nothing, and
+        /// another context used to hold the database alone in that instant, change its password and let go; this one
+        /// then took its shared hold back with nothing to tell it, and wrote under the old password. Now no other
+        /// context can hold the database alone in between: it can't take the gate. (XOD 2.0.2 and earlier don't take
+        /// it.)
+        /// </summary>
+        internal const string GateName = "xod.gate.lock";
+
+        // The gate, held exclusively, taken without waiting unless asked; null where it isn't there and can't be
+        // created (a folder this user can't write: a context there writes nothing, so it changes no password and makes
+        // no key, and its hold alone only reads).
+        private static FileStream TakeGate(string databasePath, int retryTimeoutMs)
+        {
+            string gate = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(databasePath)), GateName);
+            try
+            {
+                return OpenOneLockFile(gate, databasePath, exclusive: true, retryTimeoutMs);
+            }
+            catch (UnauthorizedAccessException) when (!File.Exists(gate))
+            {
+                return null;
+            }
+        }
+
+        // The hold alone, the gate taken first and handed to the caller, which keeps it as long as it means to give the
+        // hold alone back for a shared one, or lets it go at once. Nothing is waited for.
+        private static DatabaseHold OpenAloneKeepingGate(string databasePath, out FileStream gate)
+        {
+            gate = TakeGate(databasePath, retryTimeoutMs: 0);
+            try
+            {
+                return OpenHold(databasePath, exclusive: true, retryTimeoutMs: 0);
+            }
+            catch
+            {
+                gate?.Dispose();
+                gate = null;
+                throw;
+            }
+        }
+
+        // The two lock files of a hold, in order (OpenLockFile).
+        private static DatabaseHold OpenHold(string databasePath, bool exclusive, int retryTimeoutMs)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             string folderLock = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(databasePath)), FolderLockName);
@@ -341,65 +466,102 @@ namespace Xod.Services
 
         /// <summary>
         /// Runs <paramref name="action"/> with the database to this context alone: refused (changing nothing)
-        /// while another context or process has it open, and no other can open it meanwhile. A context opened
-        /// with LockDatabase has it so already; one that holds no lock is refused.
+        /// while another context or process has it open, with <paramref name="refusal"/> when given, and no other
+        /// can open it meanwhile. A context opened with LockDatabase, or creating the database, has it so already,
+        /// as does a call made inside another's action; one that holds no lock is refused.
         /// </summary>
-        internal void WithDatabaseToItself(Action action)
+        internal void WithDatabaseToItself(Action action, string refusal = null)
         {
             if (NoHoldReason != null)
                 throw new XodException(NoHoldReason);
-            if (exclusivePresence || lockStream == null)
+            if (HasDatabaseToItself)
             {
-                // Exclusive already, or a database whose folder isn't there yet (nothing to hold).
                 action();
                 return;
             }
 
-            ReleaseHold();
-            DatabaseHold exclusive;
+            string refused = refusal ?? "Another context or process has the database open; this needs the database to itself. Close the others and try again.";
+            // The gate first, held until the shared hold is taken back: no other context can hold the database alone
+            // in between, while this one holds nothing (GateName).
+            FileStream gate;
             try
             {
-                exclusive = OpenLockFile(exclusive: true, retryTimeoutMs: 0);
+                gate = TakeGate(path, retryTimeoutMs: 0);
             }
-            catch (Exception e)
+            catch (Exception e) when (e is DatabaseLockedException || e is UnauthorizedAccessException)
             {
-                // Whatever failed, the shared hold is taken back: a failure that isn't another's lock (an IOException
-                // such as too many open files, or a network error) used to leave this context holding nothing, with
-                // no NoHoldReason, so it went on writing, and its next password change ran as if alone (review of
-                // TASK-071).
-                TakeBackSharedHold();
-                if (e is DatabaseLockedException || e is UnauthorizedAccessException)
-                    throw new XodException("Another context or process has the database open; this needs the database to itself. Close the others and try again.", e);
-                throw;
+                throw new XodException(refused, e);
             }
 
-            Exception failure = null;
             try
             {
-                action();
-            }
-            catch (Exception e)
-            {
-                failure = e;
-                throw;
+                ReleaseHold();
+                DatabaseHold exclusive;
+                try
+                {
+                    exclusive = OpenHold(path, exclusive: true, retryTimeoutMs: 0);
+                }
+                catch (Exception e)
+                {
+                    // Whatever failed, the shared hold is taken back: a failure that isn't another's lock (an IOException
+                    // such as too many open files, or a network error) used to leave this context holding nothing, with
+                    // no NoHoldReason, so it went on writing, and its next password change ran as if alone (review of
+                    // TASK-071).
+                    TakeBackSharedHold();
+                    if (e is DatabaseLockedException || e is UnauthorizedAccessException)
+                        throw new XodException(refused, e);
+                    throw;
+                }
+
+                // The hold alone is this context's hold for the action, so a call made inside it (the AES256 key made
+                // after a password change, ISS-150) sees the database held alone, and runs in this hold.
+                lockStream = exclusive;
+                exclusivePresence = true;
+                Exception failure = null;
+                try
+                {
+                    action();
+                }
+                catch (Exception e)
+                {
+                    failure = e;
+                    throw;
+                }
+                finally
+                {
+                    lockStream = null;
+                    exclusivePresence = false;
+                    exclusive.Dispose();
+                    try
+                    {
+                        TakeBackSharedHold();
+                    }
+                    catch (XodException lost) when (failure != null)
+                    {
+                        throw new AggregateException(failure, lost);
+                    }
+                }
             }
             finally
             {
-                exclusive.Dispose();
-                try
-                {
-                    TakeBackSharedHold();
-                }
-                catch (XodException lost) when (failure != null)
-                {
-                    throw new AggregateException(failure, lost);
-                }
+                gate?.Dispose();
             }
         }
 
+        /// <summary>
+        /// Whether this context has the database to itself now: it holds it alone (LockDatabase, a database it is
+        /// creating, or inside <see cref="WithDatabaseToItself"/>), or the database's folder wasn't there when it
+        /// opened (nothing to hold; the engine creates the folder before it opens). Not a context that holds no lock,
+        /// nor one between its holds. The fields aren't synchronised: every caller is serialised by the engine's locks
+        /// (a password change holds the engine's write lock; the AES256 key is made under the key service's lock,
+        /// inside a write).
+        /// </summary>
+        internal bool HasDatabaseToItself => NoHoldReason == null && (exclusivePresence || noFolderAtOpen);
+
         // Back to the shared hold after holding the database alone, with nothing held in between (a lock can't be
-        // changed from one kind to the other in place). If another context took the database in that instant,
-        // this one no longer knows whether others have it open: from now on it refuses writes (NoHoldReason).
+        // changed from one kind to the other in place). The caller holds the gate (GateName), so no other context held
+        // the database alone in that instant. If one did anyway (XOD 2.0.2 or earlier, which takes no gate), this one
+        // no longer knows whether others have it open: from now on it refuses writes (NoHoldReason).
         private void TakeBackSharedHold()
         {
             try

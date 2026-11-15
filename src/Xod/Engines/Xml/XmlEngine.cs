@@ -180,6 +180,11 @@ namespace Xod.Engines.Xml
                 this.LazyLoad = this.options.LazyLoad;
                 this.LazyLoadParent = this.options.LazyLoadParent;
 
+                // A new database's AES256 key is made now, while no other context can open it (ISS-150): made at the
+                // first value, beside another context making its own, the last save of the database file won.
+                if (IsNew)
+                    this.propertyKeys.MakeKeyIfNone();
+
                 // A new database's file is on disk, recording its format: others may open it.
                 this.ioService.ShareHoldOnceCreated();
             }

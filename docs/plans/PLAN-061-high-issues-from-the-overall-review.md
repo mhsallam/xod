@@ -2,7 +2,7 @@
 
 - **Task ID**: `TASK-075`
 - **Status**: In progress. `ISS-147` done as a mitigation with named debt (section 2); `ISS-138` and `ISS-139`
-  resolved (section 3); the others are next, in the order of section 1.
+  resolved (section 3); `ISS-148`, `ISS-149` and `ISS-150` resolved (section 4); `ISS-129` and `ISS-151` next.
 - **Related**: [`REVIEW-2026-11-14`](../REVIEW-2026-11-14-overall.md) (`TASK-073`, which filed them),
   [`PLAN-051`](PLAN-051-commit-failure-and-shared-access.md) section 7 (the journal's recorded debt)
 
@@ -206,3 +206,115 @@ slower, except over an encrypted property, which decrypts each row (it never mat
   490 on net8.0 and 498 on net9.0, the `ISS-167` test skipped on each; conformance 24/24 on each; the
   independent reader `--check` and `--check-fresh` ok; `XodBench.Tests` 26/26; no machine details in the tracked
   files. The API snapshot changed by one line: `ElementMatch` marked obsolete.
+
+## 4. `ISS-148`, `ISS-149` and `ISS-150`: the password switch, what a crash leaves, the first data key
+
+### The causes
+
+- **`ISS-148`.** A switch committed that couldn't replace a file (open elsewhere) was pending in its context's
+  memory only (`PasswordSwitch.switchPending`), and an open beside other contexts recovers nothing, so it ignored
+  the commit record on disk. **The state that decides whether an open is safe lived in one context's memory, and
+  the other opens didn't read the record that holds it.** The review of this fix found a second way in: a context
+  that gives its shared hold up to hold the database alone and then takes it back holds nothing in between, and
+  taking the hold back checked nothing, so another context could change the password in that instant (reproduced
+  with the crash writer paused at `retaking-hold`). The first data key made the gap common: every first
+  `[Crypto(AES256)]` value of a database with no key now holds the database alone for a moment.
+- **`ISS-149`.** The switch refused only over `*.xwal` and `*.tmp`, while the open recovers a set-aside file
+  (`.xdel`) too. **Two lists of what a crash leaves**, so the switch converted the database and the open then put
+  back a plaintext page.
+- **`ISS-150`.** The key was made at the first value by reading the database file, deriving and saving it, beside
+  any other context doing the same. **A read-modify-write of a shared record with no one owning the moment**: the
+  last save won. The review found a second: a key made inside a transaction was in its image of the database
+  file, so a rollback (or a commit undone after a crash) took the key back after another context had written values
+  under it (reproduced). And `SaveNow`, the key's write, passed no mutation hook and left the file waiting to be
+  written again by the next flush, outside the hold the key was made under.
+
+### The change
+
+- **The commit record decides** (`PasswordSwitch.RefuseBesideUnfinishedSwitch`, one reader of the record,
+  `CommittedFiles`): an open beside other contexts refuses a switch committed and not finished; an open alone
+  finishes it, as before. The record is read sharing its deletion, so the context finishing the switch isn't
+  refused by a reader. Finishing is serialised within a context.
+- **The gate** (`xod.gate.lock`, `IOService.GateName`): every hold alone is taken through it, the gate and both lock
+  files without waiting for any of them while holding another (a retry loop around the whole), and a context that
+  gives its shared hold up and takes it back (a password change, a key made, a new database) holds the gate from
+  before it lets go until it holds again. So no other context can hold the database alone in between. PLAN-046
+  section 9 records the file. XOD 2.0.2 and earlier don't take it.
+- **One list of what a crash leaves** (`IOService.WriteLeft`): the switch refuses over anything on it, checked before
+  the key's protections are written (`PasswordSwitch.CheckCanSwitch`); the recovery picks atomic writes and
+  set-asides by the same predicates (and so leaves another program's `.tmp` alone, which it used to rename).
+- **The key is made only with the database held alone**: at creation when the context has a secret, after a
+  password change when there is none (`PasswordChanged`), or at the first value through `WithDatabaseToItself`,
+  refused while another context has the database open. Read afresh under the hold. One maker
+  (`NewDataKeyUnlocked`) refuses unless the database is held alone (`HasDatabaseToItself`, which no longer counts
+  "no hold" as alone). A transaction keeps no image of the database file (`TransactionService.CaptureBeforeMutate`:
+  nothing but the key writes it once it is created). `SaveNow` passes the mutation hook (a pending switch is
+  finished first) and leaves nothing waiting.
+
+### Tests, seen red first
+
+In `XodPasswordChangeTests` and `XodPropertyCryptoTests`, run against the unchanged tree (red) and this one:
+
+- another context doesn't open, with either password, beside a change that didn't finish (red: it opened with the
+  old password and created a table);
+- no change runs while another context takes its hold back (red: the other's change ran in the gap, and the first
+  then wrote under the old password);
+- a password change over a file a transaction set aside is refused (red: `Secure` succeeded, and the page came back
+  in plaintext);
+- a new database records its key when created; the first value of a database without a key needs it to itself; a
+  key made inside a transaction outlives its rollback (red each); a key whose save failed is not used (Windows only:
+  red against the reviewed version, by its break below);
+- guards for the new behaviour, which the old code passed as well (its two writes came one after the other): two
+  contexts of a new database write their first values with one key; securing a database makes its key.
+
+Each guard broken once (twelve breaks; the files restored after each). Ten turn at least one test red: a shared open
+ignoring an unfinished switch; a committed record read as not committed; the switch's old list; no key at creation;
+none after a password change; the first value making its key beside others; the maker not checking its hold; a swap
+without the gate; a transaction keeping an image of the database file; a key added to the cached database file
+before its write. Two turn none, and stay as defence: the engine checking for what a crash left only after the
+key's protections are written (red before the key service wrote a copy; now `ISS-147`'s journal check refuses that
+write, and otherwise it leaves a protection for a password never applied, as a switch failing later does); `SaveNow`
+leaving the file waiting (nothing else queues the database file now that the key service writes a copy).
+
+### The independent review
+
+A read-only reviewer with probes, on the old code and the first version of this change:
+
+| Finding | Disposition |
+| :--- | :--- |
+| Taking the shared hold back after holding the database alone checked nothing: another context changed the password in between (reproduced) | Fixed: the gate; tested |
+| A key made inside a transaction was taken back by its rollback after another context used it (reproduced) | Fixed: no transaction image of the database file; `SaveNow` leaves nothing waiting; tested |
+| Two `ISS-150` tests and the Secure test pass on the old code | Kept as guards, labelled; their breaks turn them red |
+| "The one list" and "can't differ" claimed more than two hand-kept lists | Fixed: shared predicates; the comments say what is shared |
+| `HasDatabaseToItself` counted "no hold" as alone | Fixed |
+| Two threads finishing a pending switch at once; a reader of the record refusing its deletion on Windows | Fixed |
+| The first value of a keyless database refused beside others; the key protected by the creator's secret | Behaviour changes, in `RELEASE-NOTES-NEXT.md` |
+
+The same reviewer then reviewed the fixes, with probes on the new code: the gap and the rollback closed (each
+reproduced as fixed). Its findings:
+
+| Finding | Disposition |
+| :--- | :--- |
+| A key whose save failed (the database file held open) stayed in the cached database file, and the next value used it unsaved: lost after a crash (reproduced; the mechanism predates) | Fixed: the key service changes a copy, which `SaveNow` caches only once written; a key held in memory is forgotten when its save fails; tested (Windows: a file held open fails its replacement only there) |
+| A commit record this context can't read was read as gone, so an open went on beside it and a recovery deleted it with its staged files | Fixed: only a missing record is gone; an unreadable one refuses |
+| `HasDatabaseToItself` asked the file system whether the folder exists, which reads "no" on any error | Fixed: fixed at the open |
+| A swap's take of the gate collides with another context's instant on it, and is refused | Filed as `ISS-170` (refuses, never corrupts) |
+| PLAN-046 said nothing is waited for while the gate is held; the shared hold taken back is | Corrected |
+| Skipping the database file in transactions loses nothing; `SaveNow` through the hook is right for creation, rollback and `ISS-147` | No change |
+
+### The verdict
+
+- **`ISS-148`: clean, with named debt**: contexts of XOD 2.0.2 and earlier take no gate; a swap can be refused for
+  an instant's collision on the gate (`ISS-170`).
+- **`ISS-149`: clean.** The switch refuses over what the open recovers, by the same predicates.
+- **`ISS-150`: clean, with named debt**: `HasDatabaseToItself` reads fields that aren't synchronised; every caller is
+  serialised by the engine's locks today. The first value of a database with no key is refused beside other
+  contexts (a behaviour change, by design).
+
+### How it was checked
+
+- **Gate** (the final tree, 2026-11-15, Windows): engine and crash writer build with 0 warnings; `Xod.Tests` 500 on
+  net8.0 and 508 on net9.0, the `ISS-167` test skipped on each; conformance 24/24 on each; the independent reader
+  `--check` and `--check-fresh` ok; `XodBench.Tests` 26/26; no machine details in the tracked files. The test run
+  takes no longer with a key made at every new database with a secret.
+- **Linux**: not run yet (Docker wasn't running); the gate and the key on Unix (flock) are unconfirmed there.

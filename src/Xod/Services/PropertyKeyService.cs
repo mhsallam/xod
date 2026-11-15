@@ -11,8 +11,9 @@ namespace Xod.Services
     /// <summary>
     /// The one owner of <c>[Crypto(AES256)]</c> keys (ISS-050, ISS-058; PLAN-049).
     ///
-    /// A database encrypts its AES256 values with one random 256-bit <b>data key</b>, made the first time a
-    /// value is written. The data key is stored in the database file in <c>PropertyKey</c> elements, each
+    /// A database encrypts its AES256 values with one random 256-bit <b>data key</b>, made with the database to
+    /// one context (ISS-150): when it is created, after a password change, or else at the first value, refused
+    /// then while another context has it open. The data key is stored in the database file in <c>PropertyKey</c> elements, each
     /// the key encrypted under a key derived from a <b>protector</b>: the application's
     /// <see cref="DatabaseOptions.PropertyEncryptionKey"/> or the database password. A new key is protected
     /// by the application key when the context has one, else by the password. With neither there is
@@ -229,74 +230,86 @@ namespace Xod.Services
             {
                 dataKey = null;
                 legacyKeys = null;
-                XFile file = DatabaseFile();
-                XElement root = file.Root();
-                bool hasKey = root.Elements(KeyElement).Any();
-                bool passwordProtected = root.Elements(KeyElement).Any(e => ProtectorOf(e) == ProtectorPassword);
-
-                // The 2.0 key of the outgoing password: values 2.0 wrote under it must stay readable.
-                byte[] outgoingLegacy = string.IsNullOrEmpty(oldPassword) ? null : CryptoHelper.DeriveKey(oldPassword, CryptoHelper.LegacyPropertySalt);
-                // What protects a password-protected data key afterwards.
-                string secretAfter = newPassword ?? applicationKey;
-                const string NothingProtects =
-                    "This database holds AES256 values whose key is protected by its password. Removing the password needs DatabaseOptions.PropertyEncryptionKey to protect that key instead.";
-
-                if (!hasKey)
+                // A key or a legacy key held in memory below is forgotten if anything here fails: it reached the file
+                // only if the save at the end did.
+                try
                 {
-                    // No data key: only 2.0's values can exist, and only a password change concerns them.
-                    if (outgoingLegacy == null || !ScanValues().Legacy)
-                        return;
-                    if (secretAfter == null)
-                        throw new SecurityException(NothingProtects);
+                    XFile file = DatabaseFile();
+                    XElement root = file.Root();
+                    bool hasKey = root.Elements(KeyElement).Any();
+                    bool passwordProtected = root.Elements(KeyElement).Any(e => ProtectorOf(e) == ProtectorPassword);
 
-                    // Protected for before and after: the key opens whichever password the files end up under.
-                    dataKey = RandomNumberGenerator.GetBytes(32);
-                    legacyKeys = new List<byte[]>();
-                    root.Add(Protect(dataKey, ProtectorPassword, oldPassword));
-                    root.Add(Protect(dataKey, applicationKey != null ? ProtectorApplication : ProtectorPassword, applicationKey ?? newPassword));
-                }
-                else if (passwordProtected)
-                {
-                    if (secretAfter == null)
+                    // The 2.0 key of the outgoing password: values 2.0 wrote under it must stay readable.
+                    byte[] outgoingLegacy = string.IsNullOrEmpty(oldPassword) ? null : CryptoHelper.DeriveKey(oldPassword, CryptoHelper.LegacyPropertySalt);
+                    // What protects a password-protected data key afterwards.
+                    string secretAfter = newPassword ?? applicationKey;
+                    const string NothingProtects =
+                        "This database holds AES256 values whose key is protected by its password. Removing the password needs DatabaseOptions.PropertyEncryptionKey to protect that key instead.";
+
+                    if (!hasKey)
                     {
-                        // Nothing would protect the key. Refused while any value needs it; otherwise the key
-                        // and the 2.0 keys it holds go, since nothing uses them.
-                        var (legacy, current) = ScanValues();
-                        if (legacy || current)
+                        // No data key: only 2.0's values can exist, and only a password change concerns them.
+                        if (outgoingLegacy == null || !ScanValues().Legacy)
+                            return;
+                        if (secretAfter == null)
                             throw new SecurityException(NothingProtects);
-                        foreach (var elm in root.Elements(KeyElement).Concat(root.Elements(LegacyKeyElement)).ToList())
-                            elm.Remove();
-                        ioService.SaveNow(file);
-                        return;
-                    }
-                    byte[] key = DataKeyUnlocked(file, create: false, propertyName: null);
-                    root.Add(Protect(key, newPassword != null ? ProtectorPassword : ProtectorApplication, secretAfter));
-                }
 
-                if (outgoingLegacy != null)
+                        // Protected for before and after: the key opens whichever password the files end up under.
+                        dataKey = NewDataKeyUnlocked(file,
+                            (ProtectorPassword, oldPassword),
+                            (applicationKey != null ? ProtectorApplication : ProtectorPassword, applicationKey ?? newPassword));
+                        legacyKeys = new List<byte[]>();
+                    }
+                    else if (passwordProtected)
+                    {
+                        if (secretAfter == null)
+                        {
+                            // Nothing would protect the key. Refused while any value needs it; otherwise the key
+                            // and the 2.0 keys it holds go, since nothing uses them.
+                            var (legacy, current) = ScanValues();
+                            if (legacy || current)
+                                throw new SecurityException(NothingProtects);
+                            foreach (var elm in root.Elements(KeyElement).Concat(root.Elements(LegacyKeyElement)).ToList())
+                                elm.Remove();
+                            ioService.SaveNow(file);
+                            return;
+                        }
+                        byte[] key = DataKeyUnlocked(file, create: false, propertyName: null);
+                        root.Add(Protect(key, newPassword != null ? ProtectorPassword : ProtectorApplication, secretAfter));
+                    }
+
+                    if (outgoingLegacy != null)
+                    {
+                        // Kept under the data key. A context that can't open the data key (it is protected by an
+                        // application key this context doesn't have) can't keep it: refused only while 2.0's
+                        // values need it.
+                        if (!CanOpen(root))
+                        {
+                            if (ScanValues().Legacy)
+                                throw new SecurityException("This database holds AES256 values written by XOD 2.0 under its password. Changing the password needs DatabaseOptions.PropertyEncryptionKey, which protects this database's AES256 key, to keep them readable.");
+                        }
+                        else if (!LegacyKeysUnlocked(file).Any(k => k.AsSpan().SequenceEqual(outgoingLegacy)))
+                        {
+                            root.Add(new XElement(LegacyKeyElement, Convert.ToBase64String(Seal(dataKey, outgoingLegacy, LegacyKeyAad))));
+                            legacyKeys = null;
+                        }
+                    }
+
+                    ioService.SaveNow(file);
+                }
+                catch
                 {
-                    // Kept under the data key. A context that can't open the data key (it is protected by an
-                    // application key this context doesn't have) can't keep it: refused only while 2.0's
-                    // values need it.
-                    if (!CanOpen(root))
-                    {
-                        if (ScanValues().Legacy)
-                            throw new SecurityException("This database holds AES256 values written by XOD 2.0 under its password. Changing the password needs DatabaseOptions.PropertyEncryptionKey, which protects this database's AES256 key, to keep them readable.");
-                    }
-                    else if (!LegacyKeysUnlocked(file).Any(k => k.AsSpan().SequenceEqual(outgoingLegacy)))
-                    {
-                        root.Add(new XElement(LegacyKeyElement, Convert.ToBase64String(Seal(dataKey, outgoingLegacy, LegacyKeyAad))));
-                        legacyKeys = null;
-                    }
+                    dataKey = null;
+                    legacyKeys = null;
+                    throw;
                 }
-
-                ioService.SaveNow(file);
             }
         }
 
         /// <summary>
-        /// After the files' password changed (the engine holds the new one): removes the protections of the
-        /// data key by a password that is no longer the database's. Never the last one that opens.
+        /// After the files' password changed (the engine holds the new one), still with the database to itself:
+        /// removes the protections of the data key by a password that is no longer the database's (never the last
+        /// one that opens), and makes the key if there is none and something protects it now (ISS-150).
         /// </summary>
         internal void PasswordChanged()
         {
@@ -309,12 +322,14 @@ namespace Xod.Services
                 var stale = protections
                     .Where(e => ProtectorOf(e) == ProtectorPassword && (current == null || TryOpen(e, out _) != OpenResult.Opened))
                     .ToList();
-                if (stale.Count == 0 || stale.Count == protections.Count)
-                    return;
-                foreach (var e in stale)
-                    e.Remove();
-                ioService.SaveNow(file);
+                if (stale.Count > 0 && stale.Count < protections.Count)
+                {
+                    foreach (var e in stale)
+                        e.Remove();
+                    ioService.SaveNow(file);
+                }
             }
+            MakeKeyIfNone();
         }
 
         // ---- the data key ----
@@ -381,18 +396,74 @@ namespace Xod.Services
             if (!create)
                 throw new SecurityException($"Property '{propertyName}' holds a value encrypted with a key this database doesn't record.");
 
-            string newSecret = applicationKey ?? password();
-            if (newSecret == null)
+            if (applicationKey == null && password() == null)
                 throw new SecurityException(
                     $"Property '{propertyName}' is [Crypto(AES256)], which needs a database password or DatabaseOptions.PropertyEncryptionKey: " +
                     "without one, anyone with XOD could decrypt the value.");
 
-            // Written now, outside any batch or transaction: values written under a key that never reached
-            // the file could never be read; a stored key no value uses costs nothing.
-            byte[] newKey = RandomNumberGenerator.GetBytes(32);
-            file.Root().Add(Protect(newKey, applicationKey != null ? ProtectorApplication : ProtectorPassword, newSecret));
-            ioService.SaveNow(file);
-            return dataKey = newKey;
+            // Only a database with no key gets here: 2.0.2's, one created with no secret and opened since with one, or
+            // one whose key a password removal dropped (no value used it). A key made now needs the database to itself.
+            return MakeDataKeyUnlocked(propertyName,
+                $"Property '{propertyName}' is the first [Crypto(AES256)] value of this database, which makes the database's key, and " +
+                "that needs the database to itself: another context or process has it open. Write it with the others closed, or set " +
+                "the password with the others closed (Secure or ChangePassword makes the key).");
+        }
+
+        /// <summary>
+        /// Makes the data key if the database has none and this context has a secret to protect it with: run by the
+        /// engine when it creates a database, and after a password change (<see cref="PasswordChanged"/>), each with the
+        /// database to itself. So a database's key exists before two contexts can write its first value.
+        /// </summary>
+        internal void MakeKeyIfNone()
+        {
+            if (applicationKey == null && password() == null)
+                return;
+            lock (syncLock)
+            {
+                if (dataKey != null || DatabaseFile().Root().Elements(KeyElement).Any())
+                    return;
+                MakeDataKeyUnlocked(propertyName: null, refusal: null);
+            }
+        }
+
+        /// <summary>
+        /// ISS-150: the data key is made with the database to this context, refused (with <paramref name="refusal"/>)
+        /// while another context or process has it open. Made beside another, both read the database file, each made
+        /// a key, and the last save won: the other's values could never be read. The file is read afresh under the
+        /// hold, since another context may have made a key before letting go; that one is opened instead.
+        /// Written now, outside any batch or transaction: values written under a key that never reached the file
+        /// could never be read; a stored key no value uses costs nothing.
+        /// </summary>
+        private byte[] MakeDataKeyUnlocked(string propertyName, string refusal)
+        {
+            byte[] made = null;
+            ioService.WithDatabaseToItself(() =>
+            {
+                XFile file = DatabaseFile();
+                if (file.Root().Elements(KeyElement).Any())
+                {
+                    made = DataKeyUnlocked(file, create: false, propertyName);
+                    return;
+                }
+                made = NewDataKeyUnlocked(file, (applicationKey != null ? ProtectorApplication : ProtectorPassword, applicationKey ?? password()));
+                ioService.SaveNow(file);
+            }, refusal);
+            return dataKey = made;
+        }
+
+        /// <summary>
+        /// The one maker of a data key: a random key, protected in <paramref name="file"/> by each of
+        /// <paramref name="protections"/> (the caller saves the file). Only with the database to this context
+        /// (ISS-150); the owner refuses otherwise, whoever calls.
+        /// </summary>
+        private byte[] NewDataKeyUnlocked(XFile file, params (string Protector, string Secret)[] protections)
+        {
+            if (!ioService.HasDatabaseToItself)
+                throw new InvalidOperationException("The AES256 key is made only with the database to this context (ISS-150).");
+            byte[] key = RandomNumberGenerator.GetBytes(32);
+            foreach (var (protector, secret) in protections)
+                file.Root().Add(Protect(key, protector, secret));
+            return key;
         }
 
         private static XElement Protect(byte[] key, string protector, string secret)
@@ -479,8 +550,15 @@ namespace Xod.Services
             }
         }
 
-        private XFile DatabaseFile() =>
-            ioService.Reopen(databaseFileName, typeof(Database)) ?? throw new DatabaseFileException();
+        // The database file as it is on disk, as a document of this service's own: what it changes reaches the cache
+        // only through a write that succeeded (IOService.SaveNow). A protection added to the cached document itself
+        // stayed there when the write failed, and the next value found it and used the key unsaved (second review of
+        // ISS-150).
+        private XFile DatabaseFile()
+        {
+            XFile cached = ioService.Reopen(databaseFileName, typeof(Database)) ?? throw new DatabaseFileException();
+            return new XFile(new XDocument(cached.Document), typeof(Database), cached.Path);
+        }
 
         // ---- AES-256-GCM: nonce (12) | tag (16) | ciphertext ----
 

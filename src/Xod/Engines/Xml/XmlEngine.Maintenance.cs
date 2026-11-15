@@ -128,9 +128,10 @@ namespace Xod.Engines.Xml
                 // No other context may have the database open: one would go on writing under the old password.
                 ioService.WithDatabaseToItself(() =>
                 {
-                    // A change this context made earlier that couldn't replace every file: finished before
-                    // anything below reads the files, or this one is refused.
-                    passwordSwitch.FinishPendingSwitch();
+                    // A change this context made earlier that couldn't replace every file is finished before anything
+                    // below reads the files, and what a crash left refuses this one, before anything below changes
+                    // (the AES256 key's protections are written first).
+                    passwordSwitch.CheckCanSwitch();
                     // Everything this context holds goes to disk first: the switch rewrites the files on disk,
                     // and nothing may be written over them afterwards that the switch didn't see.
                     FlushToDisk();
