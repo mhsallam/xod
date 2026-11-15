@@ -317,4 +317,8 @@ reproduced as fixed). Its findings:
   net8.0 and 508 on net9.0, the `ISS-167` test skipped on each; conformance 24/24 on each; the independent reader
   `--check` and `--check-fresh` ok; `XodBench.Tests` 26/26; no machine details in the tracked files. The test run
   takes no longer with a key made at every new database with a secret.
-- **Linux**: not run yet (Docker wasn't running); the gate and the key on Unix (flock) are unconfirmed there.
+- **Linux** (2026-11-15, `mcr.microsoft.com/dotnet/sdk:9.0`, a non-root user, the container's own file system, no
+  network; the commit `4c2931f`): the password change, property encryption, shared access, crash safety, transaction,
+  lock, migrator and journal tests, 136 passed. The read-only-media test ran first with its folders passed as empty
+  strings, which point both at one writable folder, and failed for that; run again with a folder mounted read-only
+  (`XOD_RO_RW`, `XOD_RO_RO`), the lock tests passed 6/6, the gate left uncreated where the folder can't be written.
