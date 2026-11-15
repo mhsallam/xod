@@ -21,7 +21,7 @@ commit 554 ms.
 
 ## 2. Method
 
-- **Code**: `HEAD` (`e62bc30`) exported to a scratch folder, because the shared tree held another task's
+- **Code**: `HEAD` (`6624e12`) exported to a scratch folder, because the shared tree held another task's
   uncommitted changes in `src/Xod`. Release, net9.0, workstation GC (the harness's default), pinned to the
   performance cores.
 - **Workload**: the harness's soak (`--profile soak --seed-rows 200000 --hot-rows 50000 --writers 0|1`), and a
@@ -225,7 +225,7 @@ In this order: the first two are small and local; the third is the read-scaling 
 
 ## 6. Proposals 1 and 2: implemented, reviewed, and in the tree
 
-Written and tested on 2026-11-12 in a private copy of the tree: `e62bc30` with `TASK-067`'s uncommitted changes,
+Written and tested on 2026-11-12 in a private copy of the tree: `6624e12` with `TASK-067`'s uncommitted changes,
 as they stood at 22:42 that day. It is not in the tree, because `TASK-068` and the review of `TASK-067` were open
 in the same files (`IndexService`), and two sessions must not write one file at once. The patch is five source
 files (+296/-64) and one test file. By 23:09 the review of `TASK-067` had changed `IndexService` under it, so it
@@ -411,7 +411,7 @@ from the pages and keeps its log and its trees. On that design:
 
 ### 6.7 In the tree (2026-11-13)
 
-`TASK-067` was committed (`9a34e74`) and `TASK-068` applied in the tree, uncommitted. Nothing in those files had
+`TASK-067` was committed (`a8015fc`) and `TASK-068` applied in the tree, uncommitted. Nothing in those files had
 changed since 00:06, and the session that wrote them was idle, so the port went ahead.
 
 - **How:** a three-way merge in a scratch repository. The change was replayed onto an exact copy of the tree as
@@ -446,14 +446,14 @@ changed since 00:06, and the session that wrote them was idle, so the port went 
 
   Without the change, one commit took **7,919 ms**, in the sample ending at 120 s, and a read waited as long. It
   is most likely the index snapshot of 4.2: an update-only workload falls due for one about every two minutes,
-  and a snapshot is the one commit that holds the engine's write lock that long. But at `e62bc30` a snapshot
+  and a snapshot is the one commit that holds the engine's write lock that long. But at `6624e12` a snapshot
   took 336-554 ms at this size, so this one is about 15-20 times slower on the tree as `TASK-067` and `TASK-068`
   left it. Not investigated; filed as `ISS-116`. The change hides it for an update-only workload (no snapshot
   in 180 s), not for a workload that changes keys.
 
 ### 6.8 Against the overall review (2026-11-14)
 
-The review of `c614e30` (`REVIEW-2026-11-14-overall.md`) filed four issues in the areas this change touches. The
+The review of `7ac53ae` (`REVIEW-2026-11-14-overall.md`) filed four issues in the areas this change touches. The
 change fixes none of them, and none of their fix directions conflicts with it. Checked by reading the change
 against each issue's code:
 
@@ -475,7 +475,7 @@ against each issue's code:
   and the tests catch an offset one byte off, a missing shift and a missing entry for the grown row (6.2).
   **Named debt:** checking the row code at the offset in `TryFindRow` would detect a wrong entry at the owner,
   and fixing `ISS-144` would make it loud.
-- **Line numbers:** the review cites `c614e30`, and the change moves these lines:
+- **Line numbers:** the review cites `7ac53ae`, and the change moves these lines:
   - `IOService.RawPages.cs`, from line 612 on: 3 to 7 lines earlier (`ISS-129`'s 870-888 become 863-881);
   - `XmlEngine.Mutations.cs`, from 627 on: 1 to 3 lines earlier (`ISS-138`'s 681, 1123 and 1274 become 680, 1120
     and 1271);
@@ -484,7 +484,7 @@ against each issue's code:
 
 ### 6.9 Committed (2026-11-14)
 
-The owner asked for the commit on 2026-11-14. Proposals 1 and 2 are one commit on `3744178`, with this plan and
+The owner asked for the commit on 2026-11-14. Proposals 1 and 2 are one commit on `69156ee`, with this plan and
 their rows. The ISS-117 fix (`PLAN-052` section 8) is the next commit. The tree also held another task's
 uncommitted work (`TASK-072`), so the gate ran on a copy: `HEAD` exported, with only these two changes applied.
 

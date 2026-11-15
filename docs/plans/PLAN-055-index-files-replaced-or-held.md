@@ -109,15 +109,15 @@ program, have open at once:
 
 | Test | Red against | Proves |
 |---|---|---|
-| `A_snapshot_another_context_wrote_doesn_t_spoil_blocks_not_yet_read` | `e62bc30`: `EndOfStreamException` | defect 1 |
-| `A_query_isn_t_failed_by_an_index_file_it_can_t_load_or_replace` | `e62bc30`: `UnauthorizedAccessException`; the first version: a `.tmp` left beside the file | defect 2, and no `.tmp` left |
-| `A_write_isn_t_failed_by_an_index_file_it_can_t_delete` | `e62bc30`: `IOException` | defect 3, and a later open finds the row and refuses its key again |
-| `An_index_file_that_couldn_t_be_deleted_isn_t_loaded_later` | `e62bc30`: `IOException` | the file left behind isn't loaded once readable (its time set after the pages', so the guess by time doesn't catch it) |
-| `A_replaced_snapshot_doesn_t_lose_changes_not_yet_saved` | passed at `e62bc30` (the replacing file held the same bytes) | a buffered reader's unsaved key survives the replacement and is saved |
+| `A_snapshot_another_context_wrote_doesn_t_spoil_blocks_not_yet_read` | `6624e12`: `EndOfStreamException` | defect 1 |
+| `A_query_isn_t_failed_by_an_index_file_it_can_t_load_or_replace` | `6624e12`: `UnauthorizedAccessException`; the first version: a `.tmp` left beside the file | defect 2, and no `.tmp` left |
+| `A_write_isn_t_failed_by_an_index_file_it_can_t_delete` | `6624e12`: `IOException` | defect 3, and a later open finds the row and refuses its key again |
+| `An_index_file_that_couldn_t_be_deleted_isn_t_loaded_later` | `6624e12`: `IOException` | the file left behind isn't loaded once readable (its time set after the pages', so the guess by time doesn't catch it) |
+| `A_replaced_snapshot_doesn_t_lose_changes_not_yet_saved` | passed at `6624e12` (the replacing file held the same bytes) | a buffered reader's unsaved key survives the replacement and is saved |
 | `A_flush_that_meets_a_replaced_file_keeps_the_changes_it_saves` | the first version: the new rows' keys missing (`Find` null), a duplicate accepted after reopening | review finding 1 |
 | `A_delete_after_a_replaced_snapshot_is_kept` | the first version: `ReservedPrimaryKeyException` on inserting the deleted key again | review finding 2 |
-| `Deleting_a_table_s_last_row_isn_t_failed_by_an_index_file_held_open` | the first version (and `e62bc30`): `IOException` after the row was gone | review finding 4c |
-| `An_update_after_a_replaced_snapshot_is_kept` (the new file with the same rows; with 400 more) | the second version: the row unchanged, its old key gone from the index and the new one pointing at it; `e62bc30`: passed by chance (same rows), `EndOfStreamException` (more rows) | second review, finding 1 (`ISS-113`) |
+| `Deleting_a_table_s_last_row_isn_t_failed_by_an_index_file_held_open` | the first version (and `6624e12`): `IOException` after the row was gone | review finding 4c |
+| `An_update_after_a_replaced_snapshot_is_kept` (the new file with the same rows; with 400 more) | the second version: the row unchanged, its old key gone from the index and the new one pointing at it; `6624e12`: passed by chance (same rows), `EndOfStreamException` (more rows) | second review, finding 1 (`ISS-113`) |
 | `A_rollback_doesn_t_bring_back_an_index_file_as_trusted` | the second version: after the close, the row's key not found and a second row with it accepted | second review, finding 2 |
 
 Of these, the three before the last two are the first reviewer's probes P1, P2 and P8, and the last two the second
@@ -159,7 +159,7 @@ P8). Its findings, each checked here before acting on it:
    couldn't be read, from the new file unless the type was "unsaved" (`dirtyTypes`). A flush takes its types out
    of that set before it saves them, and a snapshot reads every block first, so a large batch after another
    context's rebuild loaded the other file and dropped the batch's keys: rows the index didn't find, and a
-   duplicate unique key accepted after reopening. A regression against `e62bc30`.
+   duplicate unique key accepted after reopening. A regression against `6624e12`.
 2. **Critical: a delete lost its removals.** `RemoveRowElement` takes the type's log, then reads each property's
    block in turn; a reload part way through replaced the log and the trees under it, so the removals already
    made were lost and the rest recorded into a log nothing saved. The deleted key was refused again.
@@ -185,12 +185,12 @@ P8). Its findings, each checked here before acting on it:
 
 ## 5. Independent review of the second version
 
-A fresh reviewer, briefed as the first, probed it (scratch tests PA to PF; the same probes against `e62bc30`):
+A fresh reviewer, briefed as the first, probed it (scratch tests PA to PF; the same probes against `6624e12`):
 
 1. **High: an update after a replacement was lost** (probes PD, PD2). The walk opened each page through
    `OpenFileOrCreate`, which takes a page held as bytes out of that cache; the update had found its row's offset
    there, and its write then found no page and returned. `Update` returned true; the row stayed as it was, and the
-   index held the new key. With the same rows in the new file, `e62bc30` passed by chance (a regression); with more
+   index held the new key. With the same rows in the new file, `6624e12` passed by chance (a regression); with more
    rows it threw. The work on `PLAN-056` found the same and filed it as `ISS-113`. **Cause:** the walk was a second
    user of the page caches that changed which cache a page sits in, under a writer holding an offset into one,
    and the writer's owner (`SpliceRowInRawPage`) reported nothing when the page was gone. Fixed both ways (section

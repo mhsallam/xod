@@ -9,7 +9,7 @@ The project's memory. `xod2` is the active rework of XOD; `xod` and `xod.core` a
 - [MIGRATION-GUIDE.md](MIGRATION-GUIDE.md) - 1.x -> 2.0 migration
 
 ## Reviews
-- [REVIEW-2026-11-14](REVIEW-2026-11-14-overall.md) - the overall review of XOD at c614e30 (TASK-073): the verdict, 30 defects filed (ISS-129 to ISS-158, eight High), what is good, what holds it back, what would make the rules enforce themselves, and the fix order
+- [REVIEW-2026-11-14](REVIEW-2026-11-14-overall.md) - the overall review of XOD at 7ac53ae (TASK-073): the verdict, 30 defects filed (ISS-129 to ISS-158, eight High), what is good, what holds it back, what would make the rules enforce themselves, and the fix order
 
 ## Direction
 - [PLAN-044](plans/PLAN-044-roadmap-sql-analytics-rust-browser.md) - roadmap (proposed): what makes XOD special, who it suits, and the order for SQL and analytics, a Rust core, WASM and the browser, and the packed file

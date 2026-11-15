@@ -21,7 +21,7 @@ more than 50 ms newer than the index, and only the first two and last two pages 
 just before pages a crash kept from catching up was newer than they were, and passed. Time can't say what
 happened; only the writer knows when its indexes are behind.
 
-**The first fix was a mitigation** (`TASK-064`, commit `c5374b5`; its review, section 5). It marked the indexes
+**The first fix was a mitigation** (`TASK-064`, commit `5a1f638`; its review, section 5). It marked the indexes
 behind by an event, but called them caught up wherever a caller said so, which was wrong after an index save
 that failed and inside a transaction, and only an open alone (or a context without a hold) honoured a crash's
 marker, so contexts opened while another had the database open still trusted a stale index. Each of the three
@@ -130,7 +130,7 @@ its indexes):
   never emptied; indexes dropped while another context is open (also turned two PLAN-051/PLAN-053 tests red); a
   context without a hold trusting the index files; such a context refused for a marker; an empty marker dropping
   the indexes; the marker left after a clean close.
-- **Cost** (a small timing program built against the previous commit `4a0ce19` and against the tree, run in
+- **Cost** (a small timing program built against the previous commit `8cdf8dc` and against the tree, run in
   turn, twice each, five runs per workload, medians; Windows, Release, net9.0): 1,000 inserts with a flush each,
   276 and 249 ms before, 283 and 293 ms after; 20,000 inserts then a close, 1,471 and 1,535 ms before, 1,491
   and 1,419 ms after; ten ranges of 10,000 then a close, 203 and 220 ms before, 205 and 209 ms after. The flush
@@ -154,7 +154,7 @@ its indexes):
   failed full page counted as written. Not proven by a break: the snapshot after a failed append (a torn record
   needs an I/O failure inside a write); a live marker left alone by recovery (only the password change's gap
   reaches it); a marker that can't be opened counting as left behind (its permissions).
-- **Cost** (the same kind of timing program, built against `caf4e39` and against the tree, run in turn, twice
+- **Cost** (the same kind of timing program, built against `aca860e` and against the tree, run in turn, twice
   each, five runs per workload, medians; Windows, Release, net9.0): 1,000 inserts with a flush each, 266 and
   321 ms before, 291 and 270 ms after; 20,000 inserts then a close, 1,438 and 1,399 ms before, 1,435 and
   1,390 ms after; 200 opens each finding a row by its unique key (an index load, so a probe, each), 1,045 and
@@ -170,7 +170,7 @@ its indexes):
 
 ## 5. Independent review
 
-A fresh reviewer read `c5374b5` against its parent with the problem and no conclusions, ran probes against clean
+A fresh reviewer read `5a1f638` against its parent with the problem and no conclusions, ran probes against clean
 builds of both (and of 2.0.1), and found the fix a mitigation. Every finding was reproduced on the tree before
 acting, by the new tests that follow the reviewer's probes (section 4, red first: F1, F2, F3 and both F4 cases
 failed as reported), and fixed in `TASK-066` unless marked.
@@ -199,7 +199,7 @@ this holds for a process crash, not a power cut, as PLAN-046 section 9 says.
 
 ## 6. Verdicts
 
-**Corrected after the review of `e62bc30` (2026-11-12, section 8): the verdicts below claimed more than the code.**
+**Corrected after the review of `6624e12` (2026-11-12, section 8): the verdicts below claimed more than the code.**
 ISS-043 is a **mitigation**: "caught up" is still inferred from the absence of pending writes, which can be absent
 while the index file doesn't cover the pages (a direct page write that failed, `ISS-099`; a forgotten transaction
 whose index file was written, `ISS-100`; a flush re-entered from a trigger, `ISS-101`), and a marker held by
@@ -225,7 +225,7 @@ After the review and `TASK-066` (as first written):
 - `InsertRange` whose batch write failed throws, and its rows are written by the next flush: the caller is told
   the write failed, though it will be made (as under `DurabilityMode.Buffered`).
 
-## 8. Review of `e62bc30` (2026-11-12)
+## 8. Review of `6624e12` (2026-11-12)
 
 An independent reviewer (read-only; probes run from `git archive` copies, on Windows and in a Linux container as a
 non-root user) found that `TASK-066` doesn't fix all it claims. Filed, and to be fixed by `TASK-068`:
@@ -242,7 +242,7 @@ non-root user) found that `TASK-066` doesn't fix all it claims. Filed, and to be
   caught up (`IsWriteLockHeld` is true in a recursive write; its documentation forbids it for control flow), before
   the statement's page is saved.
 - `ISS-102` (Medium): `ProbeMarker` reads any `IOException` as a live marker, so a crash's marker that a backup
-  tool holds makes even an open alone trust a stale index (`caf4e39` dropped the indexes and failed the open).
+  tool holds makes even an open alone trust a stale index (`aca860e` dropped the indexes and failed the open).
 - `ISS-103` (Low): the close releases its write lock before letting go of the hold and the marker; a write of
   another thread can land after them.
 - `ISS-104` (Low): where the file system takes no locks, recovery can run beside a live context and delete its

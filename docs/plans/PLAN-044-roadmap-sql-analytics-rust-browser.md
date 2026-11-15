@@ -181,8 +181,8 @@ symbols. The push is the owner's.
 is published only from the tag `vX.Y.Z`, and `<Version>` in `src/Xod/Xod.csproj` says `X.Y.Z`.
 `publish.yml` checks it before building and stops otherwise. The version changes only on the owner's
 word; nuget.org never takes a number twice, and `2.0.10` follows `2.0.9`. History: `Xod` 2.0.0 was
-pushed from `84e1875` (the tag `v2.0.0` is on `8e6656c`; the commits between change only CI, not the
-package), and 2.0.1, a README and logo fix pushed without the owner's go, from `fab941d`.
+pushed from `e0380e7` (the tag `v2.0.0` is on `8e6656c`; the commits between change only CI, not the
+package), and 2.0.1, a README and logo fix pushed without the owner's go, from `20fcc57`.
 
 **NuGet:**
 

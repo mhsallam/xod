@@ -718,7 +718,7 @@ describe the files as the next release writes them, and say where 2.0 differs.
 
 ## 12. How this was checked
 
-All of these were run on 2026-11-11 against `main` (`7cbf017`, library 2.0.1).
+All of these were run on 2026-11-11 against `main` (`d7b2f20`, library 2.0.1).
 
 - **An independent reader.** A sample program wrote one database in each encoding plus a
   password-protected one, covering every scalar type, nulls and defaults, an attribute property, a hash,

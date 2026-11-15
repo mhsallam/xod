@@ -154,7 +154,7 @@ and found:
   capability and a source break, the reviewer's view is that the release is a minor version, not a patch (the
   owner's decision).
 
-**Round 2** (ISS-069, ISS-072 and the round-1 fixes, on the committed tree `45f7a12`): the reviewer reproduced
+**Round 2** (ISS-069, ISS-072 and the round-1 fixes, on the committed tree `bfc4aee`): the reviewer reproduced
 the baseline (82 tests in the three suites, net8.0 and net9.0) and probed with ten tests of its own. Verified
 here, each reproduced by a test that failed before its fix; fixed in `TASK-063`
 ([`PLAN-053`](PLAN-053-statement-undo-counters-stored-values-locks.md)):
@@ -271,7 +271,7 @@ numeric autonumbers number exactly as before the change in every case it probed.
 **Verdict:** clean, with a named change from 2.0.0 (the subclass on a Guid), which the owner chose to keep.
 
 **Committed** on 2026-11-14 at the owner's request, after `PLAN-056`'s commit and on top of it. The gate ran on a
-copy (`HEAD` `3744178`, exported, with only the two changes applied), because the tree also held another
+copy (`HEAD` `69156ee`, exported, with only the two changes applied), because the tree also held another
 task's uncommitted work:
 - `Xod.Tests` 407 of 407 on net9.0 and on net8.0; `Xod.Conformance` 14 of 14 on both; `read.mjs --check`, and
   `--check-fresh` after the `data` and `stored-values` writers, exit 0; `XodBench.Tests` 26 of 26; no warning in

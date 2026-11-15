@@ -246,11 +246,11 @@ release while 2.0.1 is the one on NuGet.
   probed on the tree and on v2.0.0. An independent review followed, and its findings were fixed.
 - **What's new or different is labelled `**Next release:**`,** next to what 2.0.x does. At the release, replace
   the label with the version number. Recheck the pages against any engine change made after 2026-11-13.
-  The failed-write text (`transactions.md`, `limits.md`, `upgrading.md`) was rechecked against `c0fd701`
+  The failed-write text (`transactions.md`, `limits.md`, `upgrading.md`) was rechecked against `8e242e6`
   (TASK-070: an `Insert` taken back; `InsertRange`, `Update` and `Delete` still made, ISS-125).
 - **The pages describe a `Guid` autonumber as working,** which holds now that ISS-117 is fixed (committed
   2026-11-14).
-- **Rechecked on 2026-11-14** against the engine changes since the draft, `TASK-071` (`c614e30`) and `TASK-072`
+- **Rechecked on 2026-11-14** against the engine changes since the draft, `TASK-071` (`7ac53ae`) and `TASK-072`
   (SQL, in the tree). Added, each labelled `**Next release:**`:
   - the format a database's file records, and a folder's name no longer picking one (`storage`, `options`,
     `api`, `upgrading`);
@@ -262,7 +262,7 @@ release while 2.0.1 is the one on NuGet.
   - SQL and `xod query` (`reading`, `cli`, `api`, `options`, `exceptions`, `limits`, `index`, `storage`);
   - UTF-8 output from `xod` (`cli`, `upgrading`).
 
-  Not on the pages: `PLAN-056`'s index keys (`c5ccf66`), which changes how much an update writes, not what a
+  Not on the pages: `PLAN-056`'s index keys (`78cd6bb`), which changes how much an update writes, not what a
   call does.
 
   Also corrected: `transactions.md`'s durability paragraph. The draft said "a write that has returned

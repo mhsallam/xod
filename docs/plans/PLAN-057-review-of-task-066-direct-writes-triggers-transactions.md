@@ -3,7 +3,7 @@
 Status: **in the tree** (2026-11-13), not released: no version change, nothing pushed. `ISS-099`, `ISS-100`,
 `ISS-101`, `ISS-103` and `ISS-107` fixed, `ISS-099` and `ISS-107` with named debt; `ISS-102` fixed for an open alone
 only (`ISS-119`); `ISS-109` fixed for a rebuilt index.
-Issues: `ISS-099` to `ISS-103`, `ISS-107` (filed by the review of `e62bc30`, [`PLAN-054`](PLAN-054-indexes-left-behind-by-a-crash.md)
+Issues: `ISS-099` to `ISS-103`, `ISS-107` (filed by the review of `6624e12`, [`PLAN-054`](PLAN-054-indexes-left-behind-by-a-crash.md)
 section 8). Found and fixed while doing it: an index saved before its statement's page with no mark (section 1.7),
 one file written twice at once (section 1.8), and the regressions the independent review found in the first version
 (section 5). Filed: `ISS-119` to `ISS-121`.
@@ -99,11 +99,11 @@ Each cause, and what the change makes impossible.
 ## 2. Tests
 
 `tests/Xod.Tests/XodTrustedIndexTests.cs` (25 cases), `XodOneWritePerFileTests.cs` (1), and two in
-`XodIndexCrashTests.cs`. Run against the committed code (`9a34e74`, `git archive`), 17 fail; why each passing one
+`XodIndexCrashTests.cs`. Run against the committed code (`a8015fc`, `git archive`), 17 fail; why each passing one
 still belongs is below. The tests added for the review's findings 1 to 3 pass there: those were regressions of this
 change's first version, and breaks B18 to B20 prove the tests.
 
-| Test | Issue | At `9a34e74` |
+| Test | Issue | At `a8015fc` |
 |---|---|---|
 | `A_direct_page_write_that_failed_isn_t_forgotten` (4 cases) | `ISS-099` | 2 red (JSON without a second write, XML with one) |
 | `A_direct_update_whose_page_write_failed_isn_t_forgotten` (2) | `ISS-099` | red |

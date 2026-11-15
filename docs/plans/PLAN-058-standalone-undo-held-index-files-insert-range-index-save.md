@@ -177,5 +177,5 @@ The working tree, with the other sessions' uncommitted work in it: the library b
 380 tests pass on net8.0 and on net9.0; the conformance set (14 of 14 on each), the format reader on it and on
 data written fresh, and the benchmark tests (26 of 26) pass.
 
-The commit alone (this task on `7e50f3d`, exported from the index): 362 of 362 on net8.0 and on net9.0 on Windows,
+The commit alone (this task on `830d05b`, exported from the index): 362 of 362 on net8.0 and on net9.0 on Windows,
 and 362 of 362 on Linux (the .NET 9 SDK container, no network, a user other than root).

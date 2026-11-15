@@ -156,7 +156,7 @@
 
 ## 5. Independent review
 
-Two fresh reviewers read the committed tree (`45f7a12..4a0ce19`) with the problem and no conclusions, one on
+Two fresh reviewers read the committed tree (`bfc4aee..8cdf8dc`) with the problem and no conclusions, one on
 shared access, locks, recovery, the migrator and the counters, one on the statement undo and stored values. Both
 ran probes (one also in a Linux container, as a second user and on a read-only mount). Every finding below was
 reproduced on the tree before acting (their probes run against it: 12 of 14 failed as reported), and fixed in
@@ -208,7 +208,7 @@ After the review and `TASK-065`:
 | ISS-088 parent unlink | Clean with named debt: one unlink; a child with no parent property isn't found (ISS-095) |
 | ISS-091 failed undo | Mitigation within ISS-090's: the index is dropped and the context refuses writes, its close writing nothing; under `Buffered` what it had buffered is dropped |
 
-**Gate** (`TASK-063`, the tree as committed in `4a0ce19`, 2026-11-12): `Xod.Tests` 277/277 on net8.0 and on
+**Gate** (`TASK-063`, the tree as committed in `8cdf8dc`, 2026-11-12): `Xod.Tests` 277/277 on net8.0 and on
 net9.0; conformance 14/14 on each; the independent reader `read.mjs --check` (six fixtures) and `--check-fresh`
 ok; `XodBench.Tests` 26/26; the library builds with 0 warnings.
 

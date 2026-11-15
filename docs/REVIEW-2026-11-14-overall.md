@@ -1,6 +1,6 @@
 # The overall review of XOD (2026-11-14)
 
-Of the committed tree at `c614e30` (TASK-071), not of the work other sessions had in the tree that day. Asked by
+Of the committed tree at `7ac53ae` (TASK-071), not of the work other sessions had in the tree that day. Asked by
 the owner on 2026-11-13: "fix all the open issues ... and then give XOD an overall review".
 
 **Verdict.** XOD's records are honest and its crash handling for a single context is careful. What makes it unsafe
