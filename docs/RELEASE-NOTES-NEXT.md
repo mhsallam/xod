@@ -4,6 +4,26 @@ What changes for users in the next release, collected as each fix lands. The ver
 release itself are the owner's decision; nothing here is published. Each item links the plan that
 records it. The last release: [2.0.2](RELEASE-NOTES-2.0.2.md).
 
+**Prepared for release on 2026-11-16** (`TASK-078`): everything in the tree as of `7e2a5e7`, the commits since
+`v2.0.2`. The version number is still open (section "Version"); `src/Xod/Xod.csproj` stays at 2.0.2 until it is
+decided, as do the tag and the release.
+
+## Upgrading from 2.0.2
+
+- **Close every XOD 2.0.2 context of a database before opening it with this version, and don't run the two on one
+  database at once.** 2.0.2 takes no commit gate, so its writes can land beside this version's commits, and its
+  transactions still set the files they delete aside (`.xdel`) at once, so the loss `ISS-166` fixes can still
+  happen through them.
+- **Three lock files now sit beside the database file and are never deleted:** `xod.lock` (2.0.2), `xod.gate.lock`
+  and `xod.commit.lock`. Leave them in place; a folder that can't hold them is opened for reading only.
+- **New refusals to handle:** a write beside another context's commit that doesn't end within
+  `TransactionTimeoutMs` throws `XodException`; a commit refused because another context wrote one of its files
+  since the transaction first changed it throws `TransactionException` with nothing written, and should be
+  retried; a write beside a commit journal a crash left throws `XodException` until the database is opened by a
+  context that has it to itself. The behaviour changes below list each.
+- **Matching by example is exact now** (`ISS-139`): code that relied on `Query(example)` or `Update`/`Delete` by an
+  item matching text case-insensitively has to match the case, or query with a lambda.
+
 ## New
 
 ## Behaviour changes
@@ -14,6 +34,51 @@ records it. The last release: [2.0.2](RELEASE-NOTES-2.0.2.md).
 - **A new lock file, `xod.gate.lock`**, beside `xod.lock`: held while a context takes the database alone or gives it back (PLAN-046 section 9). Never deleted, like the other lock files.
 - **No write beside another context's commit journal** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-147`). A commit that a crash cut short, or that failed and couldn't be undone, leaves its journal (`transaction.xwal`), which the next open that has the database to itself undoes. Before, other contexts open meanwhile went on writing, and that undo took their writes back after they had been told the writes were made. Now a write beside such a journal throws `XodException` (where a commit beside it used to fail with `TransactionException` at `Commit`), until every context is closed and the database opened again; reads go on. A write beside another context's commit that is still under way waits for it, up to `TransactionTimeoutMs`. On a Unix network file system, or with .NET's file locking switched off on Unix, a commit under way can't be told from one that won't finish, so writes beside it are refused rather than waited for. Not yet covered: a buffered context's unflushed writes at its close beside a crashed journal, which the close refuses (`ISS-165`). (A commit that starts between another context's check and its write, `ISS-164`, is covered by the commit gate below.)
 - **Writes and commits of two contexts are kept apart** ([`PLAN-062`](plans/PLAN-062-commit-gate.md), `ISS-164`). A new lock file, `xod.commit.lock`, beside `xod.lock` and never deleted: a commit holds it alone from before its journal until it is done, and every write holds it shared. A write now waits for another context's commit, and a commit for other contexts' writes, up to `TransactionTimeoutMs`; then the write throws `XodException`, or the commit `TransactionException` with nothing of it written. A commit is now refused (`TransactionException`, nothing written) when another context wrote one of its files (one it deletes included) after the transaction first changed it; this is decided per file, so two contexts changing different rows of one page conflict, and the later commit should be retried. A rollback no longer writes the files back as they were before the transaction: it used to take back what other contexts had written to them since. Don't open one database from XOD 2.0.2 (which takes no such lock) and from this version at once. Each statement that writes costs one more open and close of a file (about 40 µs on one machine).
+
+## Version
+
+The changes since 2.0.2 add no public type and remove none. One public method is marked obsolete
+(`XmlExtensions.ElementMatch`, a compiler warning for code that calls it). The rest changes behaviour:
+- new lock files;
+- writes and commits that now wait or are refused;
+- matching by example that no longer ignores case;
+- a password change refused where it ran before.
+
+Code written for 2.0.2 compiles unchanged (with a warning where it calls `ElementMatch`), but a program can now see a
+refusal it never saw, or miss a match it used to get. Two numbers fit:
+- **2.1.0**, recommended: a minor version says the upgrade needs reading (the section above), where a patch says
+  it doesn't.
+- **2.0.3**: as 2.0.2 itself was shipped (its minor-version changes released as a patch, `RELEASE-NOTES-2.0.2.md`
+  section "Version").
+
+Not decided yet. At the release: the number goes into `src/Xod/Xod.csproj`, this file becomes
+`RELEASE-NOTES-<version>.md` with the date, the site's `**Next release:**` labels become the number, and the tag
+`v<version>` and the GitHub release start the `publish` workflow, which waits for approval.
+
+## Site pages to update with the release
+
+Drafted on 2026-11-16 in `xod-site` against the tree at `7e2a5e7`, committed there (`bf37b65`) and not deployed (a deploy waits
+for the release). 16 pages under `src/pages/docs` and the docs menu (`src/content/docs-nav.ts`):
+- **Labelled `**Next release:**`** beside what 2.0.2 does:
+  - the lock files and the commit gate (`transactions`, `storage`, `limits`);
+  - a transaction's deletes at its commit, the rollback that touches no file, the commit refused over another
+    context's write, and the refusals beside a journal a crash left (`transactions`, `storage`, `exceptions`,
+    `options`);
+  - the password change and the AES256 key (`security`, `attributes`, `options`, `api`, `cli`, `exceptions`);
+  - matching by example, the key checks without indexing, and referenced objects per query (`reading`, `models`,
+    `writing`, `relationships`, `api`);
+  - encrypted 1.x databases and 1.x digests (`migrating`, `security`, `reading`, `api`).
+- **`upgrading` becomes "Upgrading from 2.0.x"**, with a section for 2.0.2 to the next release (before the first
+  open, code, what can now throw, behaviour to check) above the 2.0.0/2.0.1 checklist.
+- **Corrected, wrong in 2.0.2 too** (`migrating`): 1.x `MD5`/`SHA1` digests don't verify in 2.0.2 (it compares
+  hexadecimal only), and a bare `[Crypto]` is `SHA256` in 2.0 where 1.x used `MD5`.
+- **Checked:** each claim against the code at `7e2a5e7` (one corrected: `BeginTransaction()` doesn't wait for
+  another context's commit); the site's tests and build pass; every new link resolves to a heading. The pages were
+  not looked at in a browser.
+
+Left as they are: the intro of `migrating` ("2.0 opens 1.x databases") is qualified under "Things to check" only;
+`ISS-170` and `ISS-168` (open, and older than this release) aren't on the pages. At the release, the labels become
+the version number, and the landing page (`index.astro`) is unchanged.
 
 ## Fixed
 

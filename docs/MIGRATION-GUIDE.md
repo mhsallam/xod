@@ -61,7 +61,15 @@ All classic XOD 1.x attributes work, with one exception, `[Crypto]` with no meth
 - **Change the password after migrating** an encrypted 1.x database: its files are keyed by one unsalted SHA-256 of
   the password until `ChangePassword` writes them again in the new format.
 
-## 3. New Capabilities Available When You Need Them
+## 3. Upgrading within 2.0.x
+
+This guide is for 1.x and `Xod.Core` applications. An application already on 2.0.x upgrades by the checklist on the
+site ([Upgrading](https://xod.sabaeon.com/docs/upgrading)) and the release notes of each version
+([`RELEASE-NOTES-2.0.2.md`](RELEASE-NOTES-2.0.2.md); for the next release, [`RELEASE-NOTES-NEXT.md`](RELEASE-NOTES-NEXT.md),
+section "Upgrading from 2.0.2"). One rule holds for every upgrade: don't open one database from two versions at once.
+Close every context of the old version first: an older version takes none of the locks a newer one relies on.
+
+## 4. New Capabilities Available When You Need Them
 
 - **Strongly-typed `Insert<T>`**: `ToDo created = db.Insert(new ToDo { Title = "New" });` returns the `ToDo` instance with `Id` populated.
 - **Pluggable Storage Formats**: Switch between `StorageFormat.Xml`, `StorageFormat.Json`, and `StorageFormat.Binary` via `DatabaseOptions` or convert existing `.xod` folders with `XodMigrator.ConvertDatabase(...)`.
