@@ -69,7 +69,7 @@ namespace Xod
             DatabaseHold hold;
             try
             {
-                hold = IOService.OpenLockFile(databaseFile, exclusive: true, retryTimeoutMs: 0);
+                hold = IOService.OpenLockFile(databaseFile, retryTimeoutMs: 0);
             }
             catch (UnauthorizedAccessException e)
             {

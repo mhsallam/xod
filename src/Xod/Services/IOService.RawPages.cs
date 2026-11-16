@@ -1530,10 +1530,7 @@ namespace Xod.Services
         private void FlushRawPagesList(List<string> pageNames)
         {
             if (pageNames.Count > 0)
-            {
-                RequireCommitGate(Path.Combine(root, pageNames[0]));
                 RefuseWriteInsideTransaction(Path.Combine(root, pageNames[0]));
-            }
             var items = new List<(string FullPath, RawPageBuffer Page)>(pageNames.Count);
             for (int i = 0; i < pageNames.Count; i++)
             {
@@ -1549,27 +1546,29 @@ namespace Xod.Services
             if (items.Count == 0)
                 return;
 
-            bool inTx = HasActiveTransaction != null && HasActiveTransaction();
+            // No transaction is open here (RefuseWriteInsideTransaction above): a transaction's pages are written by
+            // its commit, once it is no longer active, in place like any other, its journal holding their before-images.
+            Action<string> changed = FileChangedOnDisk;
             if (items.Count < 4)
             {
                 for (int i = 0; i < items.Count; i++)
                 {
-                    FlushRawPageToDisk(items[i].FullPath, items[i].Page, inTx);
+                    FlushRawPageToDisk(items[i].FullPath, items[i].Page, changed);
                 }
             }
             else
             {
-                System.Threading.Tasks.Parallel.ForEach(items, item => FlushRawPageToDisk(item.FullPath, item.Page, inTx));
+                System.Threading.Tasks.Parallel.ForEach(items, item => FlushRawPageToDisk(item.FullPath, item.Page, changed));
             }
         }
 
-        private static void FlushRawPageToDisk(string fullPath, RawPageBuffer rawPage, bool inTransaction)
+        // changed: IOService.FileChangedOnDisk, called once the file on disk may differ (may run on pool threads).
+        private static void FlushRawPageToDisk(string fullPath, RawPageBuffer rawPage, Action<string> changed)
         {
             if (rawPage?.Bytes == null || rawPage.Length <= 0)
                 return;
 
-            if (!inTransaction &&
-                !rawPage.IsNewFile &&
+            if (!rawPage.IsNewFile &&
                 rawPage.DirtyStartOffset < rawPage.Length &&
                 rawPage.DirtyStartOffset >= 0 &&
                 File.Exists(fullPath))
@@ -1578,6 +1577,7 @@ namespace Xod.Services
                 {
                     if (fs.Length == rawPage.DiskSyncedLength)
                     {
+                        changed?.Invoke(fullPath);
                         if (rawPage.DirtyStartOffset > 0)
                             fs.Seek(rawPage.DirtyStartOffset, SeekOrigin.Begin);
                         fs.Write(rawPage.Bytes, rawPage.DirtyStartOffset, rawPage.Length - rawPage.DirtyStartOffset);
@@ -1591,14 +1591,16 @@ namespace Xod.Services
                 }
             }
 
-            if (inTransaction || File.Exists(fullPath))
+            if (File.Exists(fullPath))
             {
                 WriteRawBytesAtomic(fullPath, rawPage.Bytes, rawPage.Length);
+                changed?.Invoke(fullPath);
             }
             else
             {
                 using (var fs = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.None))
                 {
+                    changed?.Invoke(fullPath);
                     fs.Write(rawPage.Bytes, 0, rawPage.Length);
                     fs.Flush(flushToDisk: false);
                 }

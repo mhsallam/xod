@@ -36,10 +36,8 @@ model, a Rust core, the browser) to read the files XOD 2.0 writes, and to know w
 | `<file>.tmp` | write in progress | an atomic write cut short | 9 |
 | `<file>.xpwnew` | password change in progress | a file under the new password, beside the one it replaces | 9 |
 | `<name>.xod.xpwlog` | password change in progress | the commit record of a password change | 9 |
-| `xod.lock` | open database (the folder's) | held by every open context with the database file's lock, of the same kind; never deleted (since the next release) | 9 |
-| `<name>.xod.lock` | open database | held by every open context: shared, or exclusively with `DatabaseOptions.LockDatabase`; never deleted | 9 |
-| `xod.commit.lock` | a commit, and the writes beside it | held exclusively by a commit from before its journal until the journal is gone or its undo done, and shared by every write of a data file from its journal check to its end; never deleted (since the next release) | 9 |
-| `xod.gate.lock` | a hold alone being taken or given back | held exclusively around every hold alone, and by a context from before it gives up its shared hold until it holds again; never deleted (since the next release) | 9 |
+| `xod.lock` | open database (the folder's) | held exclusively by the one open context with the database file's lock; never deleted (since the next release) | 9 |
+| `<name>.xod.lock` | open database | held exclusively by the one open context (since the next release; shared, or exclusively with `DatabaseOptions.LockDatabase`, in 2.0.2); never deleted | 9 |
 | `<name>.xod.<id>.xidxdirty` | a context that writes: whether its indexes are behind its pages | one byte while they are behind, empty once caught up; created at the context's first page or table write, held locked while it is open, deleted at its clean close | 9 |
 
 - **`<Table>`** is the class's `Type.FullName` (`MyApp.Shop.Customer.xtab`). Rows name the class by its
@@ -559,29 +557,33 @@ in (`zone`, section 8.1), so a database opened in another zone rebuilds its inde
   it holds, and the journal deleted; if that fails, the journal stays for the next open (since PLAN-051).
 - **A reader that finds a journal** must either recover (if it may write) or read the snapshot bytes in
   place of the files they name, and treat `Created` files as absent. Otherwise it would read a commit
-  that never finished. (The library itself, while other contexts have the database open, reads the files as
-  they are: it can't tell a live journal from one a crash left; PLAN-051 section 7.)
+  that never finished. (The library recovers it at the open, under its hold: no other context has the database
+  open then, so a journal is always one a crash left.)
 - **The folder's lock file** `xod.lock` (since the next release, ISS-096): every open context holds it before
-  the database file's lock, of the same kind, and so do the migrator and a password change, by the rules below.
+  the database file's lock, exclusively, and so does the migrator, by the rules below.
   Every database file in a folder shares the folder's tables, pages, journals and markers, so what a hold proves
   (that no other context has them open) is about the folder: up to now an open naming a second, new database
   file beside one another context had open held its own file's lock alone, ran the folder's recovery as if it
   had the database to itself (undoing that context's commit under way and dropping its indexes), and only then
-  found the other file and was refused. XOD 2.0.0 and 2.0.1 don't take it. A new database's file is created
-  only with both lock files held exclusively, until the database file is written: a folder's one database is
-  checked under a hold, and holds the answer only while no other context can create one.
-- **The commit gate** `xod.commit.lock` (since the next release, `ISS-164`, `PLAN-062`): a commit holds it exclusively from before it compares its files with the disk and writes its journal until the journal is deleted or its undo done; every write of a data file (pages, table files, a delete) holds it shared, and a commit makes its transaction's deletes under its exclusive hold (since `ISS-166`, `PLAN-063`: before, a transaction set the files it deleted aside as `<file>.xdel` at once, and its rollback put them back), from its check for another context's journal to the end of the write. Each waits for the other up to `TransactionTimeoutMs`. Index files and the database file aren't gated (no journal names them). Not proven exclusive: on an NFS client it holds between processes only. A folder where it can't be created has none (nothing writes a data file there). XOD 2.0.2 and earlier don't take it.
-- **The gate** `xod.gate.lock` (since the next release, the review of `ISS-148` and `ISS-150`): every hold alone is taken through it (the gate, then the two lock files, exclusively, none of them waited for while another is held; only the shared hold taken back at the end of a swap is waited for, up to `LockRetryTimeoutMs`, behind a holder alone of XOD 2.0.2 or earlier, which takes no gate), and let go of once the hold is taken. A context that gives up its shared hold to hold the database alone and then takes the shared hold back (a password change, an AES256 key made, a database created) holds the gate from before it lets go until it holds again: between the two it holds no lock file, and another context could otherwise hold the database alone in that instant, change its password, and let go unseen. A folder where the gate can't be created (it can't be written) has none; nothing that changes a password or makes a key runs there. XOD 2.0.2 and earlier don't take it.
-- **The lock file** `<database file>.lock` (since PLAN-051): every open context holds it, shared (read
-  access, others may read and write) or, with `LockDatabase`, exclusively (no sharing; opened with write access where the file allows it, since an NFS client locks exclusively only a file open for writing, and read access otherwise, so a read-only lock file holds on a local file system; an exclusive hold counts only once a second open of the file is refused, so a file system that gives no lock refuses it: since the review of PLAN-053); either kind fails while the other is held. A password change holds it exclusively for the whole change. An open recovers
-  (the password-change, `.tmp` and journal steps) only while holding it exclusively: with `LockDatabase`, or
-  when something is pending and no other context holds it; otherwise what is pending may be another
-  context's, under way, and is left. The file is never deleted (a deletion would let two contexts hold
+  found the other file and was refused. XOD 2.0.0 and 2.0.1 don't take it; 2.0.2 takes it shared. A folder's one
+  database is checked under the hold, which no other context can share.
+- **One context at a time** (since the next release, `PLAN-064`): every open context holds both lock files
+  exclusively, from its open to its close; any other open is refused while they are held (`DatabaseLockedException`,
+  after `LockRetryTimeoutMs`). Each try takes both without waiting, the folder's first, and lets the first go when
+  the second is held. A writer of this format may assume no other writer: nothing else in the folder coordinates
+  writes. (The tree before the release had two more lock files, `xod.gate.lock` and `xod.commit.lock`, for contexts
+  side by side; no release wrote them.)
+- **The lock file** `<database file>.lock` (since PLAN-051): every open context holds it exclusively (no sharing;
+  opened with write access where the file allows it, since an NFS client locks exclusively only a file open for
+  writing, and read access otherwise, so a read-only lock file holds on a local file system; the hold counts only
+  once a second open of the file is refused, so a file system that gives no lock refuses the open: since the review
+  of PLAN-053). 2.0.2 held it shared, or exclusively with `LockDatabase`. An open recovers (the password-change,
+  `.tmp` and journal steps) under the hold. The file is never deleted (a deletion would let two contexts hold
   different files on Unix); nothing else may delete it while the database is open. A reader that can't open it
-  shared must treat the database as in use. A context that can't open or create the lock file holds nothing
-  and opens for reading only; if a write cut short is pending it is refused instead (it can't tell a crash's
-  from a live one), and the migrator is refused whenever it can't hold the source (since PLAN-053). Beyond
-  this, contexts without `LockDatabase` don't coordinate their writes (ISS-042).
+  exclusively must treat the database as in use. A context that can't open or create the lock file holds nothing
+  and opens for reading only; if a write cut short is pending it is refused instead, and the migrator is refused
+  whenever it can't hold the source (since PLAN-053). A writer that can hold it opens beside such a reader
+  (`ISS-173`).
 - **The index marker** `<database file>.<id>.xidxdirty` (since PLAN-054, ISS-043): a context creates its own
   before its first write of a page or table file, and holds it open, sharing nothing (on Unix: flock
   `LOCK_EX`), until it closes. Its length says where the context's indexes are: one byte while they are behind

@@ -122,19 +122,18 @@ namespace Xod.Engines.Xml
                 checkFolder: () => DatabaseFiles.Recheck(file, resolvedPath));
             // Under the hold: another context may have created the file since it was looked for.
             IsNew = IsNew && !File.Exists(resolvedPath);
-            this.ioService.CommitGateWaitMs = this.options.TransactionTimeoutMs > 0 ? this.options.TransactionTimeoutMs : 30000;
             // Every file mutation passes here. A password switch this context committed but couldn't finish is
             // finished first (or the write refused): the next open would put the staged copy, from before this
             // write, over it.
             this.ioService.BeforeFileMutate = f =>
             {
-                ThrowIfWritesRefused(f);
-                if (f != null && !IOService.IsIndex(f))
-                    FaultInjection.Step("write-checked", System.Threading.Interlocked.Increment(ref writesChecked));
+                ThrowIfWritesRefused();
                 passwordSwitch.FinishPendingSwitch();
                 activeTransaction?.CaptureBeforeMutate(f);
                 ioService.NoteFileMutation(f);
             };
+            // The one feed of what a commit changed on disk, so its undo writes back only those (XodTransaction).
+            this.ioService.FileChangedOnDisk = f => activeTransaction?.NoteFileChanged(f);
             this.ioService.HasActiveTransaction = () => activeTransaction != null && activeTransaction.IsActive;
             this.ioService.ItemWriterDelegate = NewFileDocument;
 
@@ -186,8 +185,6 @@ namespace Xod.Engines.Xml
                 if (IsNew)
                     this.propertyKeys.MakeKeyIfNone();
 
-                // A no-op since every context holds the database alone (PLAN-064; to go with its section 5).
-                this.ioService.ShareHoldOnceCreated();
             }
             catch
             {
@@ -358,82 +355,17 @@ namespace Xod.Engines.Xml
         /// changes nothing, in memory either) and again before every file write. A commit that failed and couldn't
         /// be undone: the next open undoes it from its journal, and would undo anything written now with it. A
         /// statement whose undo failed: what the context holds may not be what the disk holds. A context without a
-        /// hold on the database: it can't tell whether others have it open (IOService). Then, unless the file about to be
-        /// written is an index, no write beside another context's commit journal (NotBesideAnotherJournal).
+        /// hold on the database: nothing keeps a writer out beside it (IOService, ISS-173).
         /// </summary>
-        /// <param name="file">The file about to be written; null when a write operation starts.</param>
-        private void ThrowIfWritesRefused(string file = null)
+        private void ThrowIfWritesRefused()
         {
             var refused = WritesRefused();
             if (refused != null)
                 throw refused;
-            // An index file is a derived cache: a journal never names one (CaptureBeforeMutate), and the undo of a
-            // journal leaves every index untrusted and drops them all (RecoverWalJournalIfPresent, LeaveIndexesBehind),
-            // so a save beside a journal undoes nothing acknowledged. A read rebuilds and saves one, and reads go on
-            // beside a journal that won't finish.
-            if (!IOService.IsIndex(file))
-                NotBesideAnotherJournal();
         }
 
-        // How many file mutations of this context passed their checks (FaultInjection "write-checked:n").
-        private int writesChecked;
-
-        /// <summary>
-        /// ISS-147: another context's commit journal is looked for when a write operation starts and before each file
-        /// write that passes the engine's hook (BeforeFileMutate), an index file's save aside. That journal is undone,
-        /// with the files it names put back as they were before its commit, if the commit doesn't finish; whatever this
-        /// context wrote meanwhile would be undone with it, after the caller was told it was made. A commit under way
-        /// (its context holds the journal) is waited for, up to TransactionTimeoutMs, the limit on waiting for a commit:
-        /// across processes nothing signals its end, so its journal is asked again, as an open asks for a held lock file
-        /// (IOService.OpenOneLockFile). The wait holds this context's own locks. One that won't finish (nobody holds it)
-        /// refuses every write until an open that has the database to itself undoes it. This context's own commit holds
-        /// the one journal its writes go beside.
-        /// <para>
-        /// Before a file write the look is made holding the commit gate shared (IOService.InCommitGate, ISS-164), and a
-        /// commit holds it exclusively from before its journal until the journal is gone: so the look is a hold, and no
-        /// journal of a commit under way can appear between it and the write. What it still finds is a journal that
-        /// won't finish, and one written by a context that doesn't take the gate (XOD 2.0.2 and earlier, or a file
-        /// system without locks, where the gate keeps nothing apart). A write made before a commit, to a file that
-        /// commit had already changed, is the commit's to refuse (XodTransaction.RefuseOverAnotherContextsWrites).
-        /// </para>
-        /// </summary>
-        private void NotBesideAnotherJournal()
-        {
-            if (activeTransaction != null && activeTransaction.HoldsJournal)
-                return;
-            int limitMs = options.TransactionTimeoutMs > 0 ? options.TransactionTimeoutMs : 30000;
-            var waited = System.Diagnostics.Stopwatch.StartNew();
-            int delayMs = 5;
-            while (true)
-            {
-                switch (XodTransaction.JournalIn(root))
-                {
-                    case XodTransaction.JournalState.None:
-                        return;
-                    case XodTransaction.JournalState.WontFinish:
-                        throw new XodException("A commit that didn't finish (cut short by a crash, or failed and not undone) left its journal " +
-                            "'transaction.xwal' in '" + root + "'. The next open that has the database to itself undoes it, and would undo with it " +
-                            "anything written meanwhile, so nothing is written beside it: close every context of the database and open it again. " +
-                            "(On a network file system, or with file locking switched off, a commit still under way reads this way too: " +
-                            "its context's hold on the journal can't be seen. Writing again once it has ended works.)");
-                    default:
-                        int remainingMs = limitMs - (int)waited.ElapsedMilliseconds;
-                        if (remainingMs <= 0)
-                            throw new XodException("Another context's commit is under way in '" + root + "' (it holds its journal, " +
-                                "'transaction.xwal') and didn't end within TransactionTimeoutMs (" + limitMs + " ms). This write is refused " +
-                                "rather than made beside it, where an undo of that commit would undo it too.");
-                        System.Threading.Thread.Sleep(Math.Min(delayMs, remainingMs));
-                        delayMs = Math.Min(delayMs * 2, 50);
-                        break;
-                }
-            }
-        }
-
-        // Why this context writes nothing more, or null: the one list of the reasons that are this context's own,
-        // which ThrowIfWritesRefused throws and Dispose asks before its last flush. Another context's journal is not
-        // one of them: it refuses a write only while it is there (NotBesideAnotherJournal). The last flush still passes
-        // the hook, so a buffered context closed beside a journal that won't finish has its unflushed writes refused,
-        // and the close throws (ISS-147's named debt).
+        // Why this context writes nothing more, or null: the one list of the reasons, which ThrowIfWritesRefused throws
+        // and Dispose asks before its last flush.
         private Exception WritesRefused()
         {
             if (transactionFault != null)

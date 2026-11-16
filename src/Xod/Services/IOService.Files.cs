@@ -30,8 +30,7 @@ namespace Xod.Services
                     string targetPath = tmpFile.Substring(0, tmpFile.Length - 4);
                     var tmpInfo = new FileInfo(tmpFile);
                     // A journal not yet renamed into place belongs to a commit that hadn't started: nothing of it
-                    // was written. Made the journal, it would write its before-images back over whatever was
-                    // written since (other contexts' writes, when the recovery waited for them to close).
+                    // was written. Made the journal, it would write its before-images back over what is on disk.
                     bool journal = targetPath.EndsWith(".xwal", StringComparison.OrdinalIgnoreCase);
                     if (journal || File.Exists(targetPath) || tmpInfo.Length == 0)
                     {
@@ -151,9 +150,9 @@ namespace Xod.Services
                 {
                     XDocument doc = ItemWriterDelegate(type, normalizedName);
                     file = new XFile(doc, type, filePath, password);
-                    // A new database's file is on disk when the open returns, in every mode: another open must find
-                    // it, and a record another context writes into it at once (an AES256 key, SaveNow) must not be
-                    // overwritten later by this context's copy waiting to be written (review of TASK-068).
+                    // A new database's file is on disk when the open returns, in every mode: the next open must find
+                    // it, and a record written into it at once (an AES256 key, SaveNow) must not be overwritten later
+                    // by a copy waiting to be written (review of TASK-068).
                     if (preSave)
                         SaveNow(file);
                 }
@@ -446,7 +445,7 @@ namespace Xod.Services
         }
 
         /// <summary>The file as it is on disk now, unless this context holds unsaved changes to it (then
-        /// those). For a record another context may have changed since this one cached it.</summary>
+        /// those). For a record read afresh (the AES256 key's, PropertyKeyService).</summary>
         internal XFile Reopen(string fileName, Type type)
         {
             string normalizedName = Path.GetFileName(fileName);
@@ -527,9 +526,23 @@ namespace Xod.Services
             FlushFileToDiskCore(file);
         }
 
+        /// <summary>
+        /// Refuses a write of a data file while this context's transaction is open. A transaction's files are written
+        /// by its commit alone (its batch is written once the transaction has completed, its deletes too: ISS-166), so before that nothing of it is on disk, and its rollback has nothing
+        /// to take back (XodTransaction.Rollback). Index files and the database file are outside every journal and
+        /// aren't asked.
+        /// </summary>
+        private void RefuseWriteInsideTransaction(string filePath)
+        {
+            if (IsIndex(filePath) || Helpers.DatabaseFiles.IsDatabaseFile(filePath))
+                return;
+            if (HasActiveTransaction != null && HasActiveTransaction())
+                throw new InvalidOperationException("A write of '" + filePath + "' while its context's transaction is open: a transaction's " +
+                    "files are written by its commit alone.");
+        }
+
         private void FlushFileToDiskCore(XFile file)
         {
-            RequireCommitGate(file.Path);
             RefuseWriteInsideTransaction(file.Path);
             byte[] serializedBytes = storageSerializer.Serialize(file.Document);
             byte[] payloadBytes = !string.IsNullOrEmpty(password)
@@ -538,6 +551,7 @@ namespace Xod.Services
 
             file.LastSavedSize = payloadBytes.Length;
             WriteRawBytesAtomic(file.Path, payloadBytes, payloadBytes.Length);
+            FileChangedOnDisk?.Invoke(file.Path);
         }
 
         private void FlushFilesList(List<XFile> toFlush)
@@ -582,7 +596,7 @@ namespace Xod.Services
             {
                 if (batchDepth > 0 && dirtyBatchFiles.Waits(pageFile))
                 {
-                    InCommitGate(() => FlushFileToDisk(pageFile));
+                    FlushFileToDisk(pageFile);
                     dirtyBatchFiles.Remove(pageFile);
                 }
             }
@@ -704,32 +718,20 @@ namespace Xod.Services
 
             lock (syncLock)
             {
-                // Not waited for: an index file, outside every journal (the gate's guard doesn't ask it either), and a
-                // file that isn't on disk, such as the page of a statement being undone that never reached it: only
-                // what this context holds changes. Such a delete doesn't touch the disk afterwards either, so a file
-                // another context makes there meanwhile is left alone. A file this context's transaction deleted
-                // already is one of these: gone for it, its delete waiting for the commit (ISS-166).
-                if (IsIndex(fullPath))
-                    DeleteUnlocked(fullPath, normalizedName, onDisk: true);
-                else if (!OnDiskHere(fullPath))
-                    DeleteUnlocked(fullPath, normalizedName, onDisk: false);
-                else
-                    InCommitGate(() => DeleteUnlocked(fullPath, normalizedName, onDisk: true));
+                // A file that isn't on disk, such as the page of a statement being undone that never reached it: only
+                // what this context holds changes. A file this context's transaction deleted already is one of these:
+                // gone for it, its delete waiting for the commit (ISS-166). An index file is deleted as it is.
+                DeleteUnlocked(fullPath, normalizedName, onDisk: IsIndex(fullPath) || OnDiskHere(fullPath));
             }
         }
 
-        // Delete's work, under syncLock and, for a data file on disk, the commit gate. onDisk false: only what this
-        // context holds is dropped, without the mutation hook either: its checks (another context's journal, this
-        // context's own refusals) and its records (a transaction's before-image, the indexes behind) are about a change
-        // on disk, and there is none. Through the hook, the undo of a statement refused beside another context's
-        // commit was refused too, and faulted the context.
+        // Delete's work, under syncLock. onDisk false: only what this context holds is dropped, without the mutation
+        // hook either: its checks (this context's own refusals) and its records (a transaction's before-image, the
+        // indexes behind) are about a change on disk, and there is none.
         private void DeleteUnlocked(string fullPath, string normalizedName, bool onDisk)
         {
             if (onDisk)
-            {
                 BeforeFileMutate?.Invoke(fullPath);
-                RequireCommitGate(fullPath);
-            }
             dirtyBatchFiles.Remove(normalizedName);
             dirtyBufferedFiles.Remove(normalizedName);
             dirtyBatchRawPages.Remove(normalizedName);
@@ -745,9 +747,9 @@ namespace Xod.Services
             {
                 bool inTransaction = HasActiveTransaction != null && HasActiveTransaction();
                 // ISS-166: inside a transaction a data file (never an index file: Delete refuses one) is deleted by its commit, as its other files are written
-                // then; until then it stays on disk for every other context, gone for this one (pendingDeletes).
-                // Deleted at once, a page a delete emptied was lost though nothing was committed (ISS-107); renamed
-                // aside, a table it dropped was gone for other contexts, which made a new one at its name.
+                // then; until then it stays on disk, gone for this context (pendingDeletes). Deleted at once, a page
+                // a delete emptied was lost though nothing was committed (ISS-107); renamed aside (2.0.2), a crash
+                // left a .xdel for the next open to put back.
                 if (batchDepth > 0 && inTransaction)
                 {
                     lock (pendingDeletesLock)
@@ -758,6 +760,7 @@ namespace Xod.Services
                 else
                 {
                     File.Delete(fullPath);
+                    FileChangedOnDisk?.Invoke(fullPath);
                 }
             }
         }

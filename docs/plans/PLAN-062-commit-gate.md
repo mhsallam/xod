@@ -5,6 +5,8 @@
   (the gate); a commit no longer overwrites a write another context made after the transaction first changed a file, or
   takes it back by a rollback (the comparison, and a rollback that writes nothing). A page a context read and kept before
   that is `ISS-167`'s.
+- **Superseded** by [`PLAN-064`](PLAN-064-one-context-per-database.md) (2026-11-16): a database is open in one context
+  at a time, so no write of another context lands beside a commit, and the gate (`xod.commit.lock`) and the commit's comparison with other contexts' writes are gone; the code is removed (`PLAN-064` section 5).
 - **Superseded in part** by [`PLAN-063`](PLAN-063-deletes-at-the-commit.md) (2026-11-16, `ISS-166` fixed): a
   transaction's deletes now wait for its commit, so it sets nothing aside. The rollback's put-back below, its gate, the
   faults it could leave (a put-back refused at the gate or blocked by another program, a commit refused at the gate

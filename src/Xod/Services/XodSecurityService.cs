@@ -8,7 +8,7 @@ namespace Xod.Helpers
     /// Sets, changes and removes a database's password. Obsolete: use <see cref="XodContext.Secure"/>,
     /// <see cref="XodContext.Loose"/> and <see cref="XodContext.ChangePassword"/>, the one way the password
     /// changes. Each method here opens a context on <see cref="Path"/> and calls it, so it does what the
-    /// context does: the AES256 key protected under the new password, the change refused while another context
+    /// context does: the AES256 key protected under the new password, and the open refused while another context
     /// has the database open. Until 2.0.1 these methods rewrote the files themselves and skipped all of that
     /// (ISS-069). To be removed in a major version.
     /// </summary>

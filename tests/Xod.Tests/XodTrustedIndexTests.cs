@@ -359,8 +359,7 @@ namespace Xod.Tests
         // A transaction's delete that empties a page leaves it on disk until the commit (ISS-166). Held by another
         // program, the page can't be deleted at the commit, which then fails after its journal and is undone: the rows
         // are all there after a reopen, and the indexes agree with the pages. Windows only: elsewhere a file held open
-        // can be deleted, and the commit passes. Held shared for reading: the commit reads the page first, to compare
-        // it with what it first read (ISS-164), and a page it can't read refuses the commit before its journal.
+        // can be deleted, and the commit passes. Held shared for reading, as a backup tool holds a file.
         [Fact]
         public void A_delete_the_commit_can_t_make_is_undone_and_every_row_stays()
         {

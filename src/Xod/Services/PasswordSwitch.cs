@@ -78,9 +78,8 @@ namespace Xod.Services
             string[] files = Directory.GetFiles(root).Where(Helpers.DatabaseFiles.IsOfDatabase).OrderBy(f => f, StringComparer.Ordinal).ToArray();
             string journal = this.Path + JournalSuffix;
 
-            // The record is created first and held with no sharing until the switch ends: another context's open
-            // (RecoverSwitch) sees a switch in progress and stays away from its staged files. CreateNew: a record
-            // already there is another context's switch.
+            // The record is created first and held with no sharing until the switch ends. CreateNew: a record already
+            // there is one a crash left, which the open (RecoverSwitch) finishes or discards before this can run.
             var record = new FileStream(journal, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
             var staged = new List<string>(files.Length);
             bool commitWritten = false;
@@ -246,7 +245,7 @@ namespace Xod.Services
         /// <summary>
         /// Run when the database opens, before any file is read: finishes a password change that was committed
         /// and discards one that wasn't. Throws if a committed change can't be finished (a file open elsewhere),
-        /// or if another context is switching the password now: the database would otherwise open with files
+        /// or its record can't be read (another program holds it): the database would otherwise open with files
         /// under two passwords.
         /// </summary>
         internal static void RecoverSwitch(string root)
@@ -304,7 +303,7 @@ namespace Xod.Services
             }
             catch (IOException e) when (File.Exists(journal))
             {
-                throw new XodException("A password change is in progress in another context or process; open the database when it ends.", e);
+                throw new XodException("A password change's record ('" + System.IO.Path.GetFileName(journal) + "') can't be read: another program has it open. Open the database once it lets go.", e);
             }
             string[] lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
             bool committed = lines.Length >= 2 && lines[0] == JournalHeader && lines[^1] == JournalCommit;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Xod;
 
 // Model names are global so the parent test process, which declares the same types, maps the files
@@ -52,6 +53,13 @@ public class CrashCustomer
     [Children] public List<CrashOrder> Orders { get; set; }
 }
 
+public class DropNote
+{
+    [PrimaryKey]
+    public int Id { get; set; }
+    public string Text { get; set; }
+}
+
 public class CrashOrder
 {
     public int Id { get; set; }
@@ -76,7 +84,7 @@ public static class Program
     {
         if (args.Length < 2)
         {
-            Console.Error.WriteLine("usage: Xod.CrashWriter <setup|onebatch|burst|count|pwsetup|pwchange|pwchange-twice|pwchange-then-write|bufferedflush|pwchange-buffered|txcommit|txfail|pwopen|pwopen-locked|convert> <directory>");
+            Console.Error.WriteLine("usage: Xod.CrashWriter <mode> <directory> (see the mode branches in Program.cs)");
             return 2;
         }
 
@@ -94,10 +102,6 @@ public static class Program
         // Options a test sets for any mode.
         if (Environment.GetEnvironmentVariable("XOD_TEST_DURABILITY") == "Buffered")
             options.Durability = DurabilityMode.Buffered;
-        if (Environment.GetEnvironmentVariable("XOD_TEST_LOCK") == "1")
-            options.LockDatabase = true;
-        if (int.TryParse(Environment.GetEnvironmentVariable("XOD_TEST_TX_TIMEOUT"), out int txTimeout))
-            options.TransactionTimeoutMs = txTimeout;
 
         // XodMigrator (ISS-072): the password database converted to Binary, into XOD_TEST_TARGET (the folder
         // itself when unset).
@@ -177,22 +181,6 @@ public static class Program
             return 0;
         }
 
-        // A change whose hold alone fails for another reason than another's lock (XOD_FAIL_AT_STEP=hold-alone), then
-        // the context waits for a line, meanwhile the test checks what it still holds, and writes.
-        if (mode == "pwchange-hold")
-        {
-            using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
-            if (Change(db, "first", "second"))
-                Console.WriteLine("CHANGED");
-            Console.WriteLine("WAITING");
-            Console.Out.Flush();
-            Console.In.ReadLine();
-            db.InsertRange(BuildBatch(1));
-            db.Flush();
-            Console.WriteLine("WROTE");
-            return 0;
-        }
-
         // Buffered durability under a password: a batch, Flush, and the process dies at once.
         if (mode == "bufferedflush")
         {
@@ -216,37 +204,53 @@ public static class Program
             return 0;
         }
 
-        // A transaction of one batch, committed; XOD_CRASH_AT_STEP / XOD_FAIL_AT_STEP stop it part-way.
-        // ISS-164: one customer of the password database renamed outside a transaction (with XOD_PAUSE_AT_STEP=
-        // write-checked:1, paused past the check of its first file write). Flushed before it reports: with buffered
-        // durability the write is made there.
-        if (mode == "rename-one")
+        // A transaction that drops a Binary table and makes it again, so its commit deletes the old pages and writes
+        // new ones; XOD_FAIL_AT_STEP=commit-written fails it once its files are written. Prints what the context then
+        // sees, and what a new open sees.
+        if (mode == "txdrop-fail")
         {
-            using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
-            try
+            var binary = new DatabaseOptions { InitialCreate = true, StorageFormat = StorageFormat.Binary };
+            string dropPath = Path.Combine(dir, "drop.xod");
+            using (var setup = new XodContext(dropPath, options: binary))
             {
-                var customer = db.Find<CrashCustomer>(c => c.Id == 3);
-                customer.Name = "renamed";
-                bool found = db.Update(customer);
-                db.Flush();
-                Console.WriteLine(found ? "UPDATED" : "NOT FOUND");
+                for (int id = 1; id <= 3; id++)
+                    setup.Insert(new DropNote { Id = id, Text = "note " + id });
             }
-            catch (Exception e)
+            using (var db = new XodContext(dropPath, options: binary))
             {
-                Console.WriteLine("REFUSED " + e.GetType().Name + ": " + e.Message);
+                try
+                {
+                    using (var tx = db.BeginTransaction())
+                    {
+                        db.Drop<DropNote>();
+                        db.Insert(new DropNote { Id = 1, Text = "anew" });
+                        tx.Commit();
+                    }
+                    Console.WriteLine("COMMITTED");
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("COMMIT FAILED " + e.GetType().Name + ": " + e.Message);
+                }
+                Console.WriteLine("SEEN " + Notes(db));
             }
+            using (var reopened = new XodContext(dropPath, options: binary))
+                Console.WriteLine("REOPENED " + Notes(reopened));
             return 0;
+
+            static string Notes(XodContext db) =>
+                string.Join(",", db.Select<DropNote>().OrderBy(n => n.Id).Select(n => n.Id + ":" + n.Text));
         }
 
-        if (mode == "txcommit" || mode == "txfail" || mode == "txfail-hold")
+        // A transaction of one batch, committed; XOD_CRASH_AT_STEP / XOD_FAIL_AT_STEP stop it part-way.
+        if (mode == "txcommit" || mode == "txfail")
         {
             using var db = new XodContext(Path.Combine(dir, "pw.xod"), "first", options);
             try
             {
                 using (var tx = db.BeginTransaction())
                 {
-                    // XOD_TEST_BATCH: which batch the transaction inserts (1 by default).
-                    int batch = int.TryParse(Environment.GetEnvironmentVariable("XOD_TEST_BATCH"), out int b) ? b : 1;
+                    const int batch = 1;
                     // XOD_TEST_SINGLE: one insert per customer, which leaves the indexes to the commit to write.
                     if (Environment.GetEnvironmentVariable("XOD_TEST_SINGLE") == "1")
                         foreach (var customer in BuildBatch(batch))
@@ -263,16 +267,6 @@ public static class Program
             }
             if (mode == "txcommit")
                 return 0;
-
-            // "txfail-hold": the commit failed and (with XOD_FAIL_AT_STEP=commit-written,undo) couldn't be undone, and
-            // this process stays alive, its context open, until the test sends a line (ISS-147).
-            if (mode == "txfail-hold")
-            {
-                Console.WriteLine("WAITING");
-                Console.Out.Flush();
-                Console.In.ReadLine();
-                return 0;
-            }
 
             // What this context sees after the failed commit, and whether it can go on writing (the next batch
             // after what it sees).

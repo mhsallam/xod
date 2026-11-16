@@ -1,8 +1,8 @@
 # PLAN-064: a database is open in one context at a time
 
 - **Task ID**: `TASK-079`
-- **Status**: Step 1 done (2026-11-16): every context holds its database alone. Step 2 (removing what only served
-  contexts side by side) proposed, section 5.
+- **Status**: Done (2026-11-16). Step 1: every context holds its database alone. Step 2: what only served contexts
+  side by side is taken out (section 5), before the release, so no release ships it.
 - **Related**: the README's "Where it fits" and the site's `docs/transactions` section "Processes" (the rule this
   enforces); [`PLAN-061`](PLAN-061-high-issues-from-the-overall-review.md), [`PLAN-062`](PLAN-062-commit-gate.md) and
   [`PLAN-063`](PLAN-063-deletes-at-the-commit.md) (the machinery for contexts side by side that step 2 takes out)
@@ -88,10 +88,35 @@ Each restored and the source compared with its diff before the run; the whole su
 | S7 the database file put back into a transaction's image | **not caught**: with one context, the values written under a key in a transaction roll back with it, so the case the exclusion guards (another context's values under a key taken back) can't be reached; the test's comment says so, and the exclusion joins section 5 |
 | S8 no read access for a lock file a medium won't open for writing | not on Windows (the test needs a read-only mount); on Linux the test failed before the fix and passes with it |
 
+Step 2 (the source compared with its diff after the four, unchanged):
+
+| Break | Caught by |
+| :--- | :--- |
+| T1 an open makes `xod.gate.lock` again | `A_database_s_folder_holds_only_the_hold_s_lock_files` (red before step 2: the folder held the gate files) and the password-change tests' check of what is left in the folder (20 failed) |
+| T2 a context without a hold counts as holding the database (`HasDatabaseToItself` always true) | **not caught**: every caller of `WithDatabaseToItself` (a password change, the AES256 key) is a write, which the engine refuses first for a context with no hold (`XmlEngine.WritesRefused`, `NoHoldReason`); the check is the key maker's own, kept so the owner refuses whoever calls. The tests can't reach the internal type |
+| T3 a commit writes over a journal there | **not caught**: a journal at a commit is one this context's failed commit left, and that failure already refuses every write (`transactionFault`) until the next open undoes it; kept as the journal owner's own check |
+| T4 a missing folder gives no reason | **not caught**: an open without its folder fails on the missing database file before anything writes; the reason makes that context's state say "no hold" instead of counting as holding (the review's finding, section 6) |
+
+The fix of `ISS-174` (section 6), each part broken once. The undo writes back a file its commit reported changed, or
+one not on disk as the transaction found it; each layer covers the other, so a report site is broken with the
+comparison off too:
+
+| Break | Caught by |
+| :--- | :--- |
+| F1 nothing reported as changed | **not caught alone**: the comparison finds every changed file the tests make; with it off too (F8), nine tests |
+| F7 no comparison | **not caught alone**: the reports cover every write the tests make; with them off too (F8), nine tests |
+| F8 neither | nine tests of a failed commit's undo |
+| F9 a file that can't be read counts as changed | `A_commit_that_fails_on_a_page_another_program_holds_..._carries_on(share: None)` |
+| F2 the undo writes every before-image back again | the held-page test, both share modes (red before the fix) |
+| F3 a whole file written goes unreported (comparison off) | six tests of a failed commit's undo |
+| F4 a page renamed into place goes unreported (comparison off) | **not caught**: no commit in the tests replaces a page by a rename; a commit writes a page in place, or creates it, and renames only when the file's length on disk isn't the one the context last wrote (a file replaced from outside). The comparison covers it; the report sits after the rename, as after the other writes |
+| F5 a commit's delete goes unreported (comparison off) | `A_failed_commit_puts_back_the_pages_it_deleted` (new: a drop and the table made again, failed after its files) and an index test |
+| F6 a page written in place goes unreported (comparison off) | three tests of a commit undone |
+
 ## 5. Step 2: what only served contexts side by side
 
-Not yet done. With step 1, none of this is reached by two contexts of this version; it waits for a second context that
-can't open. It hasn't shipped (2.0.2 has none of it), so taking it out before the release means no user ever sees it:
+Done (2026-11-16). With step 1, none of this was reached by two contexts of this version. It hadn't shipped (2.0.2 has
+none of it), so no user sees it. Taken out:
 
 - the commit gate (`IOService.CommitGate`, `xod.commit.lock`), the per-file check of a commit against other contexts'
   writes, and the write's wait for another context's commit (`PLAN-062`);
@@ -99,7 +124,30 @@ can't open. It hasn't shipped (2.0.2 has none of it), so taking it out before th
   database (`WithDatabaseToItself`, `TakeBackSharedHold`, `ShareHoldOnceCreated`), and `NoHoldReason`'s "lost its hold";
 - the refusal of writes beside another context's journal (`ISS-147`'s mitigation) and of an open beside an unfinished
   password change (`ISS-148`);
-- the transaction's exclusion of the database file from its image (break S7 above).
+- the commit's own hold on its journal and the probe of a journal another context holds (`ISS-147`'s), and the
+  refusal of a password change beside another context's journal.
+
+So `IOService.CommitGate.cs`, `XodCommitGateTests.cs` and the crash writer's modes for a second context are gone; the
+three tests of a transaction's own deletes there moved to `XodTransactionDeletesTests`. `WithDatabaseToItself` stays,
+as a check: it runs its action when the context holds the database (every context with a hold), and refuses one with
+no hold. The open with no folder now says so (`NoHoldReason`). `PropertyKeyService.MakeDataKeyUnlocked` no longer
+takes the hold. A commit is: the journal staged and moved into place, the files written, the journal deleted.
+
+A failed commit's undo now writes back only the files its commit changed (`ISS-174`, found by the review of step 2):
+the writes report each file as they change it (`IOService.FileChangedOnDisk`, the one feed, wired by the engine to the
+transaction), and the undo writes back those, and any other file of the transaction that isn't on disk as it found it
+(`XodTransaction.NotAsBefore`), so a write that ever fails to report is still undone rather than left as half a commit
+(the second review). A file that can't be read and wasn't reported is left: its write failed before changing it. The
+recovery at the open still writes back every before-image of a journal: it can't know how far the commit got. The raw
+page flush's transaction flag, always false (no transaction is open when pages are written), is gone.
+
+Taken out as leftovers too (the review): `ThrowIfWritesRefused`'s unused parameter, the crash writer's switches no test
+set any more (`XOD_TEST_TX_TIMEOUT`, `XOD_TEST_BATCH`, `XOD_TEST_LOCK`), the skipped `ISS-167` test (a second context's
+write, which can't happen), and comments that described other contexts.
+
+Kept, though written for contexts side by side: the transaction's exclusion of the database file from its image (break
+S7): the AES256 key's one writer is `IOService.SaveNow`, outside every transaction, so a rollback has nothing of the
+database file to put back; the comment says it no longer keeps a value readable.
 
 Not removed, though written for contexts side by side: the index service's handling of an index file replaced under a
 context (`ISS-042`), which a file tool or a writer beside a context with no hold (`ISS-173`) still reaches (the review
@@ -122,9 +170,19 @@ An independent review of step 1 (the code and the problem, not this plan), read-
 | A user who can only read the folder, with the lock files there, takes the hold alone and keeps the writer out | Documented: the rule is one context at a time, readers included |
 | Deleted tests whose scenario one context still reaches: the staged journal, and the index file replaced under a context | Brought back (section 3) |
 | `Securing_a_database_makes_its_key` no longer shows `Secure` making the key; `A_key_made_inside_a_transaction_outlives_its_rollback` doesn't go red with the exclusion removed | Comment of the first corrected (it can't be seen through an encrypted file); the second confirmed by break S7 and said in its comment |
-| A missing folder at the open (`noFolderAtOpen`) counts as "to itself" with no hold; unreachable today (the engine creates the folder or the open fails) | Named, section 5 |
+| A missing folder at the open (`noFolderAtOpen`) counts as "to itself" with no hold; unreachable today (the engine creates the folder or the open fails) | Fixed in step 2: the open with no folder has a `NoHoldReason`, so it counts as holding nothing |
 | A refused open changes nothing on disk but the lock files it creates | No change |
 | Dead code and comments describing shared opens | Comments corrected; the code is section 5 |
+| **Step 2** (a second review, of the step 2 diff, read-only, probes in a copy): a commit that fails on a page another program holds without sharing faults its context, where step 1 refused it before the journal (the deleted comparison read every file first); with a holder that shares reading, the same in 2.0.2. Cause: the undo writes back files the commit never changed | Fixed, `ISS-174` (sections 4, 5): the undo writes back only what the commit changed; the deleted test's scenario is a new test, red before |
+| Step 2: leftovers (an unused parameter, crash-writer switches no test sets, a skipped test that can't run, comments describing other contexts) | Taken out (section 5) |
+| Step 2: "a journal at its name is always whole" claims more than the code for a power cut (nothing is flushed to the device) | Comment qualified |
+| Step 2: with `DisableFileLocking`, the removed journal probe was the last refusal of a write beside another process's journal | Added to `ISS-104` |
+| Step 2: the key maker's re-read of the database file, and `IOService.Reopen`, answer a second context that can't open now | Kept as the owner's guard; comments say so |
+| The fix of `ISS-174` (a second review, of the fix): the cause removed; but a write that fails to report, or a rename that reports a failure it didn't have, would leave half a commit silently, where the old undo faulted | Fixed: the undo also writes back any file not as the transaction found it (breaks F1, F7, F8) |
+| The fix: a file the commit created, held by another program, still fails the undo and faults the context | Named: not silent, the next open recovers; the same before |
+| The fix: the raw page flush's transaction flag is always false, and claims atomic writes inside a transaction that never happen | Removed |
+| The fix: the claims about `File.Move` and `FileStream` leaving a file unchanged when they throw | Confirmed in the .NET 9 source for the open; the rename's, by Win32 and POSIX behaviour, not stated in so many words |
+| The remaining comments of other contexts (`PasswordSwitch`, `XodSecurityService`, `PropertyKeyService`) | Corrected; the password record's message now names the program holding it |
 | .NET's reading of "file locking off" includes a browser, which XOD's copy missed, so every open there is refused | Fixed, cited (`SafeFileHandle.Unix.cs`, release/8.0 and 9.0, fetched) |
 | On an NFS client flock is a process-owned fcntl lock, so the hold's in-process proof succeeds and every open is refused (where the default shared open used to work) | Documented as a limit in the release notes and `ISS-104`; reasoned from flock(2), not run on NFS |
 
@@ -132,8 +190,14 @@ An independent review of step 1 (the code and the problem, not this plan), read-
 
 **Step 1: clean, with named debt.** The cause, opens that let several contexts write one database, is removed where the
 file system takes locks: every open holds the database alone. Debt: a context with no hold beside a writer
-(`ISS-173`); file systems that take no lock, and XOD 2.0.0/2.0.1, which the hold can't see (`ISS-104`); the code that
-only served contexts side by side, still there and no longer reached (section 5).
+(`ISS-173`); file systems that take no lock, and XOD 2.0.0/2.0.1, which the hold can't see (`ISS-104`).
+
+**Step 2: clean.** The machinery for contexts side by side is gone rather than left unreached: one lock path (the two
+lock files, held alone), one commit path (journal, files, journal deleted). What stays guards what one context still
+meets: a crash, a failure, another program. Three of its checks can't be reached through the public API (breaks T2 to
+T4) and are kept at their owners. Its review found that a failed commit's undo wrote back files it never changed
+(`ISS-174`, older than step 2 and widened by it): the cause is removed, the undo writes back only what the commit
+changed.
 
 ## 8. How it was checked
 
@@ -144,3 +208,11 @@ only served contexts side by side, still there and no longer reached (section 5)
   conformance tests, the format reader, the stress harness.
 - The whole suite on Linux (the .NET 9 SDK container, no network, a read-only mount for the read-only test): 523
   passed, 1 skipped.
+
+Step 2, with the fix of `ISS-174`:
+- The held-page test red against the code before the fix (both share modes); the breaks T1 to T4 and F1 to F9 above.
+- Two independent reviews, read-only, with probes in copies: of the step 2 diff (section 6, `ISS-174` found), then of
+  the fix (the cause removed; its findings fixed or named, section 6).
+- The gate: green, net8.0 512 passed and net9.0 520 (none skipped: the `ISS-167` test is gone), the conformance tests,
+  the format reader, the stress harness, the machine-details check.
+- The whole suite on Linux, as above: 520 passed.

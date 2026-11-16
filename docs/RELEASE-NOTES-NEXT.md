@@ -4,11 +4,12 @@ What changes for users in the next release, collected as each fix lands. The ver
 release itself are the owner's decision; nothing here is published. Each item links the plan that
 records it. The last release: [2.0.2](RELEASE-NOTES-2.0.2.md).
 
-**Prepared for release on 2026-11-16** (`TASK-078`): everything in the tree as of `7e2a5e7`, the commits since
-`v2.0.2`; then a database open in one context at a time (`TASK-079`, [`PLAN-064`](plans/PLAN-064-one-context-per-database.md)),
-which changes this file's upgrade section and makes several of the behaviour changes below moot (their sections say so).
-The site's pages (section "Site pages to update") predate `PLAN-064` and are to be brought in line. To be released as **2.0.3** (section "Version"); `src/Xod/Xod.csproj` stays at 2.0.2 until the release,
-as do the tag and the release itself.
+**Prepared for release on 2026-11-16** (`TASK-078`, `TASK-079`): everything in the tree, the commits since `v2.0.2`,
+with a database open in one context at a time ([`PLAN-064`](plans/PLAN-064-one-context-per-database.md)). That last
+change took out what the tree had added for contexts side by side (a commit gate, a gate for holds, refusals beside
+another context's journal or password change), which no release had shipped; the items below describe what ships. To
+be released as **2.0.3** (section "Version"); `src/Xod/Xod.csproj` stays at 2.0.2 until the release, as do the tag
+and the release itself.
 
 ## Upgrading from 2.0.2
 
@@ -21,9 +22,9 @@ as do the tag and the release itself.
 - **XOD 2.0.2 and this version keep each other out**: 2.0.2 holds the lock files shared, this version alone, so
   whichever opens second is refused. XOD 2.0.0 and 2.0.1 take no lock unless `LockDatabase` is set: don't run them
   beside this version.
-- **Lock files sit beside the database file and are never deleted:** `xod.lock` and `<database file>.lock` (2.0.2),
-  and `xod.gate.lock` and `xod.commit.lock`. Leave them in place. A folder where they can't be created or opened is
-  opened for reading only, and nothing keeps a writer out beside such a reader (`ISS-173`).
+- **The lock files `xod.lock` and `<database file>.lock` sit beside the database file and are never deleted**, as in
+  2.0.2. Leave them in place. A folder where they can't be created or opened is opened for reading only, and nothing
+  keeps a writer out beside such a reader (`ISS-173`).
 - **Where the file system gives no lock** (an NFS client, where flock is a lock of the whole process), every open is
   refused, since nothing would keep a second context out. Not run on NFS: reasoned from flock(2). Setting
   `DOTNET_SYSTEM_IO_DISABLEFILELOCKING=1` opens it, taken as saying nothing else opens the database (`ISS-104`).
@@ -43,23 +44,20 @@ as do the tag and the release itself.
   supported ("One process owns the folder at a time") and which caused the defects of contexts side by side fixed or
   listed below. Section "Upgrading from 2.0.2" says what to change. The message of `DatabaseLockedException` says so.
 
-Several items below describe a write, a commit, a password change or an AES256 key beside another context. Since
-`PLAN-064` no other context can be open, so those cases no longer arise; what they add is listed for removal before
-the release (`PLAN-064` section 5).
-
-- **No open beside a password change that didn't finish** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-148`). A password change that is made but couldn't yet replace a file (another program had it open) is finished by its context's next write, or by the next open that has the database to itself. Until then, another context's open now throws `XodException`, with either password; before, it opened with the old password and could write files the change never replaced.
-- **A password change is refused over anything a crash left** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-149`): a file a transaction set aside (`<file>.xdel`) and a password change's own leftovers, as well as a commit journal and an atomic write cut short (refused before). Close every context and open the database again, which puts them back, then change the password.
-- **The AES256 key is made with the database held alone** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-150`). A new database opened with a password or `DatabaseOptions.PropertyEncryptionKey` records its key when it is created, protected by the application key if the creating context has one, else by the password; `Secure`, `ChangePassword` and `Loose` make it too when there is none and something protects it. A database with no key yet (one from 2.0.2 that has no `[Crypto(AES256)]` value, one created with neither, or one whose unused key a password removal dropped) makes it at its first such value, and that value now throws `XodException` while another context has the database open: write it with the others closed, or set the password then.
-- **A new lock file, `xod.gate.lock`**, beside `xod.lock`: held while a context takes the database alone or gives it back (PLAN-046 section 9). Never deleted, like the other lock files.
-- **No write beside another context's commit journal** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-147`). A commit that a crash cut short, or that failed and couldn't be undone, leaves its journal (`transaction.xwal`), which the next open that has the database to itself undoes. Before, other contexts open meanwhile went on writing, and that undo took their writes back after they had been told the writes were made. Now a write beside such a journal throws `XodException` (where a commit beside it used to fail with `TransactionException` at `Commit`), until every context is closed and the database opened again; reads go on. A write beside another context's commit that is still under way waits for it, up to `TransactionTimeoutMs`. On a Unix network file system, or with .NET's file locking switched off on Unix, a commit under way can't be told from one that won't finish, so writes beside it are refused rather than waited for. Not yet covered: a buffered context's unflushed writes at its close beside a crashed journal, which the close refuses (`ISS-165`). (A commit that starts between another context's check and its write, `ISS-164`, is covered by the commit gate below.)
-- **Writes and commits of two contexts are kept apart** ([`PLAN-062`](plans/PLAN-062-commit-gate.md), `ISS-164`). A new lock file, `xod.commit.lock`, beside `xod.lock` and never deleted: a commit holds it alone from before its journal until it is done, and every write holds it shared. A write now waits for another context's commit, and a commit for other contexts' writes, up to `TransactionTimeoutMs`; then the write throws `XodException`, or the commit `TransactionException` with nothing of it written. A commit is now refused (`TransactionException`, nothing written) when another context wrote one of its files (one it deletes included) after the transaction first changed it; this is decided per file, so two contexts changing different rows of one page conflict, and the later commit should be retried. A rollback no longer writes the files back as they were before the transaction: it used to take back what other contexts had written to them since. Don't open one database from XOD 2.0.2 (which takes no such lock) and from this version at once. Each statement that writes costs one more open and close of a file (about 40 µs on one machine).
+- **A rollback writes nothing** ([`PLAN-063`](plans/PLAN-063-deletes-at-the-commit.md)). A transaction writes no data
+  file before its commit, and now deletes none either: its deletes are made by its commit, after its journal. A
+  rollback forgets them, with its writes, and touches no file; in 2.0.2 a transaction's delete renamed the file aside
+  (`<file>.xdel`) at once, and its rollback renamed it back. A crash before the commit leaves no `.xdel`; one 2.0.2
+  left is put back by the next open.
+- **A password change is refused over anything a crash left** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-149`): a file a transaction set aside (`<file>.xdel`) and a password change's own leftovers, as well as a commit journal and an atomic write cut short (refused before). Open the database again, which puts them back, then change the password.
+- **The AES256 key is made when a database gets a secret** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-150`). A new database opened with a password or `DatabaseOptions.PropertyEncryptionKey` records its key when it is created, protected by the application key if the creating context has one, else by the password; `Secure`, `ChangePassword` and `Loose` make it too when there is none and something protects it. A database with no key yet (one from 2.0.2 that has no `[Crypto(AES256)]` value, one created with neither, or one whose unused key a password removal dropped) makes it at its first such value. The key is written to the database file at once, outside any transaction.
+- **A password change that couldn't replace a file** (another program had it open) **is finished by its context's next write**, or by the next open ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-148`); in 2.0.2 the files it hadn't replaced stayed under the old password.
 
 ## Version
 
 The changes since 2.0.2 add no public type and remove none. One public method is marked obsolete
 (`XmlExtensions.ElementMatch`, a compiler warning for code that calls it). The rest changes behaviour:
-- new lock files;
-- writes and commits that now wait or are refused;
+- a database open in one context at a time, a second open refused;
 - matching by example that no longer ignores case;
 - a password change refused where it ran before.
 
@@ -75,7 +73,9 @@ workflow, which waits for approval.
 
 ## Site pages to update with the release
 
-Drafted on 2026-11-16 in `xod-site` against the tree at `7e2a5e7`, committed there (`bf37b65`) and not deployed (a deploy waits
+Brought in line with `PLAN-064` on 2026-11-16 (uncommitted in `xod-site` until checked): no commit gate or
+`xod.gate.lock`, no refusals beside another context, `LockDatabase` without effect, a second open refused; the
+upgrading page's section for 2.0.2 matches "Upgrading from 2.0.2" above. Drafted on 2026-11-16 in `xod-site` against the tree at `7e2a5e7`, committed there (`bf37b65`) and not deployed (a deploy waits
 for the release). 16 pages under `src/pages/docs` and the docs menu (`src/content/docs-nav.ts`):
 - **Labelled `**Next release:**`** beside what 2.0.2 does:
   - the lock files and the commit gate (`transactions`, `storage`, `limits`);
@@ -100,12 +100,11 @@ the version number, and the landing page (`index.astro`) is unchanged.
 
 ## Fixed
 
-- **A table a transaction dropped or emptied is no longer lost to another context** ([`PLAN-063`](plans/PLAN-063-deletes-at-the-commit.md), `ISS-166`). A transaction's delete renamed the file aside (`<file>.xdel`) at once, so other contexts saw the table gone and could make a new one at its name; the rollback then failed and the context refused writes, and the next open dropped the old table's rows. Now a transaction's deletes are made at its commit, like its writes: until then every other context sees the files as they were, and a rollback touches no file (it no longer fails, or waits for another context's commit, over a file its transaction deleted). A commit is refused, as for any file it changed, when another context wrote a file it deletes. A crash before the commit leaves no `.xdel`; one an older version left is still put back by the next open.
-- **A commit or rollback no longer loses another context's write** ([`PLAN-062`](plans/PLAN-062-commit-gate.md), `ISS-164`): a commit cut short and undone took back a write another context made beside it; a commit overwrote one made after its transaction changed the same file; a rollback wrote the files back over one. A transaction's commit refused because a file couldn't be read now throws `TransactionException` (it threw `IOException`).
+- **Contexts side by side no longer lose each other's writes** ([`PLAN-064`](plans/PLAN-064-one-context-per-database.md)): a second context can't open the database. In 2.0.2 two contexts without `LockDatabase` could: a password change left the other writing under the old password; a commit cut short and undone took back the other's writes; a commit or rollback wrote over them; a table one context's transaction dropped was made again by the other and its rows lost at the next open; each context's cache missed the other's writes (`ISS-071`, `ISS-147`, `ISS-148`, `ISS-155`, `ISS-164`, `ISS-165`, `ISS-166`, `ISS-167`, `ISS-141`).
+- **A commit that fails on a file another program holds no longer stops its context writing** ([`PLAN-064`](plans/PLAN-064-one-context-per-database.md), `ISS-174`). A virus scanner or a backup tool holding a page made the commit fail, and its undo wrote back every file the transaction had changed, the held page too, failed on it, and refused every write until the database was opened again. Now the undo writes back only the files the commit changed: the commit throws, nothing of it stays, and the context carries on.
 - **Encrypted XOD 1.x databases open with their password** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-151`), and an update no longer hashes the 1.x `[Crypto]` digests of its row again. `CryptoHelper.VerifyHash` and SQL `VERIFY_HASH` verify a value against a 1.x digest too. A digest is still hashed again where a row is written without the row it replaces (a child without a primary key, when its parent is updated: `ISS-171`). `MIGRATION-GUIDE` section 2.1 says what carries over, and that a bare `[Crypto]` is SHA256, not 1.x's MD5. SQL `VERIFY_HASH` of a null stored value is false (it threw for a column whose method isn't known).
 - **An `InsertRange` can no longer leave a table unreadable** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-129`). Outside a transaction, a page that filled was written in the background from a buffer another step could give back and reuse, so it could hold other pages' rows: the call succeeded and the table no longer opened (most often with `EnableIndexing = false`). A full page is now written with the rest of the batch. A batched insert is also faster: a check that ran for every row runs once per page.
-- **A password change can no longer be overtaken by another's** (the review of `ISS-148`). A context that held the database alone for a password change, an AES256 key or a new database gave that hold up and took its shared hold back, holding nothing for an instant; another context could change the password in that instant, and the first then wrote under the old one. Now no other context can hold the database alone in between.
 - **Pages a crashed transaction set aside no longer come back in plaintext after `Secure`** (`ISS-149`): the change is refused until they are put back.
-- **Two contexts writing their first `[Crypto(AES256)]` values no longer lose one's key** (`ISS-150`), a key made inside a transaction is no longer taken back by its rollback (or a commit undone after a crash) once another context has written values under it, and a key whose save failed (the database file held open by another program) is no longer used unsaved.
+- **A key made inside a transaction is no longer taken back by its rollback** (or a commit undone after a crash), and a key whose save failed (the database file held open by another program) is no longer used unsaved (`ISS-150`).
 - **Referenced objects are read fresh by every query** (`ISS-138`). A query used to hand back referenced objects (an order's customer) from a cache that lived as long as the context: after the customer was updated or deleted, the order still gave the old one, and every query got the same instance, so a change made to it without saving showed up in the next query. Now the rows of one query that reference one row share one object, and nothing is shared between queries: two queries give two instances.
 - **Matching by example compares values the way the index does** (`ISS-139`, [`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md)). `Query(example)`, `Query(examples)`, `Update` and `Delete` by an item, and the primary-key and unique checks with `EnableIndexing = false` compared text case-insensitively in the current culture. Now text compares exactly and numbers by value (`12.5m` finds a stored `12.50`), with or without indexing: `Name = "alice"` no longer finds "Alice"; without indexing, a key "abc" is accepted beside "ABC" (as it was with indexing) and a decimal key `12.5` is refused beside `12.50`. A `[Crypto(AES256)]` property now matches by its value; it never matched before. `XmlExtensions.ElementMatch` is marked obsolete: XOD no longer uses it.

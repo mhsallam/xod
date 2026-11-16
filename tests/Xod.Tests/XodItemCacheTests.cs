@@ -76,24 +76,6 @@ namespace Xod.Tests
             Assert.Null(db.Find<CacheOrder>(o => o.Id == 1).Customer);
         }
 
-        // The review's probe S4, across contexts: another context's update stayed unseen. Not the item cache's doing
-        // since ISS-138 (it keeps nothing past a read): the context's page cache never looks at the disk again, so
-        // the row itself reads as it was (ISS-167).
-        [Fact(Skip = "ISS-167: a context's page cache doesn't see another context's writes")]
-        public void A_referenced_object_another_context_updated_is_read_as_updated()
-        {
-            string path = NewDb("across");
-            using var a = new XodContext(path);
-            var c = Seed(a);
-            Assert.Equal("Old", a.Find<CacheOrder>(o => o.Id == 1).Customer.Name);
-
-            using (var b = new XodContext(path))
-                Assert.True(b.Update(new CacheCustomer { Id = c.Id, Name = "FromB" }));
-
-            Assert.Equal("FromB", a.Find<CacheCustomer>(x => x.Id == c.Id).Name);
-            Assert.Equal("FromB", a.Find<CacheOrder>(o => o.Id == 1).Customer.Name);
-        }
-
         // One instance was handed to every reader: what one caller changed, without saving, the next read returned.
         [Fact]
         public void Each_read_hands_out_its_own_referenced_objects()

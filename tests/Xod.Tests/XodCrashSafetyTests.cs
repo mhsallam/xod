@@ -141,7 +141,7 @@ namespace Xod.Tests
         }
 
         /// <summary>Runs the crash writer to completion (or its crash); <paramref name="env"/> sets the fault
-        /// injection variables and the writer's options (XOD_TEST_DURABILITY, XOD_TEST_LOCK).</summary>
+        /// injection variables and the writer's options (XOD_TEST_DURABILITY).</summary>
         internal static (int ExitCode, string Output) RunWriterProcess(string mode, string dir, params (string Name, string Value)[] env)
         {
             var psi = new ProcessStartInfo("dotnet")

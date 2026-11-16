@@ -27,14 +27,14 @@ namespace Xod.Services
         private readonly Action<string> onFaulted;
         private readonly Action dropIndexFiles;
         private readonly Action onDispose;
-        private readonly Func<IDisposable> holdCommitGate;
-        private readonly Func<string, byte[]> bytesOnDisk;
         private bool completed;
         // This commit's own journal: staged (the .tmp written) and in place. Only this commit's is ever deleted.
         private bool journalStaged;
         private bool journalWritten;
-        // This commit holds its journal open while it runs (WriteWalJournal, ISS-147).
-        private FileStream journalHold;
+        // The files this commit changed on disk (IOService.FileChangedOnDisk, from pool threads too): a failed commit's
+        // undo writes back only these. Recorded only while the commit writes.
+        private readonly HashSet<string> changedByCommit = new(StringComparer.OrdinalIgnoreCase);
+        private volatile bool committing;
 
         public Guid TransactionId { get; } = Guid.NewGuid();
         public bool IsActive => !completed;
@@ -50,13 +50,9 @@ namespace Xod.Services
         /// <param name="onDispose">Ends the transaction in the engine.</param>
         /// <param name="dropIndexFiles">Drops the folder's index files, after a commit undone once it had written
         /// them (they may hold its keys): the index service, the one that deletes them in a live context.</param>
-        /// <param name="holdCommitGate">Holds the commit gate exclusively until disposed (IOService.CommitGate, ISS-164).</param>
-        /// <param name="bytesOnDisk">A file's bytes on disk now (IOService.BytesOnDisk).</param>
         internal XodTransaction(string rootDirectory, Action<Action> exclusive, Action onCommit, Action<Action> onRollback, Action<string> onFaulted, Action onDispose,
-            Action dropIndexFiles, Func<IDisposable> holdCommitGate = null, Func<string, byte[]> bytesOnDisk = null)
+            Action dropIndexFiles)
         {
-            this.holdCommitGate = holdCommitGate;
-            this.bytesOnDisk = bytesOnDisk;
             this.dropIndexFiles = dropIndexFiles;
             this.exclusive = exclusive ?? (a => a());
             this.rootDirectory = rootDirectory;
@@ -84,8 +80,10 @@ namespace Xod.Services
             // Nor the database file: what a transaction writes to it is the AES256 data key, made for a value the
             // transaction holds, and the key must outlast the transaction (IOService.SaveNow). Kept in its image, a
             // rollback, a commit undone or the undo of a journal after a crash took the key back after another
-            // context had written values under it: unreadable (review of ISS-150). Nothing else writes the database
-            // file once it is created.
+            // context had written values under it: unreadable (review of ISS-150). With one context at a time
+            // (PLAN-064) every value under the key is the transaction's own and goes with it, so this is no longer what
+            // keeps a value readable; the key stays out because its one writer is IOService.SaveNow, outside every
+            // transaction. Nothing else writes the database file once it is created.
             if (Helpers.DatabaseFiles.IsDatabaseFile(filePath))
                 return;
 
@@ -110,21 +108,22 @@ namespace Xod.Services
             exclusive(() =>
             {
                 completed = true;
-                IDisposable gate = null;
                 try
                 {
                     bool writing = false;
                     try
                     {
-                        // From here until the journal is gone, or the undo is done, no other context that takes the
-                        // commit gate writes a data file (ISS-164): so none is written beside the journal, and the
-                        // comparison below stays true. A commit that changed no file writes none, and doesn't wait.
-                        if (snapshots.Count > 0 || newlyCreatedFiles.Count > 0)
-                            gate = holdCommitGate?.Invoke();
-                        RefuseOverAnotherContextsWrites();
                         WriteWalJournal();
                         writing = true;
-                        onCommit?.Invoke();
+                        committing = true;
+                        try
+                        {
+                            onCommit?.Invoke();
+                        }
+                        finally
+                        {
+                            committing = false;
+                        }
                         DeleteWalJournal();
                     }
                     catch (Exception commitFailure)
@@ -137,61 +136,52 @@ namespace Xod.Services
                 }
                 finally
                 {
-                    ReleaseJournalHold();
-                    gate?.Dispose();
                     snapshots.Clear();
                     newlyCreatedFiles.Clear();
+                    lock (changedByCommit)
+                        changedByCommit.Clear();
                     onDispose?.Invoke();
                 }
             });
         }
 
         /// <summary>
-        /// ISS-164: the files this transaction changes must be on disk as it first read them (its before-images). One
-        /// another context wrote since would be overwritten by this commit, with the file as this transaction read it
-        /// before that write, and put back so by its undo: the other context's write, acknowledged, lost. The commit is
-        /// refused instead, before its journal, so nothing of it is written. Asked under the commit gate, so no write
-        /// of a context that takes it lands between this and the commit's own. It sees writes made after this
-        /// transaction first changed a file; a page this context read and kept before that is ISS-167's.
+        /// A data file on disk has changed while this transaction's commit writes (IOService.FileChangedOnDisk). Its
+        /// failed commit's undo writes back the files named here, and no other: one the commit never changed is as the
+        /// transaction found it, and writing it back could only fail (another program holds it) or do nothing.
         /// </summary>
-        private void RefuseOverAnotherContextsWrites()
+        internal void NoteFileChanged(string filePath)
         {
-            if (bytesOnDisk == null)
+            if (!committing || string.IsNullOrEmpty(filePath))
                 return;
-            foreach (var kvp in snapshots)
-            {
-                byte[] now = OnDisk(kvp.Key);
-                if (now == null || !now.AsSpan().SequenceEqual(kvp.Value))
-                    throw new TransactionException(Overwritten(kvp.Key));
-            }
-            foreach (string created in newlyCreatedFiles)
-            {
-                if (OnDisk(created) != null)
-                    throw new TransactionException(Overwritten(created));
-            }
+            lock (changedByCommit)
+                changedByCommit.Add(Path.GetFullPath(filePath));
         }
 
-        // A file that can't be read (another program holds it) can't be compared: the commit is refused, before its
-        // journal, as for a file another context wrote.
-        private byte[] OnDisk(string file)
+        /// <summary>
+        /// A file the commit's writes didn't report (NoteFileChanged) that is still not as the transaction found it:
+        /// missing, or other bytes. So a write path that ever fails to report, or a rename that reports a failure it
+        /// didn't have, is still undone, not left as half a commit with its journal deleted. A file that can't be read
+        /// and wasn't reported is left: its write failed before changing it (another program holds it), and writing it
+        /// back could only fail too. Only the failed commit's undo asks; the open's recovery writes every before-image
+        /// back.
+        /// </summary>
+        private static bool NotAsBefore(string filePath, byte[] before)
         {
+            if (!File.Exists(filePath))
+                return true;
             try
             {
-                return bytesOnDisk(file);
+                return !File.ReadAllBytes(filePath).AsSpan().SequenceEqual(before);
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {
-                throw new TransactionException("'" + Path.GetFileName(file) + "' couldn't be read to compare it with what this transaction first read (" +
-                    e.Message + "). The commit is refused, and nothing of it was written.", e);
+                return false;
             }
         }
 
-        private static string Overwritten(string file) =>
-            "Another context wrote '" + Path.GetFileName(file) + "' after this transaction first changed it. The commit is refused, and nothing " +
-            "of it was written: it would have overwritten that write with the file as this transaction read it.";
-
         // filesWritten: the commit got past its journal, so some of its files may be written. Before that nothing
-        // was, and nothing is put back: another context may have written those files since this one read them.
+        // was (a transaction writes no data file before its commit, ISS-166), and nothing is put back.
         private void UndoFailedCommit(Exception commitFailure, bool filesWritten)
         {
             try
@@ -202,7 +192,11 @@ namespace Xod.Services
                     if (!filesWritten)
                         return;
                     FaultInjection.Step("undo");
-                    RestoreBeforeImages(snapshots, newlyCreatedFiles);
+                    List<KeyValuePair<string, byte[]>> changed;
+                    lock (changedByCommit)
+                        changed = snapshots.Where(s => changedByCommit.Contains(Path.GetFullPath(s.Key)) || NotAsBefore(s.Key, s.Value)).ToList();
+                    // Every file it created that is there: the commit made it (it wasn't there before the transaction).
+                    RestoreBeforeImages(changed, newlyCreatedFiles);
                     dropIndexFiles?.Invoke();
                 });
                 DeleteWalJournal();
@@ -243,45 +237,38 @@ namespace Xod.Services
             var doc = new XDocument(rootElm);
             string tmpWal = walFilePath + ".tmp";
 
-            // The journal's name is the database's: one already there is another commit's, under way in another
-            // context, or one that didn't finish and waits for an open that has the database to itself. Written
-            // over, or deleted after this commit, it would be lost, and with it the only way to undo that commit.
+            // The journal's name is the database's: one already there is a commit that didn't finish (this context's,
+            // failed and not undone, which refuses writes until the next open undoes it). Written over, or deleted after
+            // this commit, it would be lost, and with it the only way to undo that commit.
             const string JournalThere =
-                "Another commit's journal is in the database folder (one under way in another context, or one that didn't finish and is undone when the database is next opened by a context that has it to itself); this commit is refused.";
+                "A commit that didn't finish left its journal in the database folder; it is undone when the database is next opened. This commit is refused.";
             if (File.Exists(walFilePath) || File.Exists(tmpWal))
                 throw new TransactionException(JournalThere);
 
             FaultInjection.Step("journal-writing");
             try
             {
-                // Held open from here until the journal is deleted (DeleteWalJournal), or this commit has failed and
-                // can't be undone (ReleaseJournalHold): a journal its context holds is a commit under way; one nobody
-                // holds won't finish (JournalIn, ISS-147). Shared for reading and deletion, so the move below and the
-                // deletion work under the hold (on Windows they need FileShare.Delete; on Unix the hold is flock
-                // LOCK_SH, which follows the file through the rename). A probe that shares nothing is refused while it
-                // is held: Windows for the sharing, Unix for the lock (.NET takes LOCK_EX for FileShare.None,
-                // SafeFileHandle.Unix.cs), as for the lock files (IOService.OpenOneLockFile). Not on a Unix network or
-                // unrecognised file system: .NET takes no LOCK_SH for a file opened for writing there (CanLockTheFile:
-                // nfs, smb, smb2, cifs, or a type it can't read, release/9.0), so this hold isn't seen and the commit
-                // reads as one that won't finish: writes beside it are refused, not let in.
-                journalHold = new FileStream(tmpWal, FileMode.CreateNew, FileAccess.Write, FileShare.Read | FileShare.Delete);
-                journalStaged = true;
-                doc.Save(journalHold);
-                journalHold.Flush(flushToDisk: false);
+                // Written whole under its staging name, then moved into place: after a process crash a journal at its
+                // name is whole. Not after a power cut: like the pages, it isn't flushed to the device (flushToDisk: false).
+                using (var stream = new FileStream(tmpWal, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    journalStaged = true;
+                    doc.Save(stream);
+                    stream.Flush(flushToDisk: false);
+                }
                 FaultInjection.Step("journal-staged");
                 File.Move(tmpWal, walFilePath, overwrite: false);
             }
             catch (IOException e) when (!journalStaged || File.Exists(walFilePath))
             {
-                // Another commit's staged or placed journal appeared between the check and here.
+                // A journal appeared between the check and here: not this commit's to write over.
                 throw new TransactionException(JournalThere, e);
             }
             journalStaged = false;
             journalWritten = true;
         }
 
-        // This commit's journal, staged or in place: never another's. Deleted under the hold, which goes after it,
-        // so no other context finds it there and unheld (ISS-147).
+        // This commit's journal, staged or in place: never another's.
         private void DeleteWalJournal()
         {
             if (journalStaged)
@@ -293,76 +280,6 @@ namespace Xod.Services
             {
                 File.Delete(walFilePath);
                 journalWritten = false;
-            }
-            ReleaseJournalHold();
-        }
-
-        // The journal's hold goes: after its deletion, or with the commit over and the journal kept because it
-        // couldn't be undone. Kept, it now reads as one that won't finish, and every context refuses to write beside
-        // it until an open that has the database to itself undoes it (JournalIn).
-        private void ReleaseJournalHold()
-        {
-            journalHold?.Dispose();
-            journalHold = null;
-        }
-
-        /// <summary>This context's commit holds its journal: the one journal its own writes may go beside.</summary>
-        internal bool HoldsJournal => journalHold != null;
-
-        internal enum JournalState
-        {
-            /// <summary>No journal in the folder.</summary>
-            None,
-            /// <summary>A commit under way: its context holds the journal.</summary>
-            UnderWay,
-            /// <summary>A commit that won't finish (cut short by a crash, or failed and not undone): nobody holds its
-            /// journal, which the next open that has the database to itself undoes.</summary>
-            WontFinish,
-        }
-
-        /// <summary>
-        /// Whether the folder holds a commit's journal, and whether that commit is under way (ISS-147). Whatever is
-        /// written beside a journal that is later undone is undone with it, after its context was told it was made:
-        /// the files the journal names go back to their images from before that commit. A journal nobody holds is
-        /// undone at the next open that has the database to itself. A commit is told apart from a crash by the hold
-        /// (WriteWalJournal): a probe that shares nothing is refused while it is held. Where the hold can't be seen
-        /// (file locking switched off on Unix, a Unix network file system, or a probe that fails for another reason),
-        /// the journal is read as one that won't finish, the reading that writes nothing: a commit under way is then
-        /// refused beside rather than waited for. The reading is a guess where the probe fails for a reason other than
-        /// the sharing: a journal this user can't open reads as under way until the wait runs out, so the refusal's
-        /// message can name the wrong cause; what is refused is right either way.
-        /// </summary>
-        internal static JournalState JournalIn(string rootDirectory)
-        {
-            if (string.IsNullOrEmpty(rootDirectory))
-                return JournalState.None;
-            string journal = Path.Combine(rootDirectory, "transaction.xwal");
-            if (!File.Exists(journal))
-                return JournalState.None;
-            if (IOService.FileLockingSwitchedOff)
-                return JournalState.WontFinish;
-            try
-            {
-                using (new FileStream(journal, FileMode.Open, FileAccess.Read, FileShare.None)) { }
-                return JournalState.WontFinish;
-            }
-            catch (FileNotFoundException)
-            {
-                return JournalState.None; // its commit ended meanwhile
-            }
-            catch (IOException e) when (IOService.HeldByAnother(e))
-            {
-                return JournalState.UnderWay;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // Windows refuses an open of a file whose deletion is pending (a commit that has just ended, under its
-                // hold): read as under way, and asked again.
-                return File.Exists(journal) ? JournalState.UnderWay : JournalState.None;
-            }
-            catch (IOException)
-            {
-                return File.Exists(journal) ? JournalState.WontFinish : JournalState.None;
             }
         }
 
@@ -471,8 +388,6 @@ namespace Xod.Services
                 {
                     // Nothing to put back on disk: the transaction wrote no data file (IOService.RefuseWriteInsideTransaction)
                     // and deleted none (its deletes wait for the commit, ISS-166); onRollback forgets them with its batch.
-                    // Writing its before-images back here took back what other contexts had written to those files
-                    // since (ISS-164).
                     onRollback?.Invoke(() => { });
                 }
                 finally

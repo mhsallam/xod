@@ -11,9 +11,9 @@ namespace Xod.Services
     /// <summary>
     /// The one owner of <c>[Crypto(AES256)]</c> keys (ISS-050, ISS-058; PLAN-049).
     ///
-    /// A database encrypts its AES256 values with one random 256-bit <b>data key</b>, made with the database to
-    /// one context (ISS-150): when it is created, after a password change, or else at the first value, refused
-    /// then while another context has it open. The data key is stored in the database file in <c>PropertyKey</c> elements, each
+    /// A database encrypts its AES256 values with one random 256-bit <b>data key</b>, made by a context that holds
+    /// the database (ISS-150, PLAN-064): when it is created, after a password change, or else at the first value; a
+    /// context with no hold is refused. The data key is stored in the database file in <c>PropertyKey</c> elements, each
     /// the key encrypted under a key derived from a <b>protector</b>: the application's
     /// <see cref="DatabaseOptions.PropertyEncryptionKey"/> or the database password. A new key is protected
     /// by the application key when the context has one, else by the password. With neither there is
@@ -31,7 +31,8 @@ namespace Xod.Services
     /// encrypted with the data key.
     ///
     /// The database file is the record. The data key, once opened, is cached; anything that decides from
-    /// the file reads it afresh (<see cref="IOService.Reopen"/>), since another context may have changed it.
+    /// the file reads it afresh (<see cref="IOService.Reopen"/>). With one context at a time (PLAN-064) only a file
+    /// replaced from outside can differ from the cache; the re-read is the owner's guard, not a coordination.
     /// </summary>
     internal sealed class PropertyKeyService
     {
@@ -364,9 +365,8 @@ namespace Xod.Services
             return false;
         }
 
-        /// <summary>The data key from <paramref name="file"/> (read afresh by the caller: another context may
-        /// have made the key since this one opened the database), made if there is none and
-        /// <paramref name="create"/>.</summary>
+        /// <summary>The data key from <paramref name="file"/> (read afresh by the caller, the owner's guard: see
+        /// the class), made if there is none and <paramref name="create"/>.</summary>
         private byte[] DataKeyUnlocked(XFile file, bool create, string propertyName)
         {
             if (dataKey != null)
@@ -402,11 +402,8 @@ namespace Xod.Services
                     "without one, anyone with XOD could decrypt the value.");
 
             // Only a database with no key gets here: 2.0.2's, one created with no secret and opened since with one, or
-            // one whose key a password removal dropped (no value used it). A key made now needs the database to itself.
-            return MakeDataKeyUnlocked(propertyName,
-                $"Property '{propertyName}' is the first [Crypto(AES256)] value of this database, which makes the database's key, and " +
-                "that needs the database to itself: another context or process has it open. Write it with the others closed, or set " +
-                "the password with the others closed (Secure or ChangePassword makes the key).");
+            // one whose key a password removal dropped (no value used it).
+            return MakeDataKeyUnlocked();
         }
 
         /// <summary>
@@ -422,19 +419,18 @@ namespace Xod.Services
             {
                 if (dataKey != null || DatabaseFile().Root().Elements(KeyElement).Any())
                     return;
-                MakeDataKeyUnlocked(propertyName: null, refusal: null);
+                MakeDataKeyUnlocked();
             }
         }
 
         /// <summary>
-        /// ISS-150: the data key is made with the database to this context, refused (with <paramref name="refusal"/>)
-        /// while another context or process has it open. Made beside another, both read the database file, each made
-        /// a key, and the last save won: the other's values could never be read. The file is read afresh under the
-        /// hold, since another context may have made a key before letting go; that one is opened instead.
+        /// ISS-150: the data key is made with the database to this context, which every context with a hold has
+        /// (PLAN-064); one without a hold is refused. The file is read afresh, and a key it already records is opened
+        /// instead of a second made (when contexts could open side by side, each made one and the last save won).
         /// Written now, outside any batch or transaction: values written under a key that never reached the file
         /// could never be read; a stored key no value uses costs nothing.
         /// </summary>
-        private byte[] MakeDataKeyUnlocked(string propertyName, string refusal)
+        private byte[] MakeDataKeyUnlocked()
         {
             byte[] made = null;
             ioService.WithDatabaseToItself(() =>
@@ -442,12 +438,12 @@ namespace Xod.Services
                 XFile file = DatabaseFile();
                 if (file.Root().Elements(KeyElement).Any())
                 {
-                    made = DataKeyUnlocked(file, create: false, propertyName);
+                    made = DataKeyUnlocked(file, create: false, propertyName: null);
                     return;
                 }
                 made = NewDataKeyUnlocked(file, (applicationKey != null ? ProtectorApplication : ProtectorPassword, applicationKey ?? password()));
                 ioService.SaveNow(file);
-            }, refusal);
+            });
             return dataKey = made;
         }
 

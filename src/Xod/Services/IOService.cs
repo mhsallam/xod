@@ -59,9 +59,9 @@ namespace Xod.Services
 
         // ISS-166: the data files this context's open transaction deleted, by name (Delete); never an index file, which
         // the index service deletes at the commit (IndexService.DeleteIndexFile). A transaction changes no data file
-        // before its commit, deletes included: each stays on disk, whole, for every other context, and is gone for
-        // this one alone (DeletedHere, asked by each of its reads of the disk). Its commit deletes them, holding the
-        // commit gate exclusively, with their bytes in its journal (EndBatch); a rollback, or a commit refused before
+        // before its commit, deletes included: each stays on disk, whole, and is gone for this context (DeletedHere,
+        // asked by each of its reads of the disk). Its commit deletes them, with their
+        // bytes in its journal (EndBatch); a rollback, or a commit refused before
         // its journal, forgets them (DiscardBatch, DiscardPendingWrites). Before, they were renamed aside at once
         // ("<file>.xdel", ISS-107): another context then saw a dropped table gone and made a new one at its fixed name,
         // the rollback couldn't put the old one back over it, and the next open dropped the old one with its rows. An
@@ -76,6 +76,12 @@ namespace Xod.Services
         // records its rows' schema: XmlEngine.NewFileDocument).
         internal Func<Type, string, XDocument> ItemWriterDelegate { get; set; }
         internal Action<string> BeforeFileMutate { get; set; }
+        // A data file on disk has changed, or may have from here (a write in place has opened it): called after a
+        // whole file's rename into place, a delete, or the open of a write in place, never for a write that failed
+        // before any of those. A failed commit's undo writes back the files this named, and any other the transaction
+        // changed that isn't on disk as it found it (XodTransaction.NotAsBefore): one the commit never changed
+        // (another program held it) is left alone, and an undo onto it would fail too.
+        internal Action<string> FileChangedOnDisk { get; set; }
         internal Func<bool> HasActiveTransaction { get; set; }
 
         public IOService(
@@ -100,7 +106,9 @@ namespace Xod.Services
             }
             else
             {
-                noFolderAtOpen = true;
+                // No folder, no hold, and nothing written (the engine creates the folder first when it creates a
+                // database, so an open gets here only to fail on its missing database file).
+                NoHoldReason = "The database's folder '" + this.root + "' isn't there: this context holds no lock on the database.";
             }
         }
 
@@ -176,9 +184,9 @@ namespace Xod.Services
             }
         }
 
-        // The commit's deletes, holding the commit gate exclusively (RequireCommitGate asks), after its journal, which
-        // holds each file's bytes: one that fails fails the commit, and its undo writes back every file it deleted. A
-        // file the batch writes again is left to that write (EndBatch). Data files only: an index file never waits here.
+        // The commit's deletes, after its journal, which holds each file's bytes: one that fails fails the commit, and
+        // its undo writes back every file it deleted. A file the batch writes again is left to that write (EndBatch).
+        // Data files only: an index file never waits here.
         private void DeletePending(List<string> names)
         {
             if (names == null)
@@ -188,8 +196,8 @@ namespace Xod.Services
                 if (dirtyBatchFiles.Contains(name) || dirtyBatchRawPages.Contains(name))
                     continue;
                 string fullPath = Path.Combine(root, name);
-                RequireCommitGate(fullPath);
                 File.Delete(fullPath);
+                FileChangedOnDisk?.Invoke(fullPath);
             }
         }
 
@@ -211,13 +219,10 @@ namespace Xod.Services
             rawPages.Clear();
             try
             {
-                InCommitGate(() =>
-                {
-                    if (toFlush.Count > 0)
-                        FlushFilesList(toFlush);
-                    if (rawToFlush.Count > 0)
-                        FlushRawPagesList(rawToFlush);
-                });
+                if (toFlush.Count > 0)
+                    FlushFilesList(toFlush);
+                if (rawToFlush.Count > 0)
+                    FlushRawPagesList(rawToFlush);
             }
             catch
             {
@@ -259,13 +264,10 @@ namespace Xod.Services
                 if (files.Count == 0 && rawPages.Count == 0)
                     return;
                 FaultInjection.Step("statement-saving");
-                InCommitGate(() =>
-                {
-                    if (files.Count > 0)
-                        FlushFilesList(files);
-                    if (rawPages.Count > 0)
-                        FlushRawPagesList(rawPages);
-                });
+                if (files.Count > 0)
+                    FlushFilesList(files);
+                if (rawPages.Count > 0)
+                    FlushRawPagesList(rawPages);
                 saved.Written(files, rawPages);
                 dirtyBufferedFiles.Written(files);
                 dirtyBufferedRawPages.ExceptWith(rawPages);
@@ -390,8 +392,6 @@ namespace Xod.Services
                 finally
                 {
                     ReleaseHold();
-                    ReleaseCreationGate(); // a creation that failed before ShareHoldOnceCreated
-                    ReleaseCommitGate();
                 }
             }
         }

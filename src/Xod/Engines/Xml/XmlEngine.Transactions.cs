@@ -81,8 +81,6 @@ namespace Xod.Engines.Xml
                     },
                     onFaulted: message => transactionFault = message,
                     dropIndexFiles: indexService.DropIndexFiles,
-                    holdCommitGate: ioService.HoldCommitGateExclusively,
-                    bytesOnDisk: ioService.BytesOnDisk,
                     onDispose: () =>
                     {
                         activeTransaction = null;

@@ -91,6 +91,29 @@ namespace Xod.Tests
             CrashDb.HoldsBatches(dir, "first", 2);
         }
 
+        // With one context at a time nothing needs a lock file of its own beside the hold's two (PLAN-064 section 5):
+        // no gate for a hold given up and taken back, no commit gate between contexts' writes and commits.
+        [Fact]
+        public void A_database_s_folder_holds_only_the_hold_s_lock_files()
+        {
+            string path = NewDatabase("lock-files");
+            using (var db = new XodContext(path))
+            {
+                using (var tx = db.BeginTransaction())
+                {
+                    db.Insert(new OneItem { Name = "in a transaction" });
+                    tx.Commit();
+                }
+                db.Insert(new OneItem { Name = "outside" });
+                db.Secure("pw");
+            }
+            using (var db = new XodContext(path, "pw"))
+                Assert.Equal(3, db.Count<OneItem>());
+
+            var locks = Directory.GetFiles(Path.GetDirectoryName(path)!, "*.lock").Select(Path.GetFileName).OrderBy(f => f, StringComparer.Ordinal);
+            Assert.Equal(new[] { "one.xod.lock", "xod.lock" }, locks);
+        }
+
         // The CLI's reads open the database as a context does: refused while an application has it open.
         [Fact]
         public void A_read_only_use_is_refused_too()

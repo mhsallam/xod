@@ -249,7 +249,7 @@ namespace Xod.Services
         /// again; a marker that can't be deleted stays (an empty one costs nothing; a marked one keeps the index files
         /// untrusted, each rebuilt from the pages when needed, until it can be). A marker still held is a live
         /// context's or another program's, and is left; with the database to itself, though, no context's marker can be
-        /// live but for one in a password change that gave up its shared hold to take the database alone, so a held
+        /// live (every context holds it alone, PLAN-064), so a held
         /// marker that isn't empty drops the indexes too (ISS-102: one a backup tool held kept a crash's stale index
         /// trusted). Dropping is always safe: the indexes are rebuilt from the pages; the marker stays until it can be
         /// probed.

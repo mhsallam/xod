@@ -100,13 +100,13 @@ namespace Xod.Tests
             CrashDb.HoldsBatches(dir, "first", 1);
         }
 
-        // A context whose close fails (its last flush) still lets go of the database: with LockDatabase, the next
-        // open in the same process used to be refused until the garbage collector ran.
+        // A context whose close fails (its last flush) still lets go of the database: the next open in the same
+        // process used to be refused until the garbage collector ran (with LockDatabase then; every open holds it now).
         [Fact]
         public void A_close_that_fails_lets_go_of_the_database()
         {
             string dir = CrashDb.New(tempRoot, "close-fails");
-            var run = XodCrashSafetyTests.RunWriterProcess("txwrite-commit", dir, Buffered, ("XOD_TEST_LOCK", "1"), ("XOD_FAIL_AT_STEP", "closing"));
+            var run = XodCrashSafetyTests.RunWriterProcess("txwrite-commit", dir, Buffered, ("XOD_FAIL_AT_STEP", "closing"));
             Assert.Contains("DISPOSE FAILED", run.Output);
             Assert.Contains("REOPENED", run.Output);
         }
@@ -159,5 +159,74 @@ namespace Xod.Tests
             Assert.False(File.Exists(Path.Combine(dir, "transaction.xwal.tmp")));
             Assert.False(File.Exists(Path.Combine(dir, "transaction.xwal")));
         }
+
+        // A commit that drops a table and makes it again deletes the old pages and writes new ones; failed once its
+        // files are written, its undo puts the deleted pages back, and the old table is there again for the context
+        // and the next open.
+        [Fact]
+        public void A_failed_commit_puts_back_the_pages_it_deleted()
+        {
+            string dir = Path.Combine(tempRoot, "drop-fail");
+            Directory.CreateDirectory(dir);
+            var run = XodCrashSafetyTests.RunWriterProcess("txdrop-fail", dir, ("XOD_FAIL_AT_STEP", "commit-written"));
+            Assert.Contains("COMMIT FAILED", run.Output);
+            Assert.DoesNotContain("couldn't be undone", run.Output);
+            Assert.Contains("SEEN 1:note 1,2:note 2,3:note 3", run.Output);
+            Assert.Contains("REOPENED 1:note 1,2:note 2,3:note 3", run.Output);
+            Assert.False(File.Exists(Path.Combine(dir, "transaction.xwal")), run.Output);
+        }
+
+        // A commit whose page another program holds (a virus scanner, a backup tool) fails on that page and is undone.
+        // The undo writes back only what the commit wrote: the page it never replaced is left alone, so the undo
+        // doesn't fail on it too, the context goes on writing, and no journal is left. It used to write every page
+        // the transaction changed back, and on the held one failed and refused every write until the next open.
+        // Windows only: elsewhere a file another process opens doesn't keep a rename out.
+        [Theory]
+        [InlineData(FileShare.None)]
+        [InlineData(FileShare.Read)]
+        public void A_commit_that_fails_on_a_page_another_program_holds_is_undone_and_the_context_carries_on(FileShare share)
+        {
+            if (!OperatingSystem.IsWindows())
+                return;
+            string dir = Path.Combine(tempRoot, "held-" + share);
+            Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, "notes.xod");
+            var options = new DatabaseOptions { InitialCreate = true };
+            using (var db = new XodContext(path, options: options))
+            {
+                for (int id = 1; id <= 3; id++)
+                    db.Insert(new HeldPageNote { Id = id, Text = "note " + id });
+            }
+
+            using (var db = new XodContext(path, options: options))
+            {
+                using (var tx = db.BeginTransaction())
+                {
+                    var note = db.Find<HeldPageNote>(n => n.Id == 1);
+                    note.Text = "from the transaction";
+                    Assert.True(db.Update(note));
+                    string page = Assert.Single(Directory.GetFiles(dir, "*.xpag"));
+                    using (new FileStream(page, FileMode.Open, FileAccess.Read, share))
+                    {
+                        var e = Assert.ThrowsAny<Exception>(() => tx.Commit());
+                        Assert.DoesNotContain("couldn't be undone", e.Message);
+                    }
+                }
+                Assert.False(File.Exists(Path.Combine(dir, "transaction.xwal")));
+                Assert.Equal("note 1", db.Find<HeldPageNote>(n => n.Id == 1).Text);
+                db.Insert(new HeldPageNote { Id = 4, Text = "after" });
+            }
+
+            using var reopened = new XodContext(path, options: options);
+            Assert.Equal("note 1", reopened.Find<HeldPageNote>(n => n.Id == 1).Text);
+            Assert.Equal(4, reopened.Count<HeldPageNote>());
+        }
+    }
+
+    public class HeldPageNote
+    {
+        [PrimaryKey]
+        public int Id { get; set; }
+        public string Text { get; set; }
     }
 }

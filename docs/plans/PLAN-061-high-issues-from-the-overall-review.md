@@ -4,6 +4,8 @@
 - **Status**: Done (2026-11-15). `ISS-147` done as a mitigation with named debt (section 2); `ISS-138` and `ISS-139`
   resolved (section 3); `ISS-148`, `ISS-149` and `ISS-150` resolved (section 4); `ISS-129` resolved (section 5);
   `ISS-151` resolved, its digests as a mitigation with `ISS-171` filed (section 6).
+- **Superseded in part** by [`PLAN-064`](PLAN-064-one-context-per-database.md) (2026-11-16): a database is open in one context
+  at a time, so the refusal of writes beside another context's journal (`ISS-147`), of an open beside an unfinished password change (`ISS-148`), and the gate `xod.gate.lock` (the review of `ISS-148` and `ISS-150`) are gone; what a crash leaves is undone by the next open, alone; the code is removed (`PLAN-064` section 5).
 - **Related**: [`REVIEW-2026-11-14`](../REVIEW-2026-11-14-overall.md) (`TASK-073`, which filed them),
   [`PLAN-051`](PLAN-051-commit-failure-and-shared-access.md) section 7 (the journal's recorded debt)
 
