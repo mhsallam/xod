@@ -5,8 +5,8 @@ release itself are the owner's decision; nothing here is published. Each item li
 records it. The last release: [2.0.2](RELEASE-NOTES-2.0.2.md).
 
 **Prepared for release on 2026-11-16** (`TASK-078`): everything in the tree as of `7e2a5e7`, the commits since
-`v2.0.2`. The version number is still open (section "Version"); `src/Xod/Xod.csproj` stays at 2.0.2 until it is
-decided, as do the tag and the release.
+`v2.0.2`. To be released as **2.0.3** (section "Version"); `src/Xod/Xod.csproj` stays at 2.0.2 until the release,
+as do the tag and the release itself.
 
 ## Upgrading from 2.0.2
 
@@ -45,15 +45,14 @@ The changes since 2.0.2 add no public type and remove none. One public method is
 - a password change refused where it ran before.
 
 Code written for 2.0.2 compiles unchanged (with a warning where it calls `ElementMatch`), but a program can now see a
-refusal it never saw, or miss a match it used to get. Two numbers fit:
-- **2.1.0**, recommended: a minor version says the upgrade needs reading (the section above), where a patch says
-  it doesn't.
-- **2.0.3**: as 2.0.2 itself was shipped (its minor-version changes released as a patch, `RELEASE-NOTES-2.0.2.md`
-  section "Version").
+refusal it never saw, or miss a match it used to get. A minor version (2.1.0) would say that; this release is
+**2.0.3** all the same (decided 2026-11-16): 2.0 has few installs so far, and a patch keeps the 2.0 line as one, as
+2.0.2 itself was shipped (its minor-version changes released as a patch, `RELEASE-NOTES-2.0.2.md` section
+"Version"). The section "Upgrading from 2.0.2" above is what makes up for the patch number.
 
-Not decided yet. At the release: the number goes into `src/Xod/Xod.csproj`, this file becomes
-`RELEASE-NOTES-<version>.md` with the date, the site's `**Next release:**` labels become the number, and the tag
-`v<version>` and the GitHub release start the `publish` workflow, which waits for approval.
+At the release: 2.0.3 goes into `src/Xod/Xod.csproj`, this file becomes `RELEASE-NOTES-2.0.3.md` with the date, the
+site's `**Next release:**` labels become 2.0.3, and the tag `v2.0.3` and the GitHub release start the `publish`
+workflow, which waits for approval.
 
 ## Site pages to update with the release
 
