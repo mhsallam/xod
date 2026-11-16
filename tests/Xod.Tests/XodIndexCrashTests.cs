@@ -114,32 +114,6 @@ namespace Xod.Tests
             Assert.Empty(Directory.GetFiles(dir, "*.xidxdirty"));
         }
 
-        // While another context has the database open, what it left may be its own, under way: an open doesn't
-        // drop its indexes, as it doesn't recover its journal (PLAN-051). The next open alone does.
-        [Fact]
-        public void An_open_drops_no_index_while_another_context_has_the_database_open()
-        {
-            string dir = Seeded("shared");
-            string path = Path.Combine(dir, "crash.xod");
-            using (var first = new XodContext(path))
-            {
-                first.Insert(new CrashCustomer { Name = "first", Orders = new() });
-                Assert.Single(Directory.GetFiles(dir, "*.xidxdirty"));
-                var indexes = Directory.GetFiles(dir, "*.xidx").Select(f => (f, File.GetLastWriteTimeUtc(f))).ToList();
-
-                using (var second = new XodContext(path))
-                {
-                    Assert.Equal(26, second.Count<CrashCustomer>());
-                    Assert.All(indexes, i => Assert.Equal(i.Item2, File.GetLastWriteTimeUtc(i.f)));
-                }
-                Assert.Single(Directory.GetFiles(dir, "*.xidxdirty"));
-                first.Insert(new CrashCustomer { Name = "first again", Orders = new() });
-            }
-            Assert.Empty(Directory.GetFiles(dir, "*.xidxdirty"));
-            using var db = new XodContext(path);
-            FindsEveryRow(db, 27, 75);
-        }
-
         // A context that writes and closes cleanly leaves no marker, and the next open keeps its indexes. A crash
         // after a flush leaves an empty one, which an open deletes and nothing more.
         [Fact]
@@ -161,31 +135,6 @@ namespace Xod.Tests
             using (var db = new XodContext(Path.Combine(dir, "crash.xod")))
                 FindsEveryRow(db, 27, 75);
             Assert.All(indexes, i => Assert.Equal(i.Item2, File.GetLastWriteTimeUtc(i.f)));
-        }
-        // Review of TASK-064 (F1): a writer that crashes while another context has the database open leaves a
-        // marker no context holds, which an open can't act on (it isn't alone). Every context then reads no index
-        // file while that marker is there: each index load asks whether a marked marker's context is still alive
-        // (a live context holds its marker locked, so a probe of it is refused). It used to trust the stale index.
-        [Fact]
-        public void A_writer_s_crash_while_another_context_has_the_database_open_leaves_no_index_trusted()
-        {
-            string dir = Seeded("crash-while-open");
-            string path = Path.Combine(dir, "crash.xod");
-            using (var holder = new XodContext(path))
-            {
-                Assert.Equal(25, holder.Count<CrashCustomer>());
-                var crash = XodCrashSafetyTests.RunWriterProcess("onebatch", dir, ("XOD_CRASH_AT_STEP", "batch-written"));
-                Assert.DoesNotContain("COMMITTED", crash.Output);
-                foreach (var index in Directory.GetFiles(dir, "*.xidx"))
-                    File.SetLastWriteTimeUtc(index, DateTime.UtcNow.AddMinutes(1));
-
-                using (var other = new XodContext(path))
-                    FindsEveryRow(other, 50, 150);
-                Assert.Single(Directory.GetFiles(dir, "*.xidxdirty"));
-            }
-            using (var alone = new XodContext(path))
-                FindsEveryRow(alone, 50, 150);
-            Assert.Empty(Directory.GetFiles(dir, "*.xidxdirty"));
         }
 
         // Review of TASK-064 (F3): a flush inside a transaction wrote its index changes while its pages waited in

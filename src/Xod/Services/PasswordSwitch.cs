@@ -277,30 +277,6 @@ namespace Xod.Services
                 File.Delete(staged);
         }
 
-        /// <summary>
-        /// ISS-148: run by an open that takes the database beside other contexts (IOService.OpenAndRecover), which
-        /// recovers nothing. A switch committed and not finished (a file it replaces was open elsewhere; its context
-        /// finishes it at its next write, or the next open alone does) refuses the open: until then the database's
-        /// files are under two passwords, and a context opened under the old one went on writing under it, to files
-        /// the switch never replaced. The commit record on disk says so, not the switching context's memory, so an open
-        /// beside it reads it (an open alone finishes the switch instead, IOService.RecoverInterruptedWrites, and a
-        /// context taking its shared hold back after holding the database alone holds the gate meanwhile, so no switch
-        /// ran in between: IOService.GateName). A record that never committed doesn't refuse: its files are all under
-        /// the old password, as they are read. The caller already holds its shared hold, so no switch (which needs the
-        /// database alone) can commit after this look.
-        /// </summary>
-        internal static void RefuseBesideUnfinishedSwitch(string root)
-        {
-            if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
-                return;
-            foreach (string journal in Directory.GetFiles(root, "*" + JournalSuffix))
-            {
-                if (CommittedFiles(journal) != null)
-                    throw new XodException("A password change made by another context or process isn't finished: a file it replaces " +
-                        "was open elsewhere. The database opens once that context writes again or closes.");
-            }
-        }
-
         // The one reading of a commit record: the files a committed switch replaces, or null for a switch that never
         // committed (a record cut short) or a record gone meanwhile (its context finished it). Throws while the record
         // is held: the context switching the password has it open, and its staged files are live. Read sharing its

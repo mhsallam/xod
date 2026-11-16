@@ -117,10 +117,8 @@ namespace Xod.Engines.Xml
                 this.password,
                 this.propertyService,
                 this.StorageFormat,
-                this.options.LockDatabase,
                 this.options.LockRetryTimeoutMs,
                 this.options.Durability == DurabilityMode.Buffered,
-                creating: IsNew,
                 checkFolder: () => DatabaseFiles.Recheck(file, resolvedPath));
             // Under the hold: another context may have created the file since it was looked for.
             IsNew = IsNew && !File.Exists(resolvedPath);
@@ -183,12 +181,12 @@ namespace Xod.Engines.Xml
                 this.LazyLoad = this.options.LazyLoad;
                 this.LazyLoadParent = this.options.LazyLoadParent;
 
-                // A new database's AES256 key is made now, while no other context can open it (ISS-150): made at the
-                // first value, beside another context making its own, the last save of the database file won.
+                // A new database's AES256 key is made now (ISS-150). With every context alone (PLAN-064) no other can make
+                // its own beside it either way.
                 if (IsNew)
                     this.propertyKeys.MakeKeyIfNone();
 
-                // A new database's file is on disk, recording its format: others may open it.
+                // A no-op since every context holds the database alone (PLAN-064; to go with its section 5).
                 this.ioService.ShareHoldOnceCreated();
             }
             catch

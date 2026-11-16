@@ -18,8 +18,7 @@ namespace Xod
         /// Converts the database in <paramref name="sourceDirectoryOrFile"/> (its folder, or its database file) to
         /// <paramref name="targetFormat"/> in <paramref name="targetDirectory"/>, and returns how many files it
         /// converted.
-        /// <para>The source is held alone while it is read, as a context opened with
-        /// <see cref="DatabaseOptions.LockDatabase"/> holds it: refused with <see cref="DatabaseLockedException"/>
+        /// <para>The source is held alone while it is read, as every context holds it (PLAN-064): refused with <see cref="DatabaseLockedException"/>
         /// while a context or process has it open, and no other can open it meanwhile. What a crash left in it (a
         /// commit or a password change that didn't finish) is recovered first, as an open would. Refused too: a
         /// database whose lock file can't be opened or created (nothing would then tell whether others have it open),

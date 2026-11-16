@@ -704,23 +704,9 @@ namespace Xod.Tests
         public void A_new_database_s_file_is_on_disk_after_the_open()
         {
             string path = NewDatabase("new-file");
-            using var first = new XodContext(path, options: new DatabaseOptions { InitialCreate = true });
-            Assert.True(File.Exists(path));
+            using (var first = new XodContext(path, options: new DatabaseOptions { InitialCreate = true }))
+                Assert.True(File.Exists(path));
             new XodContext(path, options: new DatabaseOptions { InitialCreate = false }).Dispose();
-        }
-
-        [Fact]
-        public void An_AES256_key_one_context_stored_survives_another_context_s_close()
-        {
-            string path = NewDatabase("aes-key");
-            var options = new DatabaseOptions { InitialCreate = true, PropertyEncryptionKey = "app-secret" };
-            var first = new XodContext(path, options: options);
-            var second = new XodContext(path, options: options);
-            first.Insert(new TrustSecret { Text = "s1" });
-            first.Dispose();
-            second.Dispose();
-            using var again = new XodContext(path, options: options);
-            Assert.Equal("s1", again.Select<TrustSecret>().Single().Text);
         }
 
         // ISS-103: a context's entry points refuse once it is closed, rather than write after its hold and marker

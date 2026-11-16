@@ -41,6 +41,9 @@ namespace Xod
         /// <see cref="StorageFormat.Binary"/>. To be removed in a major version.</summary>
         [System.Obsolete("EnableCompression has no effect. For smaller files use StorageFormat.Binary.")]
         public bool EnableCompression { get; set; }
+        /// <summary>Has no effect: every context holds its database alone, from its open to its disposal, and any other
+        /// open waits <see cref="LockRetryTimeoutMs"/> and is refused with <see cref="DatabaseLockedException"/>
+        /// (PLAN-064). Kept so code that sets it still compiles.</summary>
         public bool LockDatabase { get; set; } = false;
         public int LockRetryTimeoutMs { get; set; } = 0;
         public int TransactionTimeoutMs { get; set; } = 30000;

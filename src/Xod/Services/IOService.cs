@@ -83,10 +83,8 @@ namespace Xod.Services
             string password,
             PropertyService propertyService,
             StorageFormat storageFormat = StorageFormat.Xml,
-            bool lockDatabase = false,
             int lockRetryTimeoutMs = 0,
             bool bufferedDurability = false,
-            bool creating = false,
             Action checkFolder = null)
         {
             this.path = path;
@@ -98,7 +96,7 @@ namespace Xod.Services
 
             if (!string.IsNullOrEmpty(this.root) && Directory.Exists(this.root))
             {
-                OpenAndRecover(lockDatabase, lockRetryTimeoutMs, creating, checkFolder);
+                OpenAndRecover(lockRetryTimeoutMs, checkFolder);
             }
             else
             {
@@ -368,7 +366,7 @@ namespace Xod.Services
         }
 
         // The hold is let go even when the last flush fails: the context is gone either way, and a hold kept would
-        // refuse every later open with LockDatabase, and every password change, until the garbage collector ran.
+        // refuse every later open (PLAN-064) until the garbage collector ran.
         /// <summary>
         /// Lets go of the database. It writes nothing: the engine's close (XmlEngine.Dispose) is the one place that
         /// decides whether the close writes, and has flushed what it may; a context that writes nothing more writes

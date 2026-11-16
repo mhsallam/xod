@@ -3,6 +3,7 @@
 // pointing at other bytes, so the read failed or gave wrong keys. And an index file another program held open failed
 // what touched it: a query, whose rebuilt index couldn't be saved over it, and a write, whose index couldn't be
 // deleted when it couldn't be loaded.
+// Since PLAN-064 no other context can have the database open: the file is replaced from outside (OutsideReplace).
 using System;
 using System.IO;
 using System.Linq;
@@ -53,23 +54,16 @@ namespace Xod.Tests
         }
 
         [Fact]
-        public void A_snapshot_another_context_wrote_doesn_t_spoil_blocks_not_yet_read()
+        public void A_snapshot_written_from_outside_doesn_t_spoil_blocks_not_yet_read()
         {
             string dir = Seeded("replaced", 100);
             using var reader = new XodContext(DatabasePath(dir));
             // Loads the index and reads the primary key's block only.
             Assert.NotNull(reader.Find<ReplacedIndexItem>(i => i.Id == 5));
 
-            // Another context adds rows, then replaces the file: it rebuilds the index from the pages and writes it
-            // whole, so every block moves.
-            using (var writer = new XodContext(DatabasePath(dir)))
-            {
-                writer.InsertRange(Enumerable.Range(101, 400)
-                    .Select(i => new ReplacedIndexItem { Id = i, Code = Code(i) + new string('x', 40), Name = "n" + i }).ToList());
-                writer.ClearCache();
-                File.Delete(IndexFile(dir));
-                Assert.NotNull(writer.Find<ReplacedIndexItem>(i => i.Id == 1));
-            }
+            // The file is replaced from outside, by one with 400 rows more, rebuilt from the pages and written whole, so
+            // every block moves.
+            ReplaceIndexWithMoreRows(dir);
 
             for (int i = 1; i <= 100; i++)
             {
@@ -98,12 +92,12 @@ namespace Xod.Tests
                 // Recorded against the Tag block, which isn't read yet; held in memory until a flush.
                 reader.Insert(new ReplacedIndexTagged { Id = 1000, Tag = "new" });
 
-                // Another context replaces the file with a snapshot of the pages on disk, without the row above.
-                using (var writer = new XodContext(DatabasePath(dir)))
+                // The file is replaced from outside by a snapshot of the pages on disk, without the row above.
+                OutsideReplace.Index(DatabasePath(dir), typeof(ReplacedIndexTagged), (other, copyIndex) =>
                 {
-                    File.Delete(tagIndex);
-                    Assert.NotNull(writer.Find<ReplacedIndexTagged>(i => i.Id == 1));
-                }
+                    File.Delete(copyIndex);
+                    Assert.NotNull(other.Find<ReplacedIndexTagged>(i => i.Id == 1));
+                });
 
                 Assert.Equal(1000, Assert.Single(reader.Query<ReplacedIndexTagged>(x => x.Tag == "new")).Id);
                 Assert.Equal(10, reader.Query<ReplacedIndexTagged>(x => x.Tag == "t3").Count());
@@ -114,13 +108,24 @@ namespace Xod.Tests
             Assert.Equal(10, again.Query<ReplacedIndexTagged>(x => x.Tag == "t3").Count());
         }
 
-        // Another context replaces the file: it rebuilds the index from the pages and writes it whole.
-        private static void ReplaceIndex(string dir)
-        {
-            using var writer = new XodContext(DatabasePath(dir));
-            File.Delete(IndexFile(dir));
-            Assert.NotNull(writer.Find<ReplacedIndexItem>(i => i.Id == 1));
-        }
+        // The file replaced from outside (OutsideReplace): rebuilt from the pages and written whole.
+        private static void ReplaceIndex(string dir) =>
+            OutsideReplace.Index(DatabasePath(dir), typeof(ReplacedIndexItem), (other, copyIndex) =>
+            {
+                File.Delete(copyIndex);
+                Assert.NotNull(other.Find<ReplacedIndexItem>(i => i.Id == 1));
+            });
+
+        // The same, with 400 rows more in the copy's pages, so the replacing file has more blocks.
+        private static void ReplaceIndexWithMoreRows(string dir) =>
+            OutsideReplace.Index(DatabasePath(dir), typeof(ReplacedIndexItem), (other, copyIndex) =>
+            {
+                other.InsertRange(Enumerable.Range(101, 400)
+                    .Select(i => new ReplacedIndexItem { Id = i, Code = Code(i) + new string('x', 40), Name = "n" + i }).ToList());
+                other.ClearCache();
+                File.Delete(copyIndex);
+                Assert.NotNull(other.Find<ReplacedIndexItem>(i => i.Id == 1));
+            });
 
         // A flush whose log has outgrown its snapshot writes the snapshot, reading every block first. A replaced file
         // made that read load the type again, after the flush had taken the type out of the set still to save, so the
@@ -145,7 +150,7 @@ namespace Xod.Tests
         }
 
         // A delete takes the row's key out of every index, reading each block it hasn't yet. A replaced file made that
-        // read load the type again in the middle of the delete, from the other context's file, which still had the
+        // read load the type again in the middle of the delete, from the replacing file, which still had the
         // keys the delete had already taken out, and the delete went on recording into the log it had dropped.
         [Fact]
         public void A_delete_after_a_replaced_snapshot_is_kept()
@@ -185,12 +190,7 @@ namespace Xod.Tests
                 Assert.NotNull(seven);
                 if (moreRows)
                 {
-                    using var writer = new XodContext(DatabasePath(dir));
-                    writer.InsertRange(Enumerable.Range(101, 400)
-                        .Select(i => new ReplacedIndexItem { Id = i, Code = Code(i) + new string('x', 40), Name = "n" + i }).ToList());
-                    writer.ClearCache();
-                    File.Delete(IndexFile(dir));
-                    Assert.NotNull(writer.Find<ReplacedIndexItem>(i => i.Id == 1));
+                    ReplaceIndexWithMoreRows(dir);
                 }
                 else
                 {

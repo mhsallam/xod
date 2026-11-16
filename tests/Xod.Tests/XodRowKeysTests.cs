@@ -252,11 +252,11 @@ namespace Xod.Tests
             }
         }
 
-        // Another context replaces the index file (it rebuilt the index) after this one read only the primary key's
+        // The index file is replaced from outside (OutsideReplace, rebuilt) after this one read only the primary key's
         // block. A change here that then reads another block finds the file replaced, and the index is loaded again
         // from the new file. Everything the change records must land in what was loaded: it used to keep writing to
         // the log it held before the load, which no flush writes, so the keys it moved came back after a reopen.
-        private string IndexReplacedByAnotherContext(string name)
+        private string IndexWrittenAsSnapshot(string name)
         {
             string path = DbPath(name);
             using (var db = new XodContext(path))
@@ -267,17 +267,17 @@ namespace Xod.Tests
             return path;
         }
 
-        private static void ReplaceIndexFrom(string path)
-        {
-            using var other = new XodContext(path);
-            File.Delete(IndexPath(path, typeof(RekeyRow)));
-            Assert.NotNull(other.Find<RekeyRow>(r => r.Id == 1)); // rebuilt; a new file, a new generation, at its close
-        }
+        private static void ReplaceIndexFrom(string path) =>
+            OutsideReplace.Index(path, typeof(RekeyRow), (other, copyIndex) =>
+            {
+                File.Delete(copyIndex);
+                Assert.NotNull(other.Find<RekeyRow>(r => r.Id == 1)); // rebuilt; a new file, a new generation, at its close
+            });
 
         [Fact]
         public void Keys_an_update_moves_after_the_index_file_was_replaced_are_saved()
         {
-            string path = IndexReplacedByAnotherContext("replaced-update");
+            string path = IndexWrittenAsSnapshot("replaced-update");
             using (var db = new XodContext(path))
             {
                 Assert.NotNull(db.Find<RekeyRow>(r => r.Id == 5)); // only the primary key's block read
@@ -308,7 +308,7 @@ namespace Xod.Tests
         [Fact]
         public void A_key_whose_block_was_read_before_the_index_file_was_replaced_is_still_taken_out()
         {
-            string path = IndexReplacedByAnotherContext("replaced-read-before");
+            string path = IndexWrittenAsSnapshot("replaced-read-before");
             using (var db = new XodContext(path))
             {
                 Assert.NotNull(db.Find<RekeyRow>(r => r.Id == 3)); // the primary key's block read, which the update
@@ -335,7 +335,7 @@ namespace Xod.Tests
         [Fact]
         public void Keys_a_delete_frees_after_the_index_file_was_replaced_stay_free()
         {
-            string path = IndexReplacedByAnotherContext("replaced-delete");
+            string path = IndexWrittenAsSnapshot("replaced-delete");
             using (var db = new XodContext(path))
             {
                 Assert.NotNull(db.Find<RekeyRow>(r => r.Id == 5));

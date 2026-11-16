@@ -671,9 +671,9 @@ namespace Xod.Services
                     BitConverter.ToInt32(hdrBuf.Slice(Xidx2HeaderBytes.Length)) != SnapshotWithGeneration)
                     return false; // not the layout this context writes (an older build's, or another writer's): snapshot
 
-                // Appended at the end of whatever the file holds. Another context may have appended too
-                // (concurrent writers need DatabaseOptions.LockDatabase); appending keeps its records and
-                // ours, where a snapshot from this context's memory would drop its records.
+                // Appended at the end of whatever the file holds: appending keeps the records already in it, where a
+                // snapshot from this context's memory would drop any it hasn't loaded. (No other context appends:
+                // PLAN-064.)
                 var deltas = log.Pending;
                 fs.Seek(0, SeekOrigin.End);
                 using (var writer = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: true))

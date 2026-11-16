@@ -5,28 +5,47 @@ release itself are the owner's decision; nothing here is published. Each item li
 records it. The last release: [2.0.2](RELEASE-NOTES-2.0.2.md).
 
 **Prepared for release on 2026-11-16** (`TASK-078`): everything in the tree as of `7e2a5e7`, the commits since
-`v2.0.2`. To be released as **2.0.3** (section "Version"); `src/Xod/Xod.csproj` stays at 2.0.2 until the release,
+`v2.0.2`; then a database open in one context at a time (`TASK-079`, [`PLAN-064`](plans/PLAN-064-one-context-per-database.md)),
+which changes this file's upgrade section and makes several of the behaviour changes below moot (their sections say so).
+The site's pages (section "Site pages to update") predate `PLAN-064` and are to be brought in line. To be released as **2.0.3** (section "Version"); `src/Xod/Xod.csproj` stays at 2.0.2 until the release,
 as do the tag and the release itself.
 
 ## Upgrading from 2.0.2
 
-- **Close every XOD 2.0.2 context of a database before opening it with this version, and don't run the two on one
-  database at once.** 2.0.2 takes no commit gate, so its writes can land beside this version's commits, and its
-  transactions still set the files they delete aside (`.xdel`) at once, so the loss `ISS-166` fixes can still
-  happen through them.
-- **Three lock files now sit beside the database file and are never deleted:** `xod.lock` (2.0.2), `xod.gate.lock`
-  and `xod.commit.lock`. Leave them in place; a folder that can't hold them is opened for reading only.
-- **New refusals to handle:** a write beside another context's commit that doesn't end within
-  `TransactionTimeoutMs` throws `XodException`; a commit refused because another context wrote one of its files
-  since the transaction first changed it throws `TransactionException` with nothing written, and should be
-  retried; a write beside a commit journal a crash left throws `XodException` until the database is opened by a
-  context that has it to itself. The behaviour changes below list each.
+- **A database is open in one context at a time** ([`PLAN-064`](plans/PLAN-064-one-context-per-database.md)). Keep
+  one `XodContext` per database for the life of the application (a singleton, not one per request or per scope) and
+  dispose it: a second open, in the same process or another, throws `DatabaseLockedException`, or waits
+  `LockRetryTimeoutMs` for the first to close. A context never disposed keeps the database until the garbage collector
+  finalizes it. The CLI (`xod stats`, `xod query`, ...) is refused while an application has the database open.
+  `LockDatabase` no longer changes anything.
+- **XOD 2.0.2 and this version keep each other out**: 2.0.2 holds the lock files shared, this version alone, so
+  whichever opens second is refused. XOD 2.0.0 and 2.0.1 take no lock unless `LockDatabase` is set: don't run them
+  beside this version.
+- **Lock files sit beside the database file and are never deleted:** `xod.lock` and `<database file>.lock` (2.0.2),
+  and `xod.gate.lock` and `xod.commit.lock`. Leave them in place. A folder where they can't be created or opened is
+  opened for reading only, and nothing keeps a writer out beside such a reader (`ISS-173`).
+- **Where the file system gives no lock** (an NFS client, where flock is a lock of the whole process), every open is
+  refused, since nothing would keep a second context out. Not run on NFS: reasoned from flock(2). Setting
+  `DOTNET_SYSTEM_IO_DISABLEFILELOCKING=1` opens it, taken as saying nothing else opens the database (`ISS-104`).
+- **A context that can only read the folder, with the lock files there, holds the database too**: a reader run by
+  another user keeps the application's open out until it closes (reasoned from the code, not run).
 - **Matching by example is exact now** (`ISS-139`): code that relied on `Query(example)` or `Update`/`Delete` by an
   item matching text case-insensitively has to match the case, or query with a lambda.
 
 ## New
 
 ## Behaviour changes
+
+- **A database is open in one context at a time** ([`PLAN-064`](plans/PLAN-064-one-context-per-database.md)). Every
+  context holds the database alone, from its open to its disposal; any other open, of this process or another, is
+  refused with `DatabaseLockedException` (after `LockRetryTimeoutMs`). In 2.0.2 any number of contexts without
+  `LockDatabase` opened one database and wrote it, each with its own caches, which the README and the site never
+  supported ("One process owns the folder at a time") and which caused the defects of contexts side by side fixed or
+  listed below. Section "Upgrading from 2.0.2" says what to change. The message of `DatabaseLockedException` says so.
+
+Several items below describe a write, a commit, a password change or an AES256 key beside another context. Since
+`PLAN-064` no other context can be open, so those cases no longer arise; what they add is listed for removal before
+the release (`PLAN-064` section 5).
 
 - **No open beside a password change that didn't finish** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-148`). A password change that is made but couldn't yet replace a file (another program had it open) is finished by its context's next write, or by the next open that has the database to itself. Until then, another context's open now throws `XodException`, with either password; before, it opened with the old password and could write files the change never replaced.
 - **A password change is refused over anything a crash left** ([`PLAN-061`](plans/PLAN-061-high-issues-from-the-overall-review.md), `ISS-149`): a file a transaction set aside (`<file>.xdel`) and a password change's own leftovers, as well as a commit journal and an atomic write cut short (refused before). Close every context and open the database again, which puts them back, then change the password.

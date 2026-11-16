@@ -488,6 +488,7 @@ namespace Xod.Tests
             Assert.Equal(expectedCommitted, db.Count<UserAccount>());
 
             // Verify after cold-start reload from disk
+            db.Dispose();
             using var verifyDb = new XodContext(dbPath);
             Assert.Equal(expectedCommitted, verifyDb.Count<UserAccount>());
             Assert.NotNull(verifyDb.Find<UserAccount>(u => u.Email == "tx.worker.0.item.5@xod.dev"));

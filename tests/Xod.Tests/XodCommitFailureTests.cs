@@ -143,57 +143,21 @@ namespace Xod.Tests
             }
         }
 
-        // ---- the journal of a commit that didn't finish, while other contexts have the database open ----
-
-        // A dead journal waits for an open that has the database to itself. A commit in the meantime used to write
-        // its own journal over it and delete it, so the half-done commit stayed for good.
+        // A journal cut short before its rename means a commit that hadn't started: the next open applies none of its
+        // before-images and deletes it. (With one context at a time nothing writes between the crash and that open;
+        // the case of another context writing meanwhile went with PLAN-064.)
         [Fact]
-        public void A_commit_is_refused_while_another_commit_s_journal_is_there()
-        {
-            string dir = CrashDb.New(tempRoot, "dead-journal");
-            string journal = Path.Combine(dir, "transaction.xwal");
-            using (var other = new XodContext(Path.Combine(dir, "pw.xod"), "first"))
-            {
-                var crash = XodCrashSafetyTests.RunWriterProcess("txwrite-commit", dir, ("XOD_CRASH_AT_STEP", "commit-written"));
-                Assert.DoesNotContain("COMMITTED", crash.Output);
-                Assert.True(File.Exists(journal));
-                byte[] dead = File.ReadAllBytes(journal);
-
-                var next = XodCrashSafetyTests.RunWriterProcess("txcommit", dir, ("XOD_TEST_BATCH", "3"));
-                // Refused before it writes anything, since ISS-147 refuses every write beside a journal that won't finish.
-                Assert.Contains("COMMIT FAILED XodException: A commit that didn't finish", next.Output);
-                Assert.Equal(dead, File.ReadAllBytes(journal));
-            }
-
-            // Alone, the open undoes the dead commit: batch 0, and batch 1 the crashed process wrote outside it.
-            CrashDb.HoldsBatches(dir, "first", 2);
-            Assert.False(File.Exists(journal));
-        }
-
-        // A journal cut short before its rename means a commit that hadn't started. With others open it isn't
-        // recovered at once; the open that later recovers used to make it the journal and write its before-images
-        // back over what the others wrote since.
-        [Fact]
-        public void A_journal_that_was_never_renamed_into_place_is_not_applied()
+        public void A_journal_that_was_never_renamed_into_place_is_dropped_by_the_next_open()
         {
             string dir = CrashDb.New(tempRoot, "staged-journal");
-            using (var other = new XodContext(Path.Combine(dir, "pw.xod"), "first"))
-            {
-                var crash = XodCrashSafetyTests.RunWriterProcess("txwrite-commit", dir, ("XOD_CRASH_AT_STEP", "journal-staged"));
-                Assert.DoesNotContain("COMMITTED", crash.Output);
-                Assert.True(File.Exists(Path.Combine(dir, "transaction.xwal.tmp")));
+            var crash = XodCrashSafetyTests.RunWriterProcess("txwrite-commit", dir, ("XOD_CRASH_AT_STEP", "journal-staged"));
+            Assert.DoesNotContain("COMMITTED", crash.Output);
+            Assert.True(File.Exists(Path.Combine(dir, "transaction.xwal.tmp")));
 
-                // Batch 1, which the crashed process wrote outside its transaction, and then a customer of this one.
-                Assert.Equal(50, other.Count<CrashCustomer>());
-                other.Insert(new CrashCustomer { Id = 1000, Name = "written after the crash" });
-            }
-
-            using (var db = new XodContext(Path.Combine(dir, "pw.xod"), "first"))
-            {
-                Assert.NotNull(db.Find<CrashCustomer>(c => c.Id == 1000));
-                Assert.Equal(51, db.Count<CrashCustomer>());
-            }
+            // Batch 1, written outside the transaction before the crash; the transaction's batch never reached the pages.
+            CrashDb.HoldsBatches(dir, "first", 2);
             Assert.False(File.Exists(Path.Combine(dir, "transaction.xwal.tmp")));
+            Assert.False(File.Exists(Path.Combine(dir, "transaction.xwal")));
         }
     }
 }

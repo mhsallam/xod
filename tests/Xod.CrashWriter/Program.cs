@@ -541,7 +541,8 @@ public static class Program
                 {
                     // The pages and table files only: an index or a marker isn't a row's write, and the context holds its
                     // marker.
-                    if (file.EndsWith(".xidx", StringComparison.Ordinal) || file.EndsWith(".xidxdirty", StringComparison.Ordinal))
+                    if (file.EndsWith(".xidx", StringComparison.Ordinal) || file.EndsWith(".xidxdirty", StringComparison.Ordinal) ||
+                        file.EndsWith(".lock", StringComparison.Ordinal))
                         continue;
                     using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                     if (new StreamReader(stream).ReadToEnd().Contains("beside-marker"))

@@ -113,29 +113,6 @@ namespace Xod.Tests
             Assert.Equal(new[] { 1, 3 }, db.Select<CrashMember>().Select(m => m.Id).OrderBy(i => i).ToArray());
         }
 
-        // Another context opening the database while a commit is under way doesn't undo that commit: its
-        // journal is live, not left by a crash.
-        [Fact]
-        public void An_open_during_another_context_s_commit_leaves_the_commit_alone()
-        {
-            string dir = CrashDb.New(tempRoot, "open-during-commit");
-            using var writer = XodCrashSafetyTests.StartWriterProcess("txcommit", dir, ("XOD_PAUSE_AT_STEP", "commit-written"));
-            string line;
-            while ((line = writer.StandardOutput.ReadLine()) != null && !line.StartsWith("PAUSED", StringComparison.Ordinal)) { }
-            Assert.NotNull(line);
-            Assert.True(File.Exists(Path.Combine(dir, "transaction.xwal")));
-
-            using (var other = new XodContext(Path.Combine(dir, "pw.xod"), "first"))
-                Assert.True(File.Exists(Path.Combine(dir, "transaction.xwal")), "the open undid a live commit");
-
-            writer.StandardInput.WriteLine();
-            writer.StandardInput.Flush();
-            string rest = XodCrashSafetyTests.FinishWriter(writer);
-            Assert.Contains("COMMITTED", rest);
-
-            CrashDb.HoldsBatches(dir, "first", 2);
-        }
-
         // With LockDatabase the same, and the failed open lets go of the database: the next one recovers.
         [Fact]
         public void A_locked_open_whose_recovery_fails_lets_go_of_the_database()
@@ -159,28 +136,6 @@ namespace Xod.Tests
             for (int i = 1; i <= 10; i++)
                 db.Insert(new PwItem { Name = "item " + i });
             return path;
-        }
-
-        // Another context open on the database: the change is refused, and that context goes on as before.
-        [Fact]
-        public void A_password_change_is_refused_while_another_context_has_the_database_open()
-        {
-            string path = NewDatabase("other-open");
-            using (var a = new XodContext(path, "first"))
-            {
-                using (var b = new XodContext(path, "first"))
-                {
-                    Assert.ThrowsAny<XodException>(() => a.ChangePassword("first", "second"));
-                    b.Insert(new PwItem { Name = "from b" });
-                    Assert.Equal(11, b.Select<PwItem>().Count());
-                }
-
-                a.ChangePassword("first", "second");
-                Assert.Equal(11, a.Select<PwItem>().Count());
-            }
-
-            using (var c = new XodContext(path, "second"))
-                Assert.Equal(11, c.Select<PwItem>().Count());
         }
 
         // A context opened with LockDatabase has the database to itself, whether the other opens with it or not.
@@ -220,14 +175,14 @@ namespace Xod.Tests
 
         // The lock file is never deleted, by any context: on Unix a context that opened it just before a deletion
         // would hold a file no longer in the folder, and the next would create another, so the two wouldn't see
-        // each other (on Windows an open racing the deletion fails). It doesn't stop a later LockDatabase open.
+        // each other (on Windows an open racing the deletion fails). It doesn't stop a later open.
         [Fact]
         public void The_lock_file_stays_and_does_not_block_a_later_lock()
         {
             string path = NewDatabase("lock-file");
             using (var a = new XodContext(path, "first"))
-            using (var b = new XodContext(path, "first"))
                 Assert.True(File.Exists(path + ".lock"));
+            Assert.True(File.Exists(path + ".lock"));
 
             using (var c = new XodContext(path, "first", new DatabaseOptions { LockDatabase = true }))
                 Assert.Equal(10, c.Select<PwItem>().Count());
@@ -237,22 +192,10 @@ namespace Xod.Tests
                 Assert.Equal(10, d.Select<PwItem>().Count());
         }
 
-        // A context that lost its hold on the database (it couldn't take it back after a password change) writes
-        // nothing more: it no longer knows whether others have the database, so a change or an open's recovery could
-        // run under it. It used to go on writing, and to make the next password change alone.
-        [Fact]
-        public void A_context_that_lost_its_hold_refuses_writes()
-        {
-            string dir = CrashDb.New(tempRoot, "lost-hold");
-            var run = XodCrashSafetyTests.RunWriterProcess("pwchange-then-write", dir, ("XOD_FAIL_AT_STEP", "retaking-hold"));
-            Assert.Contains("PENDING", run.Output);
-            Assert.Contains(run.Output.Split(Environment.NewLine), l => l.StartsWith("REFUSED", StringComparison.Ordinal) && l.Contains("no longer holds"));
-            CrashDb.HoldsBatches(dir, "second", 1);
-        }
-
         // ISS-084, at the open: with the lock file read-only, the open's exclusive try failed with
         // UnauthorizedAccessException, which it took for a folder nothing can write, and it recovered without a
-        // hold: what it deleted (a staged write) or undid (a journal) may be another context's, under way.
+        // hold: what it deleted (a staged write) or undid (a journal) may be another context's, under way. Now that
+        // open is refused for the other's hold (PLAN-064), and recovers nothing.
         [Fact]
         public void An_open_recovers_nothing_while_another_context_holds_the_database_even_with_a_read_only_lock_file()
         {
@@ -264,9 +207,9 @@ namespace Xod.Tests
             File.SetAttributes(path + ".lock", FileAttributes.ReadOnly);
             try
             {
-                using var second = new XodContext(path, "first");
-                Assert.Equal(10, second.Count<PwItem>());
+                Assert.Throws<DatabaseLockedException>(() => new XodContext(path, "first"));
                 Assert.True(File.Exists(staged));
+                Assert.Equal(10, first.Count<PwItem>());
             }
             finally
             {
@@ -364,8 +307,9 @@ namespace Xod.Tests
                 writer.StandardInput.WriteLine();
                 writer.StandardInput.Flush();
                 string rest = XodCrashSafetyTests.FinishWriter(writer);
+                // Refused for the hold the first context has (PLAN-064: one context at a time).
                 Assert.Contains("REFUSED", rest);
-                Assert.Contains("first.xod", rest);
+                Assert.Contains("locked", rest);
                 Assert.DoesNotContain("OPENED", rest);
                 Assert.False(File.Exists(Path.Combine(dir, "second.xod")));
 
@@ -380,6 +324,12 @@ namespace Xod.Tests
             }
             using (var again = new XodContext(Path.Combine(dir, "first.xod")))
                 Assert.Equal(3, again.Count<PwItem>());
+
+            // With the first database closed, the check under the hold refuses the second file: one database per folder.
+            var later = XodCrashSafetyTests.RunWriterProcess("open-second", dir);
+            Assert.Contains("REFUSED", later.Output);
+            Assert.Contains("first.xod", later.Output);
+            Assert.False(File.Exists(Path.Combine(dir, "second.xod")));
         }
 
         // ISS-096, the other order: an open creating a new database holds the folder alone, its check passed, until
@@ -471,43 +421,6 @@ namespace Xod.Tests
             Assert.False(File.Exists(journal));
         }
 
-        // The review of TASK-071 (predates it): a context taking the database alone (a password change) lets go of
-        // its shared hold first, and took it back only when the exclusive one failed for another's lock or for
-        // access. Any other failure (an IOException such as too many open files, a network error; injected here once
-        // the folder's lock is taken) left it holding nothing, while it went on writing as if it held the database.
-        // Now it holds it again, shared, and the folder's lock taken for the failed hold is let go: another context
-        // opens the database, and one that needs it alone is refused.
-        [Fact]
-        public void A_context_whose_hold_alone_fails_holds_the_database_again()
-        {
-            string dir = Path.Combine(tempRoot, "hold-alone-fails");
-            var setup = XodCrashSafetyTests.RunWriterProcess("pwsetup", dir);
-            Assert.True(setup.ExitCode == 0, setup.Output);
-            using var child = XodCrashSafetyTests.StartWriterProcess("pwchange-hold", dir, ("XOD_FAIL_AT_STEP", "hold-alone"));
-            string read = ReadUntil(child, "WAITING");
-
-            string rest;
-            try
-            {
-                Assert.Contains("injected failure", read);
-                Assert.DoesNotContain("CHANGED", read);
-                using (var other = new XodContext(Path.Combine(dir, "pw.xod"), "first"))
-                    Assert.Equal(25, other.Count<CrashCustomer>());
-                Assert.Throws<DatabaseLockedException>(() =>
-                {
-                    using var alone = new XodContext(Path.Combine(dir, "pw.xod"), "first", new DatabaseOptions { LockDatabase = true });
-                });
-            }
-            finally
-            {
-                child.StandardInput.WriteLine();
-                child.StandardInput.Flush();
-                rest = XodCrashSafetyTests.FinishWriter(child);
-            }
-            Assert.Contains("WROTE", rest);
-            CrashDb.HoldsBatches(dir, "first", 2);
-        }
-
         // ISS-096, the review of TASK-071's first run: an open naming a new database file checked an empty folder,
         // then another process created a database there and began a commit. The open, going on, ran the folder's
         // recovery as if it had the database to itself (it held its own file's lock alone), undid that commit under
@@ -542,8 +455,9 @@ namespace Xod.Tests
                 committer.StandardInput.Flush();
             }
             string committed = XodCrashSafetyTests.FinishWriter(committer);
+            // Refused for the committer's hold (PLAN-064: one context at a time), before any check or recovery.
             Assert.Contains("REFUSED", opened);
-            Assert.Contains("pw.xod", opened);
+            Assert.Contains("locked", opened);
             Assert.Contains("COMMITTED", committed);
             Assert.False(File.Exists(Path.Combine(dir, "second.xod")));
             CrashDb.HoldsBatches(dir, "first", 2);

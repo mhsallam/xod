@@ -20,11 +20,20 @@ namespace Xod
         public TransactionException(string message, Exception innerException) : base(message, innerException) { }
     }
 
+    /// <summary>
+    /// The database is open in another context or process. A database is open in one context at a time (PLAN-064):
+    /// dispose the other context first, keep one context for the life of the application, or set
+    /// <see cref="DatabaseOptions.LockRetryTimeoutMs"/> to wait for it.
+    /// </summary>
     public class DatabaseLockedException : XodException
     {
         public DatabaseLockedException(string databasePath)
-            : base($"The database at '{databasePath}' is exclusively locked by another process or XodContext instance.") { }
+            : base(Text(databasePath)) { }
         public DatabaseLockedException(string databasePath, Exception innerException)
-            : base($"The database at '{databasePath}' is exclusively locked by another process or XodContext instance.", innerException) { }
+            : base(Text(databasePath), innerException) { }
+
+        private static string Text(string databasePath) =>
+            $"The database at '{databasePath}' is locked: another process or XodContext instance has it open. A database is " +
+            "open in one context at a time; dispose the other context, or set LockRetryTimeoutMs to wait for it.";
     }
 }

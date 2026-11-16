@@ -316,27 +316,6 @@ namespace Xod.Tests
                 Assert.Equal(Plain, db.Select<SecretNote>().Single().Body);
         }
 
-        // A context opened before another made the key must use that key, not make a second one. (Each
-        // writes its own table: two contexts writing one table need DatabaseOptions.LockDatabase anyway.)
-        [Fact]
-        public void A_context_opened_earlier_uses_the_key_another_made()
-        {
-            string path = NewDatabase("two-contexts");
-            var options = Options(StorageFormat.Xml, AppKey);
-            using (var early = new XodContext(path, null, options))
-            {
-                early.Insert(new SecretNote { Title = "warm-up" });
-                using (var other = new XodContext(path, null, options))
-                    other.Insert(new SecretMemo { Text = Plain });
-                early.Insert(Note());
-            }
-            using (var db = new XodContext(path, null, options))
-            {
-                Assert.Equal(Plain, db.Select<SecretMemo>().Single().Text);
-                Assert.Equal(new[] { Plain }, db.Select<SecretNote>().Where(n => n.Body != null).Select(n => n.Body));
-            }
-        }
-
         // ISS-150: the data key was made at the first value, by reading the database file, deriving and saving it; two
         // contexts doing so at once each made a key, the last save won, and the other's values could never be read.
         // Now the key is made only with the database to one context: a new database records it when it is created,
@@ -351,56 +330,12 @@ namespace Xod.Tests
             Assert.Contains("<PropertyKey", File.ReadAllText(path)); // no password: the database file is plain XML
         }
 
-        // So two contexts of a new database, both open, write their first values with the one key. (A guard: the old code
-        // passed it too, the two writes coming one after the other; without the key made at creation it is refused.)
-        [Theory]
-        [InlineData("pw", null)]
-        [InlineData(null, AppKey)]
-        public void Two_contexts_of_a_new_database_write_their_first_values_with_one_key(string password, string appKey)
-        {
-            string path = NewDatabase("first-values-" + (password ?? "app"));
-            var options = Options(StorageFormat.Xml, appKey);
-            using (var first = new XodContext(path, password, options))
-            using (var second = new XodContext(path, password, options))
-            {
-                second.Insert(new SecretMemo { Text = Plain });
-                first.Insert(Note());
-            }
-            using (var db = new XodContext(path, password, options))
-            {
-                Assert.Equal(Plain, db.Select<SecretMemo>().Single().Text);
-                Assert.Equal(Plain, db.Select<SecretNote>().Single().Body);
-            }
-        }
-
-        // A database with no key yet (2.0.2's, or created with no secret and opened since with one): its first value
-        // makes the key, which needs the database to itself. Refused while another context has it open, written once
-        // the other has closed.
-        [Fact]
-        public void The_first_value_of_a_database_without_a_key_needs_the_database_to_itself()
-        {
-            string path = NewDatabase("first-value-alone");
-            using (new XodContext(path))
-            {
-            }
-            var options = Options(StorageFormat.Xml, AppKey);
-            using (var writer = new XodContext(path, null, options))
-            {
-                using (var other = new XodContext(path, null, options))
-                {
-                    var refused = Assert.Throws<XodException>(() => writer.Insert(Note()));
-                    Assert.Contains("to itself", refused.Message);
-                    Assert.Empty(other.Select<SecretNote>());
-                }
-                writer.Insert(Note());
-            }
-            using (var db = new XodContext(path, null, options))
-                Assert.Equal(Plain, db.Select<SecretNote>().Single().Body);
-        }
-
         // Review of ISS-150: a key made for a value inside a transaction was in the transaction's image of the database
-        // file, so its rollback took the key back, after another context had written a value under it: unreadable. The
-        // database file is no part of a transaction now; the key outlives it.
+        // file, so its rollback took the key back, after another context had written a value under it: unreadable.
+        // The database file is no part of a transaction now; the key outlives it. With one context at a time (PLAN-064)
+        // every value written under the key in the transaction is rolled back with it, so this no longer shows the
+        // exclusion (putting the database file back into the transaction's image passes it): it guards that values
+        // written after the rollback read back.
         [Fact]
         public void A_key_made_inside_a_transaction_outlives_its_rollback()
         {
@@ -414,11 +349,10 @@ namespace Xod.Tests
                 using (var tx = writer.BeginTransaction())
                 {
                     writer.Insert(Note());
-                    using (var other = new XodContext(path, null, options))
-                        other.Insert(new SecretMemo { Text = Plain });
                     tx.Rollback();
                 }
                 Assert.Empty(writer.Select<SecretNote>());
+                writer.Insert(new SecretMemo { Text = Plain });
                 writer.Insert(Note());
             }
             using (var db = new XodContext(path, null, options))
@@ -454,8 +388,9 @@ namespace Xod.Tests
                 Assert.Contains(Plain, db.Select<SecretNote>().Select(n => n.Body));
         }
 
-        // A password set on a database with no key makes the key too, with the database to itself already: two
-        // contexts opened afterwards write their first values. (A guard, as above.)
+        // A password set on a database with no key: values written afterwards read back under it. Whether Secure or the
+        // first value makes the key isn't seen here (the file is encrypted); with one context at a time either is safe
+        // (PLAN-064). It used to show two contexts sharing the key Secure made.
         [Fact]
         public void Securing_a_database_makes_its_key()
         {
@@ -463,9 +398,8 @@ namespace Xod.Tests
             using (var db = new XodContext(path))
                 db.Secure("pw");
             using (var first = new XodContext(path, "pw"))
-            using (var second = new XodContext(path, "pw"))
             {
-                second.Insert(new SecretMemo { Text = Plain });
+                first.Insert(new SecretMemo { Text = Plain });
                 first.Insert(Note());
             }
             using (var db = new XodContext(path, "pw"))
