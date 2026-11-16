@@ -30,4 +30,9 @@
     <None Include="..\..\docs\screens\logo.png" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Tests of an internal owner where no public call can hold the interleaving it decides (TransactionTurns). -->
+    <InternalsVisibleTo Include="Xod.Tests" />
+  </ItemGroup>
+
 </Project>

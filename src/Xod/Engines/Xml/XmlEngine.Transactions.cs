@@ -9,20 +9,30 @@ namespace Xod.Engines.Xml
     {
         public IXodTransaction BeginTransaction()
         {
-            if (activeTransaction != null && activeTransaction.IsActive &&
-                activeTransactionThreadId == Environment.CurrentManagedThreadId)
+            // ISS-132: a transaction is its flow's (flowTransaction). This flow's own is open: a second can't begin.
+            if (InThisFlowsTransaction)
             {
                 throw new TransactionException("A transaction is already active on this database context.");
             }
+            // Inside a write on this thread (a trigger), it would wait for that write to end; inside a read, for writes
+            // the read holds back. Refused at once rather than after TransactionTimeoutMs.
+            if (turnDepth.Value > 0)
+            {
+                throw new TransactionException("A transaction can't begin inside a write on the same thread (a trigger, for example): it would wait for that write to end. Begin it after the write has returned.");
+            }
+            if (engineReadDepth.Value > 0)
+            {
+                throw new XodException(InsideReadMessage);
+            }
 
             ThrowIfWritesRefused();
-            int timeoutMs = options.TransactionTimeoutMs > 0 ? options.TransactionTimeoutMs : 30000;
-            if (!transactionGate.Wait(timeoutMs))
+            int timeoutMs = TransactionTimeoutMs;
+            if (!turns.TryBeginTransaction(timeoutMs))
             {
                 throw new TransactionException($"Timed out after {timeoutMs}ms waiting to acquire transaction lock.");
             }
 
-            EnterSecond(EnterExclusive, () => transactionGate.Release());
+            EnterSecond(EnterExclusiveLock, turns.EndTransaction);
             try
             {
                 // Everything this context holds goes to disk first (with buffered durability, writes may wait in
@@ -32,20 +42,20 @@ namespace Xod.Engines.Xml
                 var countersAtBegin = autonumberService.Highs();
                 ioService.BeginBatch();
                 transactionBatchOpen = true;
-                activeTransactionThreadId = Environment.CurrentManagedThreadId;
 
                 activeTransaction = new XodTransaction(
                     root,
                     exclusive: action =>
                     {
-                        EnterExclusive();
+                        // The transaction's own commit or rollback, from whichever thread ends it: no turn.
+                        EnterExclusiveLock();
                         try
                         {
                             action();
                         }
                         finally
                         {
-                            ExitExclusive();
+                            ExitExclusiveLock();
                         }
                     },
                     onCommit: () =>
@@ -84,22 +94,22 @@ namespace Xod.Engines.Xml
                     onDispose: () =>
                     {
                         activeTransaction = null;
-                        activeTransactionThreadId = 0;
-                        transactionGate.Release();
+                        turns.EndTransaction();
                     });
 
+                // Set here, in a method that isn't async, so it reaches the caller's flow and what it awaits or runs.
+                flowTransaction.Value = activeTransaction;
                 return activeTransaction;
             }
             catch
             {
                 activeTransaction = null;
-                activeTransactionThreadId = 0;
-                transactionGate.Release();
+                turns.EndTransaction();
                 throw;
             }
             finally
             {
-                ExitExclusive();
+                ExitExclusiveLock();
             }
         }
     }

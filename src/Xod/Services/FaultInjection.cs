@@ -44,10 +44,18 @@ namespace Xod.Services
                 Environment.FailFast($"XOD_CRASH_AFTER_ROWS={CrashAfterRows} reached");
         }
 
+        /// <summary>
+        /// In process, for the tests (null otherwise): called with each step's name, on the thread at the step. For an
+        /// interleaving no public call can hold, such as a write between its turn and its locks (<c>write-turn</c>,
+        /// ISS-132). A test that sets it acts only for the flow it marks: tests of other contexts run beside it.
+        /// </summary>
+        internal static volatile Action<string> InProcess;
+
         /// <summary>A step: <paramref name="step"/> after <paramref name="count"/> files (or the step itself
         /// when the count is 0), at <paramref name="file"/> when there is one.</summary>
         internal static void Step(string step, int count = 0, string file = null)
         {
+            InProcess?.Invoke(step);
             if (CrashAtStep == null && FailAtSteps.Length == 0 && PauseAtStep == null)
                 return;
 

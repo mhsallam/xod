@@ -55,7 +55,7 @@ namespace Xod.Engines.Xml
             finally
             {
                 itemsCacheService.EndRead();
-                rwLock.ExitReadLock();
+                ExitRead();
             }
         }
 

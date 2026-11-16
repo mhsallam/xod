@@ -27,7 +27,9 @@ namespace Xod.Services
         private readonly Action<string> onFaulted;
         private readonly Action dropIndexFiles;
         private readonly Action onDispose;
-        private bool completed;
+        // Set once, under the engine's lock, by the one completion (a commit or a rollback) that ends the transaction.
+        // Asked outside the lock only to refuse early; the completion asks again under it (Complete).
+        private volatile bool completed;
         // This commit's own journal: staged (the .tmp written) and in place. Only this commit's is ever deleted.
         private bool journalStaged;
         private bool journalWritten;
@@ -105,44 +107,68 @@ namespace Xod.Services
             if (completed)
                 throw new TransactionException("Transaction has already been completed.");
 
+            if (!Complete(CommitUnderLock))
+                throw new TransactionException("Transaction has already been completed.");
+        }
+
+        /// <summary>
+        /// Runs a completion under the engine's lock if the transaction is still open there; false if another completion
+        /// ended it first. Two completions of one transaction can race (a commit on one thread, the dispose of a timeout
+        /// on another): both find it open outside the lock. Asked only there, the second ran after the first, and once
+        /// another flow had begun its transaction, it discarded or committed that one's batch and ended it (ISS-132,
+        /// found by the review of the fix). Asked under the lock, a transaction ends once, while it is the open one.
+        /// </summary>
+        private bool Complete(Action completion)
+        {
+            FaultInjection.Step("transaction-ending");
+            bool ran = false;
             exclusive(() =>
             {
+                if (completed)
+                    return;
                 completed = true;
+                ran = true;
+                completion();
+            });
+            return ran;
+        }
+
+        private void CommitUnderLock()
+        {
+            try
+            {
+                bool writing = false;
                 try
                 {
-                    bool writing = false;
+                    WriteWalJournal();
+                    writing = true;
+                    committing = true;
                     try
                     {
-                        WriteWalJournal();
-                        writing = true;
-                        committing = true;
-                        try
-                        {
-                            onCommit?.Invoke();
-                        }
-                        finally
-                        {
-                            committing = false;
-                        }
-                        DeleteWalJournal();
+                        onCommit?.Invoke();
                     }
-                    catch (Exception commitFailure)
+                    finally
                     {
-                        // Wherever it failed (the journal, the files, the indexes, the journal's deletion), the
-                        // commit is undone now, so that this context and the disk agree, and nothing it writes later
-                        // is undone by the next open's recovery.
-                        UndoFailedCommit(commitFailure, writing);
+                        committing = false;
                     }
+                    DeleteWalJournal();
                 }
-                finally
+                catch (Exception commitFailure)
                 {
-                    snapshots.Clear();
-                    newlyCreatedFiles.Clear();
-                    lock (changedByCommit)
-                        changedByCommit.Clear();
-                    onDispose?.Invoke();
+                    // Wherever it failed (the journal, the files, the indexes, the journal's deletion), the
+                    // commit is undone now, so that this context and the disk agree, and nothing it writes later
+                    // is undone by the next open's recovery.
+                    UndoFailedCommit(commitFailure, writing);
                 }
-            });
+            }
+            finally
+            {
+                snapshots.Clear();
+                newlyCreatedFiles.Clear();
+                lock (changedByCommit)
+                    changedByCommit.Clear();
+                onDispose?.Invoke();
+            }
         }
 
         /// <summary>
@@ -381,30 +407,31 @@ namespace Xod.Services
             if (completed)
                 throw new TransactionException("Transaction has already been completed.");
 
-            exclusive(() =>
-            {
-                completed = true;
-                try
-                {
-                    // Nothing to put back on disk: the transaction wrote no data file (IOService.RefuseWriteInsideTransaction)
-                    // and deleted none (its deletes wait for the commit, ISS-166); onRollback forgets them with its batch.
-                    onRollback?.Invoke(() => { });
-                }
-                finally
-                {
-                    snapshots.Clear();
-                    newlyCreatedFiles.Clear();
-                    onDispose?.Invoke();
-                }
-            });
+            if (!Complete(RollbackUnderLock))
+                throw new TransactionException("Transaction has already been completed.");
         }
 
+        private void RollbackUnderLock()
+        {
+            try
+            {
+                // Nothing to put back on disk: the transaction wrote no data file (IOService.RefuseWriteInsideTransaction)
+                // and deleted none (its deletes wait for the commit, ISS-166); onRollback forgets them with its batch.
+                onRollback?.Invoke(() => { });
+            }
+            finally
+            {
+                snapshots.Clear();
+                newlyCreatedFiles.Clear();
+                onDispose?.Invoke();
+            }
+        }
+
+        // Rolls back a transaction still open; one another completion ended, even meanwhile, is left as it is.
         public void Dispose()
         {
             if (!completed)
-            {
-                Rollback();
-            }
+                Complete(RollbackUnderLock);
         }
     }
 }
