@@ -73,7 +73,7 @@ workflow, which waits for approval.
 
 ## Site pages to update with the release
 
-Brought in line with `PLAN-064` on 2026-11-16 (uncommitted in `xod-site` until checked): no commit gate or
+Brought in line with `PLAN-064` on 2026-11-16 and committed in `xod-site` (`40be5de`, not deployed; the site's tests and build passed, its links resolve): no commit gate or
 `xod.gate.lock`, no refusals beside another context, `LockDatabase` without effect, a second open refused; the
 upgrading page's section for 2.0.2 matches "Upgrading from 2.0.2" above. Drafted on 2026-11-16 in `xod-site` against the tree at `7e2a5e7`, committed there (`bf37b65`) and not deployed (a deploy waits
 for the release). 16 pages under `src/pages/docs` and the docs menu (`src/content/docs-nav.ts`):
