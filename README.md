@@ -106,8 +106,8 @@ the whole database is a directory you can copy or commit.
 
 It is not the right tool for every job:
 
-- **Several processes writing to one database.** One process owns the folder at a time. Inside that
-  process XOD is concurrent - many readers and a queued writer, the case the 140,000 reads/second
+- **Several processes writing to one database.** One `XodContext` owns the database at a time, and a
+  second open, in that process or another, is refused. Inside that context XOD is concurrent - many readers and a queued writer, the case the 140,000 reads/second
   figure measures - but it is a library, not a shared server. If several services must write the same
   data, use a server database.
 - **A tight loop of single-row writes.** SQLite is faster at that operation - about ten times on the

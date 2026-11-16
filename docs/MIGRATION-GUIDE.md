@@ -65,8 +65,8 @@ All classic XOD 1.x attributes work, with one exception, `[Crypto]` with no meth
 
 This guide is for 1.x and `Xod.Core` applications. An application already on 2.0.x upgrades by the checklist on the
 site ([Upgrading](https://xod.sabaeon.com/docs/upgrading)) and the release notes of each version
-([`RELEASE-NOTES-2.0.2.md`](RELEASE-NOTES-2.0.2.md); for the next release, [`RELEASE-NOTES-NEXT.md`](RELEASE-NOTES-NEXT.md),
-section "Upgrading from 2.0.2"). One rule holds for every upgrade: don't open one database from two versions at once.
+([`RELEASE-NOTES-2.0.2.md`](RELEASE-NOTES-2.0.2.md), and [`RELEASE-NOTES-2.0.3.md`](RELEASE-NOTES-2.0.3.md), section
+"Upgrading from 2.0.2"). One rule holds for every upgrade: don't open one database from two versions at once.
 Close every context of the old version first: an older version takes none of the locks a newer one relies on.
 
 ## 4. New Capabilities Available When You Need Them
