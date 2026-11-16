@@ -328,7 +328,7 @@ namespace Xod.Tests
             IndexAgreesWithPages(path, options, "a", "b", "c");
         }
 
-        // A committed delete takes its emptied pages away, and leaves nothing set aside; a rolled-back one puts them back.
+        // A committed delete takes its emptied pages away, a rolled-back one leaves them; neither leaves a file aside.
         [Theory]
         [InlineData(true)]
         [InlineData(false)]
@@ -356,14 +356,13 @@ namespace Xod.Tests
             IndexAgreesWithPages(path, options, "a", "b", "c");
         }
 
-        // A transaction's delete that empties a page sets the page aside (.xdel). Held by another program, it can't be
-        // deleted at the commit, which then fails and is undone (the journal puts the page back). The open after the
-        // context's close finds a file set aside and no marker (the close caught the indexes up), and must still clear
-        // it. Windows only: elsewhere a file held open can be deleted, and the commit passes. Held shared for reading:
-        // the commit reads the page first, to compare it with what it set aside (ISS-164), and a page it can't read
-        // refuses the commit before its journal.
+        // A transaction's delete that empties a page leaves it on disk until the commit (ISS-166). Held by another
+        // program, the page can't be deleted at the commit, which then fails after its journal and is undone: the rows
+        // are all there after a reopen, and the indexes agree with the pages. Windows only: elsewhere a file held open
+        // can be deleted, and the commit passes. Held shared for reading: the commit reads the page first, to compare
+        // it with what it first read (ISS-164), and a page it can't read refuses the commit before its journal.
         [Fact]
-        public void A_set_aside_file_a_commit_couldn_t_delete_is_cleared_by_the_next_open()
+        public void A_delete_the_commit_can_t_make_is_undone_and_every_row_stays()
         {
             if (!OperatingSystem.IsWindows())
                 return;
@@ -376,22 +375,21 @@ namespace Xod.Tests
                 using var tx = db.BeginTransaction();
                 foreach (var m in db.Select<TrustMember>().ToList())
                     db.Delete(m);
-                string aside = Assert.Single(Directory.GetFiles(dir, "*.xpag.xdel"));
-                using (new FileStream(aside, FileMode.Open, FileAccess.Read, FileShare.Read))
+                string page = Assert.Single(Directory.GetFiles(dir, "*.xpag"));
+                using (new FileStream(page, FileMode.Open, FileAccess.Read, FileShare.Read))
                     Assert.ThrowsAny<Exception>(() => tx.Commit());
             }
-            Assert.Empty(Directory.GetFiles(dir, "*.xidxdirty"));
             using (var db = new XodContext(path, options: options))
                 Assert.Equal(3, db.Select<TrustMember>().Count());
             Assert.Empty(Directory.GetFiles(dir, "*.xdel"));
             IndexAgreesWithPages(path, options, "a", "b", "c");
         }
 
-        // A rollback that can't put back a page its transaction set aside (another program holds it) leaves the index
-        // files naming rows this context can't read: the context refuses writes, and the next open alone puts the page
-        // back. Windows only, as above.
+        // A rollback touches no file (ISS-166): a page its transaction emptied, held by another program, doesn't stop
+        // it, and the context goes on writing. It used to set the page aside and fail to put it back, and the context
+        // then refused writes until reopened. Windows only, as above.
         [Fact]
-        public void A_rollback_that_can_t_put_back_a_page_refuses_writes()
+        public void A_rollback_needs_no_file_its_transaction_deleted()
         {
             if (!OperatingSystem.IsWindows())
                 return;
@@ -401,17 +399,18 @@ namespace Xod.Tests
             using (var db = new XodContext(path, options: options))
             {
                 db.InsertRange(new[] { "a", "b", "c" }.Select((e, i) => new TrustMember { Id = i + 1, Email = e }).ToList());
-                var tx = db.BeginTransaction();
-                foreach (var m in db.Select<TrustMember>().ToList())
-                    db.Delete(m);
-                string aside = Assert.Single(Directory.GetFiles(dir, "*.xpag.xdel"));
-                using (new FileStream(aside, FileMode.Open, FileAccess.Read, FileShare.None))
-                    Assert.ThrowsAny<Exception>(() => tx.Rollback());
-                tx.Dispose();
-                Assert.Throws<TransactionException>(() => db.Insert(new TrustMember { Id = 4, Email = "d" }));
+                using (var tx = db.BeginTransaction())
+                {
+                    foreach (var m in db.Select<TrustMember>().ToList())
+                        db.Delete(m);
+                    string page = Assert.Single(Directory.GetFiles(dir, "*.xpag"));
+                    using (new FileStream(page, FileMode.Open, FileAccess.Read, FileShare.None))
+                        tx.Rollback();
+                }
+                db.Insert(new TrustMember { Id = 4, Email = "d" });
             }
             using (var db = new XodContext(path, options: options))
-                Assert.Equal(3, db.Select<TrustMember>().Count());
+                Assert.Equal(4, db.Select<TrustMember>().Count());
             Assert.Empty(Directory.GetFiles(dir, "*.xdel"));
             IndexAgreesWithPages(path, options, "a", "b", "c", "d");
         }
@@ -563,6 +562,44 @@ namespace Xod.Tests
             Assert.NotNull(context.Find<TrustParent>(p => p.Code == "p"));
         }
 
+        // An index file another reader holds doesn't fail a commit that drops or empties its table: an index file is a
+        // cache, and one that can't be deleted is left for later (ISS-042), never loaded meanwhile. Since ISS-166 a
+        // transaction's deletes wait for its commit, and the commit deleted the index file outside that handling, so a
+        // held one failed it (review of PLAN-063). Windows only: elsewhere a file held open can be deleted.
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void A_held_index_file_doesn_t_fail_a_commit_that_takes_its_table_away(bool drop)
+        {
+            if (!OperatingSystem.IsWindows())
+                return;
+            string path = NewDatabase("held-index-" + drop);
+            string dir = Path.GetDirectoryName(path)!;
+            var options = new DatabaseOptions { InitialCreate = true };
+            using (var db = new XodContext(path, options: options))
+                db.InsertRange(new[] { "a", "b", "c" }.Select((e, i) => new TrustMember { Id = i + 1, Email = e }).ToList());
+            string index = Path.Combine(dir, typeof(TrustMember).FullName + ".xidx");
+            Assert.True(File.Exists(index));
+            using (var db = new XodContext(path, options: options))
+            {
+                using (new FileStream(index, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    using var tx = db.BeginTransaction();
+                    if (drop)
+                        Assert.True(db.Drop<TrustMember>());
+                    else
+                        foreach (var m in db.Select<TrustMember>().ToList())
+                            db.Delete(m);
+                    tx.Commit();
+                }
+                Assert.Empty(db.Select<TrustMember>());
+                db.Insert(new TrustMember { Id = 1, Email = "a" });
+            }
+            using (var db = new XodContext(path, options: options))
+                Assert.Equal(new[] { "a" }, db.Select<TrustMember>().Select(m => m.Email).ToArray());
+            IndexAgreesWithPages(path, options, "a");
+        }
+
         // Review of TASK-068: in a transaction, a page joined the batch before its before-image was taken; when that
         // capture failed (another program held the page), the page stayed in the batch with nothing to put back, and
         // no later change tried again, so a commit undone after writing it kept the transaction's row. Windows only:
@@ -586,17 +623,7 @@ namespace Xod.Tests
                     Assert.NotNull(Record.Exception(() => db.Insert(new TrustMember { Id = 3, Email = "c" })));
                 insertD = Record.Exception(() => db.Insert(new TrustMember { Id = 4, Email = "d" }));
                 Record.Exception(() => db.Delete(db.Find<TrustParent>(p => p.Id == 1)));
-                string[] aside = Directory.GetFiles(dir, "*.xpag.xdel");
-                if (aside.Length == 1)
-                {
-                    // The commit fails after its files are written (a file it set aside can't be deleted, though it can be read: ISS-164): undone.
-                    using (new FileStream(aside[0], FileMode.Open, FileAccess.Read, FileShare.Read))
-                        commit = Record.Exception(() => tx.Commit());
-                }
-                else
-                {
-                    commit = Record.Exception(() => tx.Commit());
-                }
+                commit = Record.Exception(() => tx.Commit());
                 tx.Dispose();
             }
             using (var db = new XodContext(path, options: options))

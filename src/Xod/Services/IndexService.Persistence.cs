@@ -832,7 +832,8 @@ namespace Xod.Services
             }
 
             log.SnapshotWritten(snapshotBytes);
-            // Replaced by what this context holds; not in a transaction, whose rollback puts the old file back.
+            // Replaced by what this context holds. (Never inside a transaction: SaveToDisk writes no index file there,
+            // ISS-100.)
             if (!InTransaction)
                 undeletedIndexFiles.Remove(type);
         }

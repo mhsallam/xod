@@ -167,7 +167,7 @@ namespace Xod.Services
                 if (exclusive)
                     throw new TransactionException("Other contexts of the database in '" + root + "' were writing or committing, and went on for longer " +
                         "than TransactionTimeoutMs (" + CommitGateWaitMs + " ms): this commit is refused, and nothing of it was written.", e);
-                throw new CommitGateBusyException("Another context's commit is under way in '" + root + "' and didn't end within TransactionTimeoutMs (" +
+                throw new XodException("Another context's commit is under way in '" + root + "' and didn't end within TransactionTimeoutMs (" +
                     CommitGateWaitMs + " ms). This write is refused rather than made beside it, where an undo of that commit would undo it too.", e);
             }
         }
@@ -191,30 +191,18 @@ namespace Xod.Services
         }
 
         /// <summary>
-        /// The bytes of a file on disk now, as this context's transaction left it: a file it set aside (deleted inside
-        /// the transaction, ISS-107) is read where it waits. Null when it isn't there, and for a file set aside that is
-        /// at its name again: another context wrote it there (a page it had read, or a new table at a table file's fixed
-        /// name), and the commit, deleting what it set aside, would leave that in place of its delete. For a commit's
-        /// comparison with what it first read (XodTransaction.Commit).
+        /// The bytes of a file on disk now, null when it isn't there. A file this context's transaction deleted is
+        /// still there (its delete waits for the commit, ISS-166), so a write another context made to it since is
+        /// seen too. For a commit's comparison with what it first read (XodTransaction.Commit).
         /// </summary>
-        internal byte[] BytesOnDisk(string filePath)
-        {
-            bool aside;
-            lock (syncLock)
-            {
-                aside = setAside.Contains(filePath);
-            }
-            if (aside)
-                return File.Exists(filePath) ? null : File.ReadAllBytes(filePath + SetAsideSuffix);
-            return File.Exists(filePath) ? File.ReadAllBytes(filePath) : null;
-        }
+        internal byte[] BytesOnDisk(string filePath) => File.Exists(filePath) ? File.ReadAllBytes(filePath) : null;
 
         /// <summary>
         /// Refuses a write of a data file while this context's transaction is open. A transaction's files are written
         /// by its commit alone (its batch is written once the transaction has completed, under the commit gate held
-        /// exclusively), so before that nothing of it is on disk but the files it set aside, which its rollback puts
-        /// back, and the rollback has nothing else to take back (XodTransaction.Rollback). Index files and the database
-        /// file are outside every journal and aren't asked.
+        /// exclusively, its deletes too: ISS-166), so before that nothing of it is on disk, and its rollback has nothing
+        /// to take back (XodTransaction.Rollback). Index files and the database file are outside every journal and
+        /// aren't asked.
         /// </summary>
         private void RefuseWriteInsideTransaction(string filePath)
         {

@@ -159,7 +159,7 @@ namespace Xod.Services
         /// <summary>
         /// Throws, changing nothing, unless a switch can run now. A switch this context committed and couldn't finish
         /// is finished first, or this one is refused (staging over its files would lose them). And what a crash left
-        /// (a transaction journal, an atomic write cut short, a file a transaction set aside, a switch's own record or
+        /// (a transaction journal, an atomic write cut short, a file an older version's transaction set aside, a switch's own record or
         /// staged file) refuses it: the next open alone puts it back as it was written, under the password it had, so
         /// a switch now would end with those files under the old password; a page a transaction set aside came back in
         /// plaintext under a secured database (ISS-149). The list is the open's own (IOService.WriteLeft), whose

@@ -284,8 +284,8 @@ namespace Xod.Services
 
         // Types whose index file this context couldn't load and then couldn't delete (AbandonIndexFile): the file
         // misses what this context changed since, so it never loads it, and the file goes when a snapshot replaces
-        // it or a later deletion succeeds. Not cleared with the caches: it says what is on disk (ISS-042). Nor in a
-        // transaction: its rollback puts back the files it deleted or replaced.
+        // it or a later deletion succeeds. Not cleared with the caches: it says what is on disk (ISS-042). Inside a
+        // transaction every index file it deletes waits here for the commit (DeleteIndexFile, ISS-166).
         private readonly HashSet<Type> undeletedIndexFiles = new();
 
         // Per type: the .xidx layout and its unsaved deltas (Op: 1=Add, 2=Remove, PropName, NormVal, ItemCode)
@@ -480,6 +480,18 @@ namespace Xod.Services
         /// </summary>
         private void DeleteIndexFile(Type type)
         {
+            // Inside a transaction the file stays on disk for other contexts until the commit (ISS-166): this context
+            // never loads it meanwhile, and the commit's index flush deletes it (FlushDirtyIndexes, after the pages are
+            // written), one another reader holds left as at any other time. A rollback leaves it marked: deleted at the
+            // next flush and rebuilt from the pages, a cache's cost.
+            if (InTransaction)
+            {
+                lock (syncLock)
+                {
+                    undeletedIndexFiles.Add(type);
+                }
+                return;
+            }
             if (!TryDeleteIndexFile(GetIndexFileName(type)))
             {
                 lock (syncLock)
@@ -488,9 +500,6 @@ namespace Xod.Services
                 }
                 return;
             }
-            // Not in a transaction: its rollback puts the file back. The next flush after the commit finds it gone.
-            if (InTransaction)
-                return;
             lock (syncLock)
             {
                 undeletedIndexFiles.Remove(type);

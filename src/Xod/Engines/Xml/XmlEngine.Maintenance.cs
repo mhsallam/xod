@@ -25,12 +25,13 @@ namespace Xod.Engines.Xml
                 if (!Directory.Exists(root))
                     return stats;
 
-                foreach (var f in Directory.GetFiles(root))
+                // A file this context's open transaction deleted is gone for it, though still on disk (ISS-166).
+                foreach (var f in Directory.GetFiles(root).Where(f => !ioService.DeletedHere(f)))
                 {
                     stats.TotalSizeBytes += new FileInfo(f).Length;
                 }
 
-                var xtabFiles = Directory.GetFiles(root, "*.xtab");
+                var xtabFiles = Directory.GetFiles(root, "*.xtab").Where(f => !ioService.DeletedHere(f)).ToArray();
                 stats.TableCount = xtabFiles.Length;
 
                 foreach (var xtabPath in xtabFiles)
@@ -63,7 +64,7 @@ namespace Xod.Engines.Xml
                         stats.TotalPageCount++;
 
                         string fullPagePath = System.IO.Path.Combine(root, pageFileName);
-                        if (File.Exists(fullPagePath))
+                        if (ioService.OnDiskHere(fullPagePath))
                             tableStat.SizeBytes += new FileInfo(fullPagePath).Length;
 
                         if (pageElm.Attribute("full")?.Value == "true" &&
@@ -166,7 +167,7 @@ namespace Xod.Engines.Xml
             var types = new List<Type>();
             if (!Directory.Exists(root)) return types;
 
-            var files = Directory.GetFiles(root, "*.xtab");
+            var files = Directory.GetFiles(root, "*.xtab").Where(f => !ioService.DeletedHere(f));
             foreach (var file in files)
             {
                 string typeName = System.IO.Path.GetFileNameWithoutExtension(file);

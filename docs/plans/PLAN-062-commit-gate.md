@@ -5,6 +5,10 @@
   (the gate); a commit no longer overwrites a write another context made after the transaction first changed a file, or
   takes it back by a rollback (the comparison, and a rollback that writes nothing). A page a context read and kept before
   that is `ISS-167`'s.
+- **Superseded in part** by [`PLAN-063`](PLAN-063-deletes-at-the-commit.md) (2026-11-16, `ISS-166` fixed): a
+  transaction's deletes now wait for its commit, so it sets nothing aside. The rollback's put-back below, its gate, the
+  faults it could leave (a put-back refused at the gate or blocked by another program, a commit refused at the gate
+  with pages set aside) and `CommitGateBusyException` are gone; a rollback touches no file.
 - **Related**: [`PLAN-061`](PLAN-061-high-issues-from-the-overall-review.md) section 2 (`ISS-147`, the look for a
   journal this makes a hold), [`PLAN-046`](PLAN-046-file-format-spec.md) section 9 (the lock files)
 

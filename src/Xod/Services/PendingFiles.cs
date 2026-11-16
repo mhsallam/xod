@@ -54,6 +54,9 @@ namespace Xod.Services
         /// <summary>Takes out the write of the file of this name, with whichever document (it is deleted).</summary>
         internal void Remove(string name) => byName.Remove(name);
 
+        /// <summary>A write of the file of this name waits, with whichever document.</summary>
+        internal bool Contains(string name) => byName.ContainsKey(name);
+
         /// <summary>These documents were written: their writes are out, but not a file's saved again since.</summary>
         internal void Written(IEnumerable<XFile> files)
         {

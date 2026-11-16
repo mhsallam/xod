@@ -57,11 +57,20 @@ namespace Xod.Services
         // sets above, written when it ends (WriteSaved). What changed without a save waits for the next flush.
         private readonly StatementSaves saved = new StatementSaves();
 
-        // ISS-107: the files a transaction deleted, set aside under "<file>.xdel" until it ends (full paths, Delete):
-        // deleted once its commit has written its files (EndBatch), put back when it is rolled back or its commit is
-        // refused (DiscardBatch), and by the next open alone after a crash (RecoverInterruptedWrites).
+        // ISS-166: the data files this context's open transaction deleted, by name (Delete); never an index file, which
+        // the index service deletes at the commit (IndexService.DeleteIndexFile). A transaction changes no data file
+        // before its commit, deletes included: each stays on disk, whole, for every other context, and is gone for
+        // this one alone (DeletedHere, asked by each of its reads of the disk). Its commit deletes them, holding the
+        // commit gate exclusively, with their bytes in its journal (EndBatch); a rollback, or a commit refused before
+        // its journal, forgets them (DiscardBatch, DiscardPendingWrites). Before, they were renamed aside at once
+        // ("<file>.xdel", ISS-107): another context then saw a dropped table gone and made a new one at its fixed name,
+        // the rollback couldn't put the old one back over it, and the next open dropped the old one with its rows. An
+        // older version's crash can still leave such a file; the open puts it back (PutBackSetAsideFiles).
         internal const string SetAsideSuffix = ".xdel";
-        private readonly List<string> setAside = new List<string>();
+        private readonly HashSet<string> pendingDeletes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Its own lock: pages are read from disk on worker threads (the prefetches in IOService.RawPages) while the
+        // thread that started them may hold syncLock.
+        private readonly object pendingDeletesLock = new object();
 
         // The document of a file this service creates: its type's, for the file of that name (a new table file
         // records its rows' schema: XmlEngine.NewFileDocument).
@@ -122,7 +131,6 @@ namespace Xod.Services
 
         internal void EndBatch()
         {
-            List<string> aside = null;
             lock (syncLock)
             {
                 if (batchDepth > 0)
@@ -130,70 +138,61 @@ namespace Xod.Services
 
                 if (batchDepth == 0)
                 {
-                    aside = TakeSetAside();
+                    // The deletes, then the writes. A file the transaction deleted and then made again (a table
+                    // dropped and made anew) isn't deleted: the flush replaces it. Deleted first, its name could be
+                    // refused to the write while another program still had the old file open (Windows without POSIX
+                    // delete, where a deleted file keeps its name until the last handle closes: DeleteFileW). Both
+                    // are undone from the commit's journal if either fails.
+                    DeletePending(TakePendingDeletes());
                     FlushPending(dirtyBatchFiles, dirtyBatchRawPages);
                 }
             }
-
-            // Once every file of the batch is written: until then its commit can still be undone, from its journal,
-            // which holds these files' bytes. One that can't be deleted fails the commit, which is then undone; one
-            // left by a failed write is deleted by the next open alone, its file put back by the journal. Only a
-            // transaction sets files aside, so this is its commit, which holds the commit gate (DeleteSetAside asks).
-            DeleteSetAside(aside);
         }
 
-        private List<string> TakeSetAside()
+        /// <summary>
+        /// ISS-166: true for a file this context's open transaction deleted. It is still on disk, for every other
+        /// context, until the commit; for this context it is gone, and each read of the disk asks here first.
+        /// </summary>
+        internal bool DeletedHere(string fileName)
         {
-            if (setAside.Count == 0)
-                return null;
-            var taken = setAside.ToList();
-            setAside.Clear();
-            return taken;
-        }
-
-        private void DeleteSetAside(List<string> aside)
-        {
-            if (aside == null)
-                return;
-            RequireCommitGate(aside[0]);
-            Exception first = null;
-            foreach (string file in aside)
+            if (string.IsNullOrEmpty(fileName))
+                return false;
+            lock (pendingDeletesLock)
             {
-                try
-                {
-                    File.Delete(file + SetAsideSuffix);
-                }
-                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
-                {
-                    first ??= e;
-                }
+                return pendingDeletes.Count > 0 && pendingDeletes.Contains(Path.GetFileName(fileName));
             }
-            if (first != null)
-                throw new IOException("A file the transaction deleted couldn't be deleted at its commit: " + first.Message, first);
         }
 
-        // Each put back where it was (PutBackOne: a page another context wrote there since is kept, and what was set
-        // aside dropped); one that can't be, a table file another context made again among them, is left for the next
-        // open alone (RecoverInterruptedWrites).
-        private void PutBackSetAside(List<string> aside)
+        /// <summary>A file on disk as this context sees it: there, and not deleted by its open transaction.</summary>
+        internal bool OnDiskHere(string fullPath) => !DeletedHere(fullPath) && File.Exists(fullPath);
+
+        private List<string> TakePendingDeletes()
         {
-            if (aside == null)
-                return;
-            RequireCommitGate(aside[0]);
-            Exception first = null;
-            foreach (string file in aside)
+            lock (pendingDeletesLock)
             {
-                try
-                {
-                    PutBackOne(file, dropWhenBack: IsPage(file));
-                }
-                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
-                {
-                    first ??= e;
-                }
+                if (pendingDeletes.Count == 0)
+                    return null;
+                var taken = pendingDeletes.ToList();
+                pendingDeletes.Clear();
+                return taken;
             }
-            if (first != null)
-                throw new IOException("A file the transaction deleted couldn't be put back: " + first.Message, first);
+        }
+
+        // The commit's deletes, holding the commit gate exclusively (RequireCommitGate asks), after its journal, which
+        // holds each file's bytes: one that fails fails the commit, and its undo writes back every file it deleted. A
+        // file the batch writes again is left to that write (EndBatch). Data files only: an index file never waits here.
+        private void DeletePending(List<string> names)
+        {
+            if (names == null)
+                return;
+            foreach (string name in names)
+            {
+                if (dirtyBatchFiles.Contains(name) || dirtyBatchRawPages.Contains(name))
+                    continue;
+                string fullPath = Path.Combine(root, name);
+                RequireCommitGate(fullPath);
+                File.Delete(fullPath);
+            }
         }
 
         /// <summary>
@@ -294,7 +293,6 @@ namespace Xod.Services
 
         internal void DiscardBatch()
         {
-            List<string> aside = null;
             lock (syncLock)
             {
                 if (batchDepth > 0)
@@ -304,13 +302,10 @@ namespace Xod.Services
                 {
                     dirtyBatchFiles.Clear();
                     dirtyBatchRawPages.Clear();
-                    aside = TakeSetAside();
+                    // Its deletes are forgotten: they never reached the disk (ISS-166).
+                    TakePendingDeletes();
                 }
             }
-
-            // The files the batch deleted come back (ISS-107): nothing of it was committed.
-            if (aside != null)
-                InCommitGate(() => PutBackSetAside(aside));
         }
 
         internal void FlushBufferedFiles()
@@ -362,6 +357,7 @@ namespace Xod.Services
                 dirtyBatchRawPages.Clear();
                 dirtyBufferedRawPages.Clear();
                 saved.Clear();
+                TakePendingDeletes();
                 ClearCurrentCache();
             }
         }

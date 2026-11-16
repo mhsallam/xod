@@ -211,8 +211,10 @@ namespace Xod.Tests
             db.Insert(new CrashMember { Id = 400, Email = "e400" });
         }
 
-        // ISS-107: a transaction's delete that empties a page sets the page aside until the commit; a crash before
-        // the commit leaves it aside, and the next open puts it back: nothing was committed.
+        // ISS-107, ISS-166: a transaction's delete that empties a page deletes it at the commit; at a crash before the
+        // commit nothing is set aside and the pages are on disk (the writer counts them as it dies), and after the next
+        // open the rows are all there: nothing was committed.
+        // (Until ISS-166 the page was set aside at the delete, and the next open put it back.)
         [Fact]
         public void A_crash_before_a_commit_keeps_the_rows_its_deletes_took()
         {
@@ -221,6 +223,7 @@ namespace Xod.Tests
             Assert.True(setup.ExitCode == 0, setup.Output);
             var crash = XodCrashSafetyTests.RunWriterProcess("txdelete", dir);
             Assert.Contains("DELETED", crash.Output);
+            Assert.Matches(@"ASIDE 0 PAGES [1-9]", crash.Output);
             Assert.NotEqual(0, crash.ExitCode);
 
             using (var db = new XodContext(Path.Combine(dir, "crash.xod")))

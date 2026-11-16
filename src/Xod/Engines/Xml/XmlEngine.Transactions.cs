@@ -58,29 +58,16 @@ namespace Xod.Engines.Xml
                     },
                     onRollback: restoreFiles =>
                     {
-                        // The batch is ended unwritten if the commit didn't get to it, the files go back, and the
-                        // context forgets what it holds even if that failed: it must not show, or later write, a
-                        // commit the disk doesn't hold.
+                        // The batch is ended unwritten if the commit didn't get to it (its writes and deletes never
+                        // reached the disk: ISS-164, ISS-166), the files of a commit undone go back, and the context
+                        // forgets what it holds even if that failed: it must not show, or later write, a commit the
+                        // disk doesn't hold.
                         try
                         {
                             if (transactionBatchOpen)
                             {
                                 transactionBatchOpen = false;
-                                try
-                                {
-                                    ioService.DiscardBatch();
-                                }
-                                catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException || e is CommitGateBusyException)
-                                {
-                                    // A file the transaction deleted is still set aside (ISS-107): the index files
-                                    // name its rows, which this context can't read. Put back by the next open alone.
-                                    // Also when another context's commit held the commit gate too long to put it back.
-                                    transactionFault = "A rollback couldn't put back a file its transaction had deleted (" + e.Message +
-                                        "); the next open by a context that has the database to itself puts it back, unless another context made " +
-                                        "that file again meanwhile (a table at its fixed name), when the open keeps the newer one (ISS-166). " +
-                                        "Until then this context refuses writes.";
-                                    throw;
-                                }
+                                ioService.DiscardBatch();
                             }
                             restoreFiles();
                         }

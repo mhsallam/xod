@@ -130,7 +130,7 @@ namespace Xod.Services
             System.Threading.Tasks.Parallel.For(0, missingXFiles.Length, i =>
             {
                 string filePath = Path.Combine(root, missingXFiles[i]);
-                if (File.Exists(filePath))
+                if (OnDiskHere(filePath))
                 {
                     XFile xf = LoadUnlocked(typeof(TablePage), filePath, currentPwd);
                     xf?.EnsureRowMapBuilt();
@@ -163,9 +163,9 @@ namespace Xod.Services
                    data[3] == (byte)'E' && data[4] == (byte)'N' && data[5] == (byte)'C';
         }
 
-        private static RawPageBuffer ReadRawPageBufferFromDisk(string filePath)
+        private RawPageBuffer ReadRawPageBufferFromDisk(string filePath)
         {
-            if (!File.Exists(filePath))
+            if (!OnDiskHere(filePath))
                 return null;
 
             byte[] rented = null;
@@ -349,7 +349,7 @@ namespace Xod.Services
             if (string.IsNullOrEmpty(password) && storageSerializer.Format == StorageFormat.Xml)
             {
                 string filePath = Path.IsPathRooted(pageFileName) ? pageFileName : Path.Combine(root, normalizedName);
-                if (File.Exists(filePath))
+                if (OnDiskHere(filePath))
                 {
                     try
                     {
@@ -427,7 +427,7 @@ namespace Xod.Services
             }
 
             string filePath = Path.IsPathRooted(pageFileName) ? pageFileName : Path.Combine(root, normalizedName);
-            if (File.Exists(filePath))
+            if (OnDiskHere(filePath))
             {
                 try
                 {
@@ -756,7 +756,7 @@ namespace Xod.Services
                     if (rawPage == null)
                     {
                         string existingFullPath = Path.Combine(root, pageFileName);
-                        if (!File.Exists(existingFullPath))
+                        if (!OnDiskHere(existingFullPath))
                         {
                             byte[] initialBuf = PageBufferPool.Rent(Math.Max(pageMaxSizeBytes + 16384, 65536));
                             Buffer.BlockCopy(EmptyXmlPageBytes, 0, initialBuf, 0, EmptyXmlPageBytes.Length);

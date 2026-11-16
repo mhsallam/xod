@@ -405,6 +405,8 @@ public static class Program
             foreach (var member in db.Select<CrashMember>())
                 db.Delete(member);
             Console.WriteLine("DELETED");
+            // What the deletes changed on disk before the commit: nothing (ISS-166).
+            Console.WriteLine("ASIDE " + Directory.GetFiles(dir, "*.xdel").Length + " PAGES " + Directory.GetFiles(dir, "*.xpag").Length);
             Console.Out.Flush();
             Environment.FailFast("killed before a commit");
         }

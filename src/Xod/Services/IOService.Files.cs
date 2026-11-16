@@ -54,7 +54,8 @@ namespace Xod.Services
             // half done would let in writes that the journal would later undo.
             XodTransaction.RecoverWalJournalIfPresent(root);
 
-            // After the journal, which puts back what a commit that got past it had deleted.
+            // After the journal, which puts back what a commit that got past it had deleted. Only an older version's
+            // transaction leaves files set aside (ISS-166).
             PutBackSetAsideFiles(root);
 
             // Last: the indexes of a context that stopped before they caught up with its pages (ISS-043).
@@ -62,11 +63,13 @@ namespace Xod.Services
         }
 
         /// <summary>
-        /// ISS-107: the files a transaction set aside (deleted, <c>&lt;file&gt;.xdel</c>) that it didn't get to delete
-        /// or put back. One whose file is there again (a journal's undo put it back) is deleted; one whose file isn't
-        /// is put back: its transaction never committed (a commit deletes them before its journal goes). One that
-        /// can't be put back stops the open, as a journal that can't be undone does: the index files still name its
-        /// rows.
+        /// ISS-107: the files a transaction of an older version set aside (deleted, <c>&lt;file&gt;.xdel</c>) and didn't
+        /// get to delete or put back before a crash; since ISS-166 a transaction deletes nothing before its commit and
+        /// sets nothing aside. One whose file is there again (a journal's undo put it back) is deleted; one whose file
+        /// isn't is put back: its transaction never committed (a commit deleted them before its journal went). Its
+        /// file there again may also be a table another context made at its fixed name, and the rows set aside are
+        /// then lost: the bug ISS-166 removed for transactions of this version. One that can't be put back stops the
+        /// open, as a journal that can't be undone does: the index files still name its rows.
         /// </summary>
         private static void PutBackSetAsideFiles(string root)
         {
@@ -75,7 +78,10 @@ namespace Xod.Services
                 string target = aside.Substring(0, aside.Length - SetAsideSuffix.Length);
                 try
                 {
-                    PutBackOne(target, dropWhenBack: true);
+                    if (File.Exists(target))
+                        File.Delete(aside);
+                    else
+                        File.Move(aside, target, overwrite: false);
                 }
                 catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
                 {
@@ -84,25 +90,6 @@ namespace Xod.Services
                 }
             }
         }
-
-        /// <summary>
-        /// One file set aside put back, by the open (above) and by a rollback (IOService.PutBackSetAside). A file there
-        /// again is never overwritten. With <paramref name="dropWhenBack"/>, what was set aside is then dropped: the
-        /// open's rule, taken as a journal's undo or a newer write (for a table file a new table is just as likely, and
-        /// its rows are lost: ISS-166). A rollback drops it only for a page: its name is random, so only a context that
-        /// read that page writes it there again, a newer write of it. For a table or index file, whose names are fixed,
-        /// another context may have made a new one; the put-back fails (IOException), the context refuses writes, and
-        /// what was set aside waits for the next open.
-        /// </summary>
-        private static void PutBackOne(string file, bool dropWhenBack)
-        {
-            if (dropWhenBack && File.Exists(file))
-                File.Delete(file + SetAsideSuffix);
-            else
-                File.Move(file + SetAsideSuffix, file, overwrite: false);
-        }
-
-        private static bool IsPage(string file) => file.EndsWith(".xpag", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>The names of the index files in the database folder.</summary>
         internal string[] IndexFileNames() =>
@@ -118,7 +105,7 @@ namespace Xod.Services
                     return true;
             }
             string fullPath = Path.IsPathRooted(fileName) ? fileName : Path.Combine(root, fileName);
-            return File.Exists(fullPath);
+            return OnDiskHere(fullPath);
         }
 
         internal XFile OpenFileOrCreate<T>(string fileName, bool openOnly = false, bool preSave = false)
@@ -156,7 +143,7 @@ namespace Xod.Services
                     }
                     saved.RawPageBecameFile(normalizedName, file);
                 }
-                else if (File.Exists(filePath))
+                else if (OnDiskHere(filePath))
                 {
                     file = Load(type, filePath, password);
                 }
@@ -198,7 +185,7 @@ namespace Xod.Services
                     return item.File;
                 if (cachedRawPages.TryGetValue(normalizedName, out var rawPage) && rawPage?.Bytes != null)
                     return new XFile(storageSerializer.Deserialize(rawPage.ToExactArray()), typeof(TablePage), filePath, password);
-                return File.Exists(filePath) ? LoadUnlocked(typeof(TablePage), filePath, password) : null;
+                return OnDiskHere(filePath) ? LoadUnlocked(typeof(TablePage), filePath, password) : null;
             }
         }
 
@@ -358,7 +345,7 @@ namespace Xod.Services
         {
             if (!Directory.Exists(root)) return null;
             string[] files = Directory.GetFiles(root, "*.xtab");
-            foreach (var file in files)
+            foreach (var file in files.Where(f => !DeletedHere(f)))
             {
                 XFile tableFile = OpenFileOrCreate(Path.GetFileName(file), typeof(Table), openOnly: true);
                 if (tableFile != null && tableFile.Pages().Any(s => s.Attribute("file")?.Value == xpagCode + ".xpag"))
@@ -481,7 +468,8 @@ namespace Xod.Services
         {
             var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string path in Directory.GetFiles(root, "*.xpag"))
-                names.Add(Path.GetFileName(path));
+                if (!DeletedHere(path))
+                    names.Add(Path.GetFileName(path));
             lock (syncLock)
             {
                 foreach (string name in cachedFiles.Keys.Concat(cachedRawPages.Keys))
@@ -499,7 +487,8 @@ namespace Xod.Services
             // query naming either is ambiguous (XQ003), not silently one of them.
             var names = new SortedSet<string>(StringComparer.Ordinal);
             foreach (string path in Directory.GetFiles(root, "*.xtab"))
-                names.Add(Path.GetFileName(path));
+                if (!DeletedHere(path))
+                    names.Add(Path.GetFileName(path));
             lock (syncLock)
             {
                 foreach (string name in cachedFiles.Keys)
@@ -601,7 +590,7 @@ namespace Xod.Services
 
         internal XFile Load(Type type, string filePath, string pwd = null)
         {
-            if (!File.Exists(filePath))
+            if (!OnDiskHere(filePath))
                 return null;
 
             lock (syncLock)
@@ -705,15 +694,24 @@ namespace Xod.Services
             string fullPath = Path.IsPathRooted(filePath) ? filePath : Path.Combine(root, filePath);
             string normalizedName = Path.GetFileName(fullPath);
 
+            // An index file is a cache outside every journal, deleted by the index service alone, which inside a
+            // transaction leaves it for the commit's index flush and handles one another reader holds
+            // (IndexService.DeleteIndexFile, ISS-042). Among the commit's deletes, a held one failed the commit (review
+            // of PLAN-063). Refused before anything changes, so a refusal leaves nothing half done.
+            if (IsIndex(fullPath) && HasActiveTransaction != null && HasActiveTransaction())
+                throw new InvalidOperationException("A delete of the index file '" + normalizedName + "' while its context's transaction " +
+                    "is open: the index service deletes it at the commit.");
+
             lock (syncLock)
             {
                 // Not waited for: an index file, outside every journal (the gate's guard doesn't ask it either), and a
                 // file that isn't on disk, such as the page of a statement being undone that never reached it: only
                 // what this context holds changes. Such a delete doesn't touch the disk afterwards either, so a file
-                // another context makes there meanwhile is left alone.
+                // another context makes there meanwhile is left alone. A file this context's transaction deleted
+                // already is one of these: gone for it, its delete waiting for the commit (ISS-166).
                 if (IsIndex(fullPath))
                     DeleteUnlocked(fullPath, normalizedName, onDisk: true);
-                else if (!File.Exists(fullPath))
+                else if (!OnDiskHere(fullPath))
                     DeleteUnlocked(fullPath, normalizedName, onDisk: false);
                 else
                     InCommitGate(() => DeleteUnlocked(fullPath, normalizedName, onDisk: true));
@@ -745,14 +743,17 @@ namespace Xod.Services
             }
             if (onDisk && File.Exists(fullPath))
             {
-                // ISS-107: inside a transaction the file is set aside, not deleted: its batch holds the rest of
-                // the transaction's changes (the table that listed this page), and a rollback, or a commit refused
-                // before its journal, puts nothing back but what it set aside. Deleted at once, a page a delete
-                // emptied was lost though nothing was committed.
-                if (batchDepth > 0 && HasActiveTransaction != null && HasActiveTransaction())
+                bool inTransaction = HasActiveTransaction != null && HasActiveTransaction();
+                // ISS-166: inside a transaction a data file (never an index file: Delete refuses one) is deleted by its commit, as its other files are written
+                // then; until then it stays on disk for every other context, gone for this one (pendingDeletes).
+                // Deleted at once, a page a delete emptied was lost though nothing was committed (ISS-107); renamed
+                // aside, a table it dropped was gone for other contexts, which made a new one at its name.
+                if (batchDepth > 0 && inTransaction)
                 {
-                    File.Move(fullPath, fullPath + SetAsideSuffix, overwrite: true);
-                    setAside.Add(fullPath);
+                    lock (pendingDeletesLock)
+                    {
+                        pendingDeletes.Add(normalizedName);
+                    }
                 }
                 else
                 {
@@ -769,7 +770,7 @@ namespace Xod.Services
                 if (cachedRawPages.TryGetValue(normalizedName, out var rawPage) && rawPage != null)
                     return rawPage.Length;
             }
-            if (File.Exists(filePath))
+            if (OnDiskHere(filePath))
             {
                 return new FileInfo(filePath).Length;
             }

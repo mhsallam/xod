@@ -51,7 +51,7 @@ namespace Xod.Services
         /// <param name="dropIndexFiles">Drops the folder's index files, after a commit undone once it had written
         /// them (they may hold its keys): the index service, the one that deletes them in a live context.</param>
         /// <param name="holdCommitGate">Holds the commit gate exclusively until disposed (IOService.CommitGate, ISS-164).</param>
-        /// <param name="bytesOnDisk">A file's bytes on disk now, as this transaction left it (IOService.BytesOnDisk).</param>
+        /// <param name="bytesOnDisk">A file's bytes on disk now (IOService.BytesOnDisk).</param>
         internal XodTransaction(string rootDirectory, Action<Action> exclusive, Action onCommit, Action<Action> onRollback, Action<string> onFaulted, Action onDispose,
             Action dropIndexFiles, Func<IDisposable> holdCommitGate = null, Func<string, byte[]> bytesOnDisk = null)
         {
@@ -469,9 +469,10 @@ namespace Xod.Services
                 completed = true;
                 try
                 {
-                    // Nothing to put back on disk but the files the transaction set aside (onRollback ends its batch,
-                    // which does): it wrote no data file (IOService.RefuseWriteInsideTransaction). Writing its
-                    // before-images back here took back what other contexts had written to those files since (ISS-164).
+                    // Nothing to put back on disk: the transaction wrote no data file (IOService.RefuseWriteInsideTransaction)
+                    // and deleted none (its deletes wait for the commit, ISS-166); onRollback forgets them with its batch.
+                    // Writing its before-images back here took back what other contexts had written to those files
+                    // since (ISS-164).
                     onRollback?.Invoke(() => { });
                 }
                 finally
