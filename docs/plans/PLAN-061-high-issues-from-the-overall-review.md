@@ -319,7 +319,7 @@ reproduced as fixed). Its findings:
   `--check` and `--check-fresh` ok; `XodBench.Tests` 26/26; no machine details in the tracked files. The test run
   takes no longer with a key made at every new database with a secret.
 - **Linux** (2026-11-15, `mcr.microsoft.com/dotnet/sdk:9.0`, a non-root user, the container's own file system, no
-  network; the commit `6da8ae5`): the password change, property encryption, shared access, crash safety, transaction,
+  network; the commit `af8cefa`): the password change, property encryption, shared access, crash safety, transaction,
   lock, migrator and journal tests, 136 passed. The read-only-media test ran first with its folders passed as empty
   strings, which point both at one writable folder, and failed for that; run again with a folder mounted read-only
   (`XOD_RO_RW`, `XOD_RO_RO`), the lock tests passed 6/6, the gate left uncreated where the folder can't be written.
