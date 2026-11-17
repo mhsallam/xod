@@ -46,8 +46,9 @@ namespace Xod
         /// (PLAN-064). Kept so code that sets it still compiles.</summary>
         public bool LockDatabase { get; set; } = false;
         public int LockRetryTimeoutMs { get; set; } = 0;
-        /// <summary>How long a transaction, or a write that isn't part of the open transaction, waits for that
-        /// transaction to end before it throws <see cref="TransactionException"/> (ISS-132). 30 seconds by default.
+        /// <summary>How long a transaction, or a read or a write that isn't part of the open transaction, waits for that
+        /// transaction to end before it throws <see cref="TransactionException"/> (ISS-132, ISS-175). 30 seconds by
+        /// default.
         /// A transaction belongs to the code that began it (see <see cref="XodContext.BeginTransaction"/>).</summary>
         public int TransactionTimeoutMs { get; set; } = 30000;
         public DurabilityMode Durability { get; set; } = DurabilityMode.Immediate;

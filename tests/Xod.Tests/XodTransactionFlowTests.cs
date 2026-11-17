@@ -1,6 +1,7 @@
-// ISS-132: a transaction belongs to the flow that began it (its thread, and an await or a Task.Run inside it). A write
-// from another flow while it is open used to join it: told it succeeded, then taken back by its rollback. It now waits
-// for the transaction to end, up to TransactionTimeoutMs, and then is written, or refused with nothing written.
+// ISS-132, ISS-175: a transaction belongs to the flow that began it (its thread, and an await or a Task.Run inside it).
+// A write from another flow while it is open used to join it: told it succeeded, then taken back by its rollback; a read
+// saw its writes before the commit. Both now wait for the transaction to end, up to TransactionTimeoutMs, and then go on,
+// or are refused with nothing done.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -118,32 +119,233 @@ namespace Xod.Tests
                 await Task.Yield();
                 await Task.Run(() => db.Insert(new FlowNote { Id = 2, Text = "run" }));
                 Assert.Equal(new[] { 1, 2 }, Ids(db, false));
+                Assert.Equal(new[] { 1, 2 }, await Task.Run(() => Ids(db, false)));
+                Assert.Equal(2, await Task.Run(() => db.Sql("SELECT Id FROM FlowNote").Rows.Count));
                 tx.Rollback();
             }
             Assert.Empty(Ids(db, false));
         }
 
-        // A write from inside a read on another flow can't wait for the transaction (the transaction's commit needs the
-        // lock that read holds), so it is refused at once. Given ten minutes, a wait would hang the test: it waits for
-        // the write before it ends the transaction.
-        [Fact]
-        public async Task Another_flow_s_write_inside_a_read_is_refused_while_a_transaction_is_open()
+        // ISS-175: another flow's read during a transaction doesn't see what the transaction has written. Given a short
+        // wait, it is refused; before, it returned the transaction's rows, which its rollback then took back.
+        [Theory]
+        [InlineData("select")]
+        [InlineData("count")]
+        [InlineData("query")]
+        [InlineData("sql")]
+        public async Task Another_flow_s_read_during_a_transaction_does_not_see_it(string read)
         {
-            string path = NewPath("inside-read");
-            var options = new DatabaseOptions { InitialCreate = true, TransactionTimeoutMs = 600_000 };
+            string path = NewPath("read-refused-" + read);
+            var options = new DatabaseOptions { InitialCreate = true, TransactionTimeoutMs = 100 };
+            using var db = new XodContext(path, options: options);
+            using (var tx = db.BeginTransaction())
+            {
+                db.Insert(new FlowNote { Id = 1, Text = "uncommitted" });
+                var other = OnAnotherFlow(() => Read(db, read));
+                var e = await Assert.ThrowsAsync<TransactionException>(() => other);
+                Assert.Contains("transaction", e.Message);
+                tx.Rollback();
+            }
+            Assert.Equal(0, Read(db, read));
+        }
+
+        // Given time, the other flow's read waits for the transaction's end, and sees what it committed, or nothing after
+        // its rollback. The transaction ends only once the read waits for it (the step operation-waits); before, the read
+        // saw the row at once and never waited.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Another_flow_s_read_waits_for_the_transaction_and_sees_what_it_committed(bool commit)
+        {
+            string path = NewPath("read-waits-" + commit);
+            var options = new DatabaseOptions { InitialCreate = true };
+            var marked = new AsyncLocal<bool>();
+            using var readWaits = new ManualResetEventSlim();
+            FaultInjection.InProcess = step =>
+            {
+                if (step == "operation-waits" && marked.Value)
+                    readWaits.Set();
+            };
+            try
+            {
+                using var db = new XodContext(path, options: options);
+                Task<int> other;
+                using (var tx = db.BeginTransaction())
+                {
+                    db.Insert(new FlowNote { Id = 1, Text = "one" });
+                    other = OnAnotherFlow(() => { marked.Value = true; return Read(db, "select"); });
+                    Assert.True(readWaits.Wait(Deadline));
+                    Assert.False(other.IsCompleted);
+                    if (commit)
+                        tx.Commit();
+                    else
+                        tx.Rollback();
+                }
+                Assert.Equal(commit ? 1 : 0, await other.WaitAsync(Deadline));
+            }
+            finally
+            {
+                FaultInjection.InProcess = null;
+            }
+        }
+
+        // Code of another flow run on the transaction's thread, inside one of its reads (ExecutionContext.Run here; an
+        // await's continuation run inline does the same), isn't the transaction's: its read is refused, not nested in the
+        // transaction's turn. Before, it read the transaction's uncommitted row.
+        [Fact]
+        public async Task Another_flow_s_code_run_inside_the_transaction_s_read_does_not_see_it()
+        {
+            string path = NewPath("inline-other-flow");
+            var options = new DatabaseOptions { InitialCreate = true };
+            using var db = new XodContext(path, options: options);
+            var otherFlow = await OnAnotherFlow(() => ExecutionContext.Capture());
+            var inline = new InlineRead();
+            using (var tx = db.BeginTransaction())
+            {
+                db.Insert(new FlowNote { Id = 1, Text = "uncommitted" });
+                Assert.Single(db.Query<FlowNote>(n => ReadOnOtherFlow(db, otherFlow, inline)).ToList());
+                tx.Rollback();
+            }
+            Assert.Null(inline.Count);
+            Assert.IsType<TransactionException>(inline.Refused);
+            Assert.Equal(0, db.Count<FlowNote>());
+        }
+
+        private sealed class InlineRead
+        {
+            public int? Count;
+            public Exception Refused;
+        }
+
+        private static bool ReadOnOtherFlow(XodContext db, ExecutionContext otherFlow, InlineRead inline)
+        {
+            ExecutionContext.Run(otherFlow.CreateCopy(), _ =>
+            {
+                try { inline.Count = db.Count<FlowNote>(); }
+                catch (Exception e) { inline.Refused = e; }
+            }, null);
+            return true;
+        }
+
+        // The tables a transaction has dropped are gone only at its commit: another flow's RegisteredTypes waits for it
+        // (refused here, with a short wait) rather than leave them out before then. Before, it left the table out, and
+        // the rollback then brought it back.
+        [Fact]
+        public async Task Another_flow_s_registered_types_wait_for_a_transaction_s_drop()
+        {
+            string path = NewPath("registered-types");
+            var options = new DatabaseOptions { InitialCreate = true, TransactionTimeoutMs = 100 };
             using var db = new XodContext(path, options: options);
             db.Insert(new FlowNote { Id = 1, Text = "one" });
             using (var tx = db.BeginTransaction())
             {
-                db.Insert(new FlowNote { Id = 2, Text = "two" });
-                var other = OnAnotherFlow(() => db.Query<FlowNote>(n => InsertOther(db, n)).ToList());
-                var e = await Assert.ThrowsAnyAsync<Exception>(() => other);
-                Assert.IsType<TransactionException>(e);
-                Assert.Contains("inside a read", e.Message);
-                tx.Commit();
+                db.Drop<FlowNote>();
+                await Assert.ThrowsAsync<TransactionException>(() => OnAnotherFlow(() => db.RegisteredTypes().ToList()));
+                tx.Rollback();
             }
-            Assert.Equal(new[] { 1, 2 }, Ids(db, false));
-            Assert.Empty(db.Select<FlowOther>());
+            Assert.Contains(typeof(FlowNote), db.RegisteredTypes());
+        }
+
+        private static int Read(XodContext db, string read) => read switch
+        {
+            "select" => db.Select<FlowNote>().Count(),
+            "count" => db.Count<FlowNote>(),
+            "query" => db.Query<FlowNote>(n => n.Id > 0).Count(),
+            "sql" => db.Sql("SELECT Id FROM FlowNote").Rows.Count,
+            _ => throw new ArgumentException(read),
+        };
+
+        // A write inside another flow's read goes on, though a transaction waits to begin: the read holds its turn, the
+        // transaction waits for the read, and the write is made in the read's turn. It used to be refused while the
+        // transaction waited (and a transaction could be open beside the read). The transaction begins after the read.
+        [Fact]
+        public async Task A_write_inside_another_flow_s_read_goes_on_while_a_transaction_waits()
+        {
+            string path = NewPath("write-inside-read");
+            var options = new DatabaseOptions { InitialCreate = true };
+            var marked = new AsyncLocal<bool>();
+            using var transactionWaits = new ManualResetEventSlim();
+            using var inRead = new ManualResetEventSlim();
+            FaultInjection.InProcess = step =>
+            {
+                if (step == "transaction-waits" && marked.Value)
+                    transactionWaits.Set();
+            };
+            try
+            {
+                using var db = new XodContext(path, options: options);
+                db.Insert(new FlowNote { Id = 1, Text = "one" });
+                var read = OnAnotherFlow(() => db.Query<FlowNote>(n => InsertOtherOnce(db, n, inRead, transactionWaits)).ToList());
+                Assert.True(inRead.Wait(Deadline));
+                var begin = OnAnotherFlow(() =>
+                {
+                    marked.Value = true;
+                    var tx = db.BeginTransaction();
+                    tx.Commit();
+                    tx.Dispose();
+                    return true;
+                });
+                Assert.Single(await read.WaitAsync(Deadline));
+                Assert.True(await begin.WaitAsync(Deadline));
+                Assert.Equal(new[] { 1 }, db.Select<FlowOther>().Select(o => o.Id).ToArray());
+            }
+            finally
+            {
+                FaultInjection.InProcess = null;
+            }
+        }
+
+        // A read of the transaction's own flow, decided the transaction's before its locks, doesn't see another flow's
+        // transaction begun after its own commit: checked under its locks, it starts over and waits for that one. Held at
+        // the step between the decision and the locks, as the write in the test above.
+        [Fact]
+        public async Task A_read_of_the_transaction_s_flow_does_not_see_the_next_transaction_after_its_commit()
+        {
+            string path = NewPath("own-read-after-commit");
+            var options = new DatabaseOptions { InitialCreate = true };
+            var held = new AsyncLocal<bool>();
+            using var atTurn = new SemaphoreSlim(0);
+            using var go = new ManualResetEventSlim();
+            int turnsSeen = 0;
+            FaultInjection.InProcess = step =>
+            {
+                if (step != "turn" || !held.Value)
+                    return;
+                atTurn.Release();
+                if (Interlocked.Increment(ref turnsSeen) == 1)
+                    go.Wait(Deadline);
+            };
+            try
+            {
+                using var db = new XodContext(path, options: options);
+                var tx = db.BeginTransaction();
+                db.Insert(new FlowNote { Id = 1, Text = "own" });
+                var read = Task.Run(() => { held.Value = true; return Ids(db, false); });
+                Assert.True(await atTurn.WaitAsync(Deadline));
+                tx.Commit();
+                tx.Dispose();
+                var next = await OnAnotherFlow(() =>
+                {
+                    var t = db.BeginTransaction();
+                    db.Insert(new FlowNote { Id = 2, Text = "next" });
+                    return t;
+                });
+                go.Set();
+
+                // Before the check, the read went on and saw the other transaction's row.
+                var startedOver = atTurn.WaitAsync(Deadline);
+                Assert.Same(startedOver, await Task.WhenAny(read, startedOver));
+                Assert.True(await startedOver);
+                Assert.False(read.IsCompleted);
+
+                next.Rollback();
+                next.Dispose();
+                Assert.Equal(new[] { 1 }, await read.WaitAsync(Deadline));
+            }
+            finally
+            {
+                FaultInjection.InProcess = null;
+            }
         }
 
         // A transaction waits for another flow's write under way, on its turn, and gives up at TransactionTimeoutMs. The
@@ -192,7 +394,7 @@ namespace Xod.Tests
             int turnsSeen = 0;
             FaultInjection.InProcess = step =>
             {
-                if (step != "write-turn" || !held.Value)
+                if (step != "turn" || !held.Value)
                     return;
                 atTurn.Release();
                 if (Interlocked.Increment(ref turnsSeen) == 1)
@@ -287,6 +489,14 @@ namespace Xod.Tests
         // The tests that hold an interleaving with FaultInjection.InProcess, one process-wide slot, are in this class,
         // whose tests xUnit runs one at a time. Their waits have a deadline, so a regression fails instead of hanging.
         private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(30);
+
+        // Inside the read: says so, waits until the transaction waits for the read, then writes.
+        private static bool InsertOtherOnce(XodContext db, FlowNote n, ManualResetEventSlim inRead, ManualResetEventSlim transactionWaits)
+        {
+            inRead.Set();
+            Assert.True(transactionWaits.Wait(Deadline));
+            return InsertOther(db, n);
+        }
 
         private static bool InsertOther(XodContext db, FlowNote n)
         {

@@ -325,15 +325,17 @@ namespace Xod
 
         /// <summary>
         /// Begins a transaction, which belongs to the code that calls this: its thread, and what it awaits or runs with
-        /// <c>Task.Run</c> (the <c>*Async</c> methods among them). Its writes are the transaction's. A write anywhere
-        /// else waits for the transaction to end, up to <see cref="DatabaseOptions.TransactionTimeoutMs"/>, and is then
-        /// made outside it, or throws <see cref="TransactionException"/> with nothing written. A second transaction,
-        /// begun elsewhere, waits the same way, and so do <see cref="GetStatistics"/>, <c>Flush</c>, <c>ClearCache</c>,
-        /// <c>DropType</c> and a password change. Reads don't wait.
+        /// <c>Task.Run</c> (the <c>*Async</c> methods among them). Its reads and writes are the transaction's: they see
+        /// its writes. A read or a write anywhere else waits for the transaction to end, up to
+        /// <see cref="DatabaseOptions.TransactionTimeoutMs"/>, and then goes on, or throws
+        /// <see cref="TransactionException"/> with nothing done: it never sees, or joins, what the transaction has not
+        /// committed. A second transaction, begun elsewhere, waits the same way, and so do <see cref="GetStatistics"/>,
+        /// <c>Flush</c>, <c>ClearCache</c>, <c>DropType</c> and a password change. So keep transactions short: a long one
+        /// holds up every other thread's reads.
         /// <para>
         /// Begun inside an async method, a transaction belongs to that method, not to its caller (an <c>AsyncLocal</c>
-        /// set there doesn't reach the caller), so the caller's writes wait for it: begin it where its writes are made.
-        /// Dispose it: one never disposed keeps every other write waiting until the context closes.
+        /// set there doesn't reach the caller), so the caller's reads and writes wait for it: begin it where its work is
+        /// done. Dispose it: one never disposed keeps every other read and write waiting until the context closes.
         /// </para>
         /// </summary>
         public IXodTransaction BeginTransaction()

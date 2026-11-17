@@ -1,7 +1,7 @@
 # PLAN-065: a transaction is its flow's
 
 - **Task ID**: `TASK-080`
-- **Status**: Done (2026-11-16)
+- **Status**: Done (2026-11-16); reads made to wait too by [`PLAN-066`](PLAN-066-reads-wait-for-another-flow-s-transaction.md) (`ISS-175`), which also took out the refusal of a write inside a read (section 2)
 - **Issue**: `ISS-132` (from [`REVIEW-2026-11-14`](../REVIEW-2026-11-14-overall.md), probe P3); filed by it: `ISS-175`
 - **Related**: [`PLAN-064`](PLAN-064-one-context-per-database.md) (one context per database: what is concurrent is the
   threads of that one context)

@@ -14,15 +14,15 @@ namespace Xod.Engines.Xml
             {
                 throw new TransactionException("A transaction is already active on this database context.");
             }
-            // Inside a write on this thread (a trigger), it would wait for that write to end; inside a read, for writes
-            // the read holds back. Refused at once rather than after TransactionTimeoutMs.
-            if (turnDepth.Value > 0)
-            {
-                throw new TransactionException("A transaction can't begin inside a write on the same thread (a trigger, for example): it would wait for that write to end. Begin it after the write has returned.");
-            }
+            // Inside a read or a write on this thread (a query's predicate, a trigger), it would wait for that one to end.
+            // Refused at once rather than after TransactionTimeoutMs.
             if (engineReadDepth.Value > 0)
             {
                 throw new XodException(InsideReadMessage);
+            }
+            if (turnDepth.Value > 0)
+            {
+                throw new TransactionException("A transaction can't begin inside a write on the same thread (a trigger, for example): it would wait for that write to end. Begin it after the write has returned.");
             }
 
             ThrowIfWritesRefused();

@@ -8,16 +8,18 @@ records it. The last release: [2.0.3](RELEASE-NOTES-2.0.3.md).
 
 ## Behaviour changes
 
-- **A transaction belongs to the code that began it.** While it is open, a write from another thread no longer
-  joins it (to be taken back by its rollback after it had returned). It waits for the transaction to end, up to
-  `TransactionTimeoutMs`, and is then made on its own, or throws `TransactionException` with nothing written. An
-  `await`, a `Task.Run` or an `*Async` method inside the transaction is still part of it. `BeginTransaction` inside
-  a write (a `BeforeAction` or `AfterAction` handler) now throws `TransactionException`. A write from inside a
-  query's predicate on another thread, while a transaction is open, throws at once. `Flush`, `ClearCache`,
-  `GetStatistics`, `DropType` and a password change from another thread wait for it too. A transaction begun inside
-  an async method belongs to that method, so its caller's writes wait for it; begin it where its writes are made. A
-  transaction never disposed keeps writes from other threads waiting until the context closes.
-  ([`PLAN-065`](plans/PLAN-065-a-transaction-is-its-flow-s.md))
+- **A transaction belongs to the code that began it, and other threads wait for it.** While it is open, a read or a
+  write from another thread waits for it to end, up to `TransactionTimeoutMs`, then goes on, or throws
+  `TransactionException` with nothing done. A write no longer joins the transaction (to be taken back by its rollback
+  after it had returned), and a read no longer sees what the transaction has written before its commit. An `await`, a
+  `Task.Run` or an `*Async` method inside the transaction is still part of it. So a long transaction holds up other
+  threads' reads: keep transactions short. The other way round, `BeginTransaction` waits for other threads' reads and
+  writes under way, and throws `TransactionException` if one outlasts `TransactionTimeoutMs`. `Flush`, `ClearCache`, `GetStatistics`, `DropType` and a password change
+  wait too. `BeginTransaction` inside a write (a `BeforeAction` or `AfterAction` handler) now throws
+  `TransactionException`. A transaction begun inside an async method belongs to that method, so its caller's reads
+  and writes wait for it; begin it where its work is done. A transaction never disposed keeps other threads waiting
+  until the context closes. ([`PLAN-065`](plans/PLAN-065-a-transaction-is-its-flow-s.md),
+  [`PLAN-066`](plans/PLAN-066-reads-wait-for-another-flow-s-transaction.md))
 
 ## Fixed
 

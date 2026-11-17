@@ -164,18 +164,35 @@ namespace Xod.Engines.Xml
 
         public IEnumerable<Type> RegisteredTypes()
         {
-            var types = new List<Type>();
-            if (!Directory.Exists(root)) return types;
-
-            var files = Directory.GetFiles(root, "*.xtab").Where(f => !ioService.DeletedHere(f));
-            foreach (var file in files)
+            // A read like any other (ISS-175): the tables a transaction of another flow has dropped are gone only at its
+            // commit, so it waits for that transaction rather than see its drops (DeletedHere) before then.
+            EnterWithTurn(EnterRead, ExitRead);
+            try
             {
-                string typeName = System.IO.Path.GetFileNameWithoutExtension(file);
-                Type t = propertyService.RegisteredType(typeName) ?? Type.GetType(typeName);
-                if (t != null)
-                    types.Add(t);
+                var types = new List<Type>();
+                if (!Directory.Exists(root)) return types;
+
+                var files = Directory.GetFiles(root, "*.xtab").Where(f => !ioService.DeletedHere(f));
+                foreach (var file in files)
+                {
+                    string typeName = System.IO.Path.GetFileNameWithoutExtension(file);
+                    Type t = propertyService.RegisteredType(typeName) ?? Type.GetType(typeName);
+                    if (t != null)
+                        types.Add(t);
+                }
+                return types;
             }
-            return types;
+            finally
+            {
+                try
+                {
+                    ExitRead();
+                }
+                finally
+                {
+                    GiveTurn();
+                }
+            }
         }
 
         public void RegisterType(Type type)

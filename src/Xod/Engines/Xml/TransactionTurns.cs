@@ -5,12 +5,13 @@ using System.Threading;
 namespace Xod.Engines.Xml
 {
     /// <summary>
-    /// ISS-132: whose turn it is to write, between a context's transaction and the writes of other flows. A transaction
-    /// belongs to the flow that began it (XmlEngine's flowTransaction); while it is open, a write from any other flow
-    /// waits for its end, and a transaction waits for the writes of other flows under way to end before it begins.
-    /// Waiting writes and transactions go in the order they came (a ticket each): a write that came before a waiting
-    /// transaction goes before it, and one that came after waits for it, so neither a stream of writes nor a stream of
-    /// transactions keeps the other out. Writes don't wait for each other here (the engine's locks order them).
+    /// ISS-132, ISS-175: whose turn it is, between a context's transaction and the reads and writes (operations) of
+    /// other flows. A transaction belongs to the flow that began it (XmlEngine's flowTransaction); while it is open, an
+    /// operation from any other flow waits for its end, and a transaction waits for the operations of other flows under
+    /// way to end before it begins. Waiting operations and transactions go in the order they came (a ticket each): an
+    /// operation that came before a waiting transaction goes before it, and one that came after waits for it, so neither
+    /// a stream of operations nor a stream of transactions keeps the other out. Operations don't wait for each other
+    /// here (the engine's locks order them).
     /// <para>
     /// A monitor and counts, not a ReaderWriterLockSlim: a transaction may end on another thread than the one it began
     /// on (after an await), which a thread-affine lock refuses. Every wait has a deadline (TransactionTimeoutMs), and the
@@ -22,13 +23,13 @@ namespace Xod.Engines.Xml
         private readonly object gate = new object();
         private bool transactionOpen;
         private bool closed;
-        private int writes;
+        private int operations;
         private long nextTicket;
-        // The tickets of the transactions and the writes waiting, the earliest first.
+        // The tickets of the transactions and the operations waiting, the earliest first.
         private readonly SortedSet<long> transactionsWaiting = new SortedSet<long>();
-        private readonly SortedSet<long> writesWaiting = new SortedSet<long>();
+        private readonly SortedSet<long> operationsWaiting = new SortedSet<long>();
 
-        /// <summary>Waits until no transaction is open, no write of another flow is under way, and nothing that came
+        /// <summary>Waits until no transaction is open, no operation of another flow is under way, and nothing that came
         /// before it waits, then opens one. False if <paramref name="timeoutMs"/> passed first.</summary>
         internal bool TryBeginTransaction(int timeoutMs)
         {
@@ -39,8 +40,10 @@ namespace Xod.Engines.Xml
                 transactionsWaiting.Add(ticket);
                 try
                 {
-                    while (!closed && (transactionOpen || writes > 0 || Before(writesWaiting, ticket) || Before(transactionsWaiting, ticket)))
+                    while (!closed && (transactionOpen || operations > 0 || Before(operationsWaiting, ticket) || Before(transactionsWaiting, ticket)))
                     {
+                        // Under the gate: a test's hook may only take note here, never wait.
+                        Xod.Services.FaultInjection.Step("transaction-waits");
                         if (!WaitUntil(deadline))
                             return false;
                     }
@@ -65,57 +68,54 @@ namespace Xod.Engines.Xml
             }
         }
 
-        /// <summary>Waits until no transaction is open and none that came before it waits, then counts a write under
-        /// way. False if <paramref name="timeoutMs"/> passed first (0: don't wait). With <paramref name="passWaiting"/>
-        /// only an open transaction holds it back (a write inside a read, which can't wait, and goes before a
-        /// transaction that is only waiting: that one holds no lock yet).</summary>
-        internal bool TryBeginWrite(int timeoutMs, bool passWaiting = false)
+        /// <summary>Waits until no transaction is open and none that came before it waits, then counts an operation under
+        /// way. False if <paramref name="timeoutMs"/> passed first (0: don't wait).</summary>
+        internal bool TryBeginOperation(int timeoutMs)
         {
             long deadline = Environment.TickCount64 + timeoutMs;
             lock (gate)
             {
-                if (passWaiting)
+                // Nothing open or waiting to order it against (operations don't wait for each other): it goes on, with no
+                // ticket to keep. Every read and write comes here, so the common case stays cheap.
+                if (closed || (!transactionOpen && transactionsWaiting.Count == 0))
                 {
-                    while (!closed && transactionOpen)
-                    {
-                        if (!WaitUntil(deadline))
-                            return false;
-                    }
-                    writes++;
+                    operations++;
                     return true;
                 }
 
                 long ticket = nextTicket++;
-                writesWaiting.Add(ticket);
+                operationsWaiting.Add(ticket);
                 try
                 {
                     while (!closed && (transactionOpen || Before(transactionsWaiting, ticket)))
                     {
+                        // Under the gate: a test's hook may only take note here, never wait.
+                        Xod.Services.FaultInjection.Step("operation-waits");
                         if (!WaitUntil(deadline))
                             return false;
                     }
-                    writes++;
+                    operations++;
                     return true;
                 }
                 finally
                 {
-                    writesWaiting.Remove(ticket);
+                    operationsWaiting.Remove(ticket);
                     Monitor.PulseAll(gate);
                 }
             }
         }
 
-        internal void EndWrite()
+        internal void EndOperation()
         {
             lock (gate)
             {
-                if (--writes == 0)
+                if (--operations == 0)
                     Monitor.PulseAll(gate);
             }
         }
 
         /// <summary>The context closed: every wait ends at once, and the caller finds the context closed. Without it a
-        /// transaction the close couldn't roll back (a close from inside a read) left every write waiting to its
+        /// transaction the close couldn't roll back (a close from inside a read) left every operation waiting to its
         /// deadline.</summary>
         internal void Close()
         {
@@ -132,10 +132,10 @@ namespace Xod.Engines.Xml
             get { lock (gate) return transactionsWaiting.Count; }
         }
 
-        /// <summary>How many writes are waiting for their turn now.</summary>
-        internal int WritesWaiting
+        /// <summary>How many operations are waiting for their turn now.</summary>
+        internal int OperationsWaiting
         {
-            get { lock (gate) return writesWaiting.Count; }
+            get { lock (gate) return operationsWaiting.Count; }
         }
 
         // Something in the queue came before this ticket.

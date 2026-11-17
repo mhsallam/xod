@@ -26,7 +26,8 @@ namespace Xod.Engines.Xml
             // Writes with relations take the engine's write lock, which this read lock keeps out; a standalone table's
             // write takes the engine's read lock and its table's write lock, which the query's table read locks keep
             // out (SqlSource). Both are held from the first table read to the last row computed.
-            EnterRead();
+            // A turn first, as every read: it waits for a transaction of another flow (ISS-175).
+            EnterWithTurn(EnterRead, ExitRead);
             itemsCacheService.BeginRead();
             try
             {
@@ -55,7 +56,14 @@ namespace Xod.Engines.Xml
             finally
             {
                 itemsCacheService.EndRead();
-                ExitRead();
+                try
+                {
+                    ExitRead();
+                }
+                finally
+                {
+                    GiveTurn();
+                }
             }
         }
 

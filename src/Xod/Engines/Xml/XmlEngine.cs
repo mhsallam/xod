@@ -36,8 +36,9 @@ namespace Xod.Engines.Xml
         // The transaction this flow began: an AsyncLocal, so an await or a Task.Run inside it (the *Async wrappers)
         // is still in it, and every other flow is not. Compared with activeTransaction, which is the context's.
         private readonly AsyncLocal<XodTransaction> flowTransaction = new AsyncLocal<XodTransaction>();
-        // This thread's writes (nested by triggers), and the transaction the outermost decided it is part of: null when
-        // it is outside any, and then counted in turns (WriteTurnHolds checks the decision under the write's locks).
+        // This thread's reads and writes (nested: a trigger's write, a read or a write inside a query's predicate), and
+        // the transaction the outermost decided it is part of: null when it is outside any, and then counted in turns
+        // (TurnHolds checks the decision under its locks).
         private readonly ThreadLocal<int> turnDepth = new ThreadLocal<int>();
         private readonly ThreadLocal<XodTransaction> turnTransaction = new ThreadLocal<XodTransaction>();
         // The engine-wide read locks this thread holds (EnterRead, ExitRead). Not the lock's IsReadLockHeld: its
@@ -289,19 +290,23 @@ namespace Xod.Engines.Xml
         {
             // Before the lock: this loads the type, which may refuse it (its attributes).
             bool standalone = IsStandaloneTable(type);
-            EnterRead();
-            if (standalone)
-            {
-                tableLock = GetTableLock(type);
-                EnterSecond(tableLock.EnterReadLock, ExitRead);
-                Holding(tableLock, type.FullName);
-            }
-            else
-            {
-                tableLock = null;
-            }
+            ReaderWriterLockSlim taken = null;
+            EnterWithTurn(() => taken = EnterTableReadLocks(type, standalone), () => ExitTableReadLocks(taken));
+            tableLock = taken;
             // Last, and it can't throw: ExitTableReadLock ends it (ISS-138).
             itemsCacheService.BeginRead();
+        }
+
+        // The locks of a read, under its turn (EnterTableReadLock): the engine's read lock, and a standalone table's.
+        private ReaderWriterLockSlim EnterTableReadLocks(Type type, bool standalone)
+        {
+            EnterRead();
+            if (!standalone)
+                return null;
+            var tableLock = GetTableLock(type);
+            EnterSecond(tableLock.EnterReadLock, ExitRead);
+            Holding(tableLock, type.FullName);
+            return tableLock;
         }
 
         // The engine-wide read lock (refused once closed, ISS-103).
@@ -358,6 +363,18 @@ namespace Xod.Engines.Xml
             itemsCacheService.EndRead();
             try
             {
+                ExitTableReadLocks(tableLock);
+            }
+            finally
+            {
+                GiveTurn();
+            }
+        }
+
+        private void ExitTableReadLocks(ReaderWriterLockSlim tableLock)
+        {
+            try
+            {
                 if (tableLock != null)
                 {
                     LettingGo(tableLock);
@@ -400,24 +417,7 @@ namespace Xod.Engines.Xml
         /// <summary>A write's turn, then the engine-wide write lock: waits for another flow's transaction (ISS-132).</summary>
         private void EnterExclusive()
         {
-            while (true)
-            {
-                TakeWriteTurn();
-                try
-                {
-                    EnterExclusiveLock();
-                }
-                catch
-                {
-                    GiveWriteTurn();
-                    throw;
-                }
-                if (WriteTurnHolds())
-                    return;
-                bool counted = turnTransaction.Value == null;
-                ExitExclusive();
-                ThrowIfCounted(counted);
-            }
+            EnterWithTurn(EnterExclusiveLock, ExitExclusiveLock);
         }
 
         private void ExitExclusive()
@@ -428,11 +428,11 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                GiveWriteTurn();
+                GiveTurn();
             }
         }
 
-        // This flow began the context's open transaction: its writes are the transaction's.
+        // This flow began the context's open transaction: its reads and writes are the transaction's.
         private bool InThisFlowsTransaction
         {
             get
@@ -445,34 +445,72 @@ namespace Xod.Engines.Xml
         private int TransactionTimeoutMs => options.TransactionTimeoutMs > 0 ? options.TransactionTimeoutMs : 30000;
 
         /// <summary>
-        /// ISS-132: the turn of a write, taken by every write before its locks (EnterExclusive, EnterTableWriteLock) and
-        /// given back after them. A write of the open transaction's flow is the transaction's and goes on. Any other
-        /// waits until no transaction is open (TransactionTurns), up to TransactionTimeoutMs, and is refused with nothing
-        /// done if it is still open; it used to join the transaction, be told it succeeded, and be taken back by its
-        /// rollback. One made inside a read on this thread doesn't wait: the transaction's commit needs the lock the
-        /// read holds. A trigger's write nests in its statement's turn. Decided before the write's locks, so checked
-        /// again under them (WriteTurnHolds).
+        /// The turn of a read or a write, then its locks (<paramref name="enterLocks"/>): the one way either takes the
+        /// engine's locks (EnterTableReadLock, EnterTableWriteLock, EnterExclusive, SQL's read). The turn is decided
+        /// before the locks and checked under them (TurnHolds); when the transaction it decided for ended in between, the
+        /// locks (<paramref name="exitLocks"/>) and the turn go, nothing done, and it starts over, outside any
+        /// transaction now. Returns holding the turn and the locks, or throws holding neither.
         /// </summary>
-        private void TakeWriteTurn()
+        private void EnterWithTurn(Action enterLocks, Action exitLocks)
+        {
+            while (true)
+            {
+                TakeTurn();
+                try
+                {
+                    enterLocks();
+                }
+                catch
+                {
+                    GiveTurn();
+                    throw;
+                }
+                if (TurnHolds())
+                    return;
+                bool counted = turnTransaction.Value == null;
+                try
+                {
+                    exitLocks();
+                }
+                finally
+                {
+                    GiveTurn();
+                }
+                ThrowIfCounted(counted);
+            }
+        }
+
+        /// <summary>
+        /// The turn of a read or a write of this context, before its locks. One of the open transaction's flow is the
+        /// transaction's and goes on. Any other waits until no transaction is open and none that came before it waits
+        /// (TransactionTurns), up to TransactionTimeoutMs, and is refused with nothing done if one is still open: a write
+        /// used to join the transaction and be taken back by its rollback (ISS-132), a read to see its writes before
+        /// the commit (ISS-175). While it is counted, no transaction begins. A nested one (a trigger's write, a read or
+        /// a write inside a query's predicate) goes on in its outermost's turn: no transaction of another flow can be
+        /// open under that one. Unless it is code of another flow run on this thread inside the transaction's own read
+        /// or write (an await's continuation run inline, ExecutionContext.Run): that one isn't the transaction's, can't
+        /// wait for it (the transaction can't end under its own operation), and is refused.
+        /// </summary>
+        private void TakeTurn()
         {
             if (turnDepth.Value > 0)
             {
+                var outer = turnTransaction.Value;
+                if (outer != null && outer.IsActive && !InThisFlowsTransaction)
+                {
+                    throw new TransactionException("This read or write runs on a thread inside a read or a write of a transaction it isn't part of (an await's continuation run inline there, for example), and can't wait for that transaction: it would wait for itself. Nothing of it was done; run it outside that transaction's work.");
+                }
                 turnDepth.Value++;
                 return;
             }
             var transaction = InThisFlowsTransaction ? activeTransaction : null;
-            FaultInjection.Step("write-turn");
+            FaultInjection.Step("turn");
             if (transaction == null)
             {
-                bool insideRead = engineReadDepth.Value > 0;
                 int timeoutMs = TransactionTimeoutMs;
-                // Inside a read it doesn't wait, and it goes before a transaction that is only waiting to begin: that
-                // one holds no lock yet, and waits for this write to end.
-                if (!turns.TryBeginWrite(insideRead ? 0 : timeoutMs, passWaiting: insideRead))
+                if (!turns.TryBeginOperation(timeoutMs))
                 {
-                    throw new TransactionException(insideRead
-                        ? "A transaction this write isn't part of is open, and this write, made inside a read on this thread (a query's predicate, for example), can't wait for it: the transaction's commit needs the lock the read holds. Nothing of this write was made; make it after the read has returned."
-                        : "Waited " + timeoutMs + " ms (TransactionTimeoutMs) for a transaction this write isn't part of to end. Nothing of this write was made. A transaction belongs to the code that called BeginTransaction and what that code awaits or runs with Task.Run; a write elsewhere, including the caller of an async method that began it, waits for it.");
+                    throw new TransactionException("Waited " + timeoutMs + " ms (TransactionTimeoutMs) for a transaction this read or write isn't part of to end; nothing of it was done. A transaction belongs to the code that called BeginTransaction and what that code awaits or runs with Task.Run; a read or a write elsewhere, including in the caller of an async method that began it, waits for it.");
                 }
             }
             turnTransaction.Value = transaction;
@@ -480,17 +518,16 @@ namespace Xod.Engines.Xml
         }
 
         /// <summary>
-        /// Under the write's locks: the transaction its turn decided it is part of is still the context's open one, or,
-        /// for a write outside any, none is open. The turn decides before the locks, and nothing keeps the transaction
-        /// open between: its commit or rollback, from another thread of its flow, can end it, and another flow's begin
-        /// in the gap (it waits for counted writes only) would take this write into its batch. A begin, commit or
-        /// rollback from another thread takes the write lock, so the answer holds while the write holds its locks. One
-        /// from this write's own trigger can still end the transaction (the lock is reentrant on its thread): the rest
-        /// of the statement is then written outside any, and no other transaction begins before it ends. When the
-        /// answer doesn't hold, the caller lets the locks and the turn go, nothing written, and starts over: outside
-        /// any transaction now.
+        /// Under the locks: the transaction the turn decided it is part of is still the context's open one, or, for one
+        /// outside any, none is open. The turn decides before the locks, and nothing keeps the transaction open between:
+        /// its commit or rollback, from another thread of its flow, can end it, and another flow's transaction begin in
+        /// the gap (it waits for counted turns only), whose batch a write would join and a read would see. A begin, commit
+        /// or rollback from another thread takes the write lock, which the locks of a read or a write keep out, so the
+        /// answer holds while they are held. One from this write's own trigger can still end the transaction (the lock is
+        /// reentrant on its thread): the rest of the statement is then written outside any, and no other transaction
+        /// begins before it ends.
         /// </summary>
-        private bool WriteTurnHolds()
+        private bool TurnHolds()
         {
             if (turnDepth.Value > 1)
                 return true;
@@ -499,23 +536,23 @@ namespace Xod.Engines.Xml
             return ReferenceEquals(open, turnTransaction.Value);
         }
 
-        // After WriteTurnHolds said no and the locks and the turn were let go: a counted write holds every transaction
-        // out (TransactionTurns), so one open under its locks is a broken invariant, and starting over would only decide
-        // the same again. Thrown with nothing held.
+        // After TurnHolds said no and the locks and the turn were let go: a counted turn holds every transaction out
+        // (TransactionTurns), so one open under its locks is a broken invariant, and starting over would only decide the
+        // same again. Thrown with nothing held.
         private static void ThrowIfCounted(bool counted)
         {
             if (counted)
-                throw new InvalidOperationException("A transaction began while a write outside it held its turn.");
+                throw new InvalidOperationException("A transaction began while a read or a write outside it held its turn.");
         }
 
-        private void GiveWriteTurn()
+        private void GiveTurn()
         {
             if (--turnDepth.Value > 0)
                 return;
             bool counted = turnTransaction.Value == null;
             turnTransaction.Value = null;
             if (counted)
-                turns.EndWrite();
+                turns.EndOperation();
         }
 
         /// <summary>Takes the engine-wide write lock (refused from inside a read on this thread, and once closed). No
@@ -552,25 +589,12 @@ namespace Xod.Engines.Xml
 
         private void EnterTableWriteLock(Type type, out ReaderWriterLockSlim tableLock, out bool usedGlobalWriteLock)
         {
-            while (true)
-            {
-                TakeWriteTurn();
-                try
-                {
-                    EnterTableWriteLocks(type, out tableLock, out usedGlobalWriteLock);
-                }
-                catch
-                {
-                    GiveWriteTurn();
-                    throw;
-                }
-                if (WriteTurnHolds())
-                    break;
-                // Nothing written: the locks and the turn go, with no statement end (ExitTableWriteLock's WriteSaved).
-                bool counted = turnTransaction.Value == null;
-                ExitTableWriteLocks(tableLock, usedGlobalWriteLock);
-                ThrowIfCounted(counted);
-            }
+            ReaderWriterLockSlim taken = null;
+            bool global = false;
+            // Started over, nothing is written: the locks go with no statement end (ExitTableWriteLock's WriteSaved).
+            EnterWithTurn(() => EnterTableWriteLocks(type, out taken, out global), () => ExitTableWriteLocks(taken, global));
+            tableLock = taken;
+            usedGlobalWriteLock = global;
 
             // Every write records its tables' schema (PLAN-060 section 2.4), under the locks the write holds, as a
             // change to the table file like any other: a transaction commits or rolls it back with the rows.
@@ -590,7 +614,7 @@ namespace Xod.Engines.Xml
         {
             ThrowIfWritesRefused();
             // Read once: a commit on another thread may end the transaction meanwhile (the choice is checked under the
-            // locks, WriteTurnHolds).
+            // locks, TurnHolds).
             var transaction = activeTransaction;
             if (BeforeAction == null && AfterAction == null &&
                 (transaction == null || !transaction.IsActive) &&
@@ -629,11 +653,18 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                ExitTableWriteLocks(tableLock, usedGlobalWriteLock);
+                try
+                {
+                    ExitTableWriteLocks(tableLock, usedGlobalWriteLock);
+                }
+                finally
+                {
+                    GiveTurn();
+                }
             }
         }
 
-        // The locks of a write, then its turn, each let go even if the one before fails.
+        // The locks of a write, each let go even if the one before fails.
         private void ExitTableWriteLocks(ReaderWriterLockSlim tableLock, bool usedGlobalWriteLock)
         {
             try
@@ -647,21 +678,14 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                try
+                if (usedGlobalWriteLock)
                 {
-                    if (usedGlobalWriteLock)
-                    {
-                        globalWriteDepth--;
-                        ExitExclusiveLock();
-                    }
-                    else
-                    {
-                        ExitRead();
-                    }
+                    globalWriteDepth--;
+                    ExitExclusiveLock();
                 }
-                finally
+                else
                 {
-                    GiveWriteTurn();
+                    ExitRead();
                 }
             }
         }
