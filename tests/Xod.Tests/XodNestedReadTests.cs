@@ -31,7 +31,7 @@ namespace Xod.Tests
 
     public class XodNestedReadTests : IDisposable
     {
-        private static readonly TimeSpan Bound = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan Bound = EngineLocks.Bound;
         private readonly List<string> dirs = new();
 
         public void Dispose()
@@ -50,24 +50,9 @@ namespace Xod.Tests
             return Path.Combine(dir, "app.xod");
         }
 
-        // The writers waiting on the engine's locks, whichever they are (the engine-wide lock, or a table's).
-        private static int WaitingWriters(XodContext db)
-        {
-            object engine = db.Engine;
-            int waiting = 0;
-            foreach (var field in engine.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance))
-            {
-                object value = field.GetValue(engine);
-                if (value is ReaderWriterLockSlim one)
-                    waiting += one.WaitingWriteCount;
-                else if (value is ConcurrentDictionary<string, ReaderWriterLockSlim> many)
-                    waiting += many.Values.Sum(l => l.WaitingWriteCount);
-            }
-            return waiting;
-        }
+        private static int WaitingWriters(XodContext db) => EngineLocks.WaitingWriters(db);
 
-        private static void Until(Func<bool> condition, string what) =>
-            Assert.True(SpinWait.SpinUntil(condition, Bound), "never reached: " + what);
+        private static void Until(Func<bool> condition, string what) => EngineLocks.Until(condition, what);
 
         // What a predicate reads of the other table: by a lambda query, or by SQL.
         private static int ReadOther<TOther>(XodContext db, bool sql) where TOther : class =>

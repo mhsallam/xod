@@ -37,6 +37,7 @@ records it. The last release: [2.0.3](RELEASE-NOTES-2.0.3.md).
   was refused or stored twice. A crash in the middle of a write is not covered: use a transaction for that. Nor is
   buffered durability, where a failed write still keeps part of its change. ([`PLAN-067`](plans/PLAN-067-a-write-statement-is-all-or-nothing.md))
 - **A refused `InsertRange` or `Delete` throws its own exception.** When a trigger refused one, a file write that failed at its end (a file another program holds) used to replace the trigger's exception with an `IOException`; and with buffered durability a refused range's rows before the refused item were written at once. A refused range or delete writes nothing when it fails. ([`PLAN-068`](plans/PLAN-068-a-failed-statement-writes-nothing-of-its-batch.md))
+- **A read no longer sees a write on another thread made in its middle.** A write to a table without relations could run while a read that reached its rows was under way, so the read could show some rows from before the write and some from after. ([`PLAN-067`](plans/PLAN-067-a-write-statement-is-all-or-nothing.md))
 - **Queries nested in other queries' predicates no longer wait forever** behind writers, and SQL run inside a read is
   no longer refused. ([`PLAN-067`](plans/PLAN-067-a-write-statement-is-all-or-nothing.md))
 

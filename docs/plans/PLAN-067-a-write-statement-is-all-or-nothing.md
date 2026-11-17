@@ -2,7 +2,8 @@
 
 - **Task ID**: `TASK-082`
 - **Status**: Done (2026-11-17)
-- **Issue**: `ISS-125`; with it `ISS-089`, `ISS-090`, `ISS-124`, `ISS-131`, `ISS-133`, `ISS-137`, `ISS-163`
+- **Issue**: `ISS-125`; with it `ISS-089`, `ISS-090`, `ISS-108`, `ISS-124`, `ISS-131`, `ISS-133`, `ISS-137`, `ISS-163`,
+  `ISS-169`
 - **Related**: [`PLAN-053`](PLAN-053-statement-undo-counters-stored-values-locks.md) (the created rows' undo, `ISS-062`),
   [`PLAN-058`](PLAN-058-standalone-undo-held-index-files-insert-range-index-save.md) (`ISS-120`, `ISS-124`),
   [`PLAN-054`](PLAN-054-indexes-left-behind-by-a-crash.md) (`ISS-098`)
@@ -136,6 +137,11 @@ named, so it fails the same way on every file system):
 
 `XodItemCacheTests`: a write inside a trigger's read is seen by the rest of that read: red against the change before
 the review's finding (the read kept the row as it was before the write).
+
+`XodWriteBesideReadTests` (added after the commit, once the two issues were seen to share this cause): a write to a
+standalone table on another thread waits for a read that references its rows (`ISS-169`), and a child's write that
+lengthens its row waits for its parent's read (`ISS-108`): **red before** (each write was made in the middle of the
+read: it took the engine's read lock and its table's write lock only).
 
 `XodNestedReadTests` (replaces `XodSqlLockTests`): reads nested in opposite orders, by a lambda query and by SQL,
 behind a waiting writer of each table, both finish: **red before** (the lambda deadlocked, `ISS-163`; SQL was refused).
