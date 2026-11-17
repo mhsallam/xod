@@ -16,6 +16,7 @@ internal static class Machine
     /// <summary>Pins this process to the most performant cores when the CPU mixes core types.</summary>
     public static (string Mode, int Cpus) PinToPerformanceCores()
     {
+        if (!OperatingSystem.IsWindows()) return ("all", LogicalCpus);
         var sets = ReadCpuSets();
         if (sets == null || sets.Count == 0) return ("all", LogicalCpus);
 

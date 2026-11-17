@@ -1,0 +1,12 @@
+root = true
+
+# The library and the CLI ship, and a database file must read the same whatever the reader's culture:
+# a culture-dependent format, parse or comparison there is a warning, which the gate (tools/gate.mjs)
+# makes an error (ISS-158). CA1307 (an ordinal overload made explicit) is left off: the calls it finds
+# are ordinal already.
+[src/**.cs]
+dotnet_diagnostic.CA1304.severity = warning
+dotnet_diagnostic.CA1305.severity = warning
+dotnet_diagnostic.CA1309.severity = warning
+dotnet_diagnostic.CA1310.severity = warning
+dotnet_diagnostic.CA1311.severity = warning

@@ -596,7 +596,7 @@ namespace Xod.Tests
         // A type refused when it loads, first used by a read, leaves the context usable: the read lock was taken
         // before the type loaded and never released, so the next transaction and the close failed.
         [Fact]
-        public void A_type_refused_on_its_first_read_leaves_the_context_usable()
+        public async System.Threading.Tasks.Task A_type_refused_on_its_first_read_leaves_the_context_usable()
         {
             string path = NewDatabase("refused-read");
             var db = new XodContext(path);
@@ -607,7 +607,8 @@ namespace Xod.Tests
                 tx.Commit();
             }
             var other = System.Threading.Tasks.Task.Run(() => db.Insert(new SequencedNote { Key = "other" }));
-            Assert.True(other.Wait(TimeSpan.FromSeconds(20)), "a write on another thread waited on the leaked lock");
+            // A write on another thread that waits on a leaked lock never ends: the bound fails the test.
+            await other.WaitAsync(TimeSpan.FromSeconds(20));
             db.Dispose();
             using var reopened = new XodContext(path);
             Assert.Equal(1, reopened.Count<NumberedItem>());

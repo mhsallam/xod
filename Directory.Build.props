@@ -1,0 +1,10 @@
+<Project>
+  <!-- Every project in the repository: a warning fails the build (ISS-158), on every compile, so one can't
+       pass unseen because the gate found the project up to date. The analyzers the library adds are set in
+       .editorconfig. One exception: NU1900 says NuGet couldn't fetch the vulnerability data (no network), which
+       is the machine, not the code; a known vulnerability in a package (NU1901 to NU1904) still fails it. -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900</WarningsNotAsErrors>
+  </PropertyGroup>
+</Project>

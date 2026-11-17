@@ -610,7 +610,7 @@ namespace Xod.Tests
         // then held alone, and left a marker no context closed. No write is under way beside a read now (ISS-125): one
         // waits for the read, and after a close from inside it fails, with nothing of it written.
         [Fact]
-        public void A_write_waiting_when_a_close_comes_from_inside_a_read_doesn_t_land_after_it()
+        public async Task A_write_waiting_when_a_close_comes_from_inside_a_read_doesn_t_land_after_it()
         {
             string path = NewDatabase("close-in-read-race");
             string dir = Path.GetDirectoryName(path)!;
@@ -631,7 +631,7 @@ namespace Xod.Tests
             }).ToList();
 
             int markers = Directory.GetFiles(dir, "*.xidxdirty").Length;
-            Assert.True(writer.Wait(10000));
+            await writer.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.IsType<ObjectDisposedException>(writerFailure);
             using var alone = new XodContext(path, options: new DatabaseOptions { LockDatabase = true });
             Assert.Equal(markers, Directory.GetFiles(dir, "*.xidxdirty").Length);

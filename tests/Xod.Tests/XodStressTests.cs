@@ -548,7 +548,7 @@ namespace Xod.Tests
         }
 
         [Fact]
-        public void Enterprise_MultiContext_LockRetry_And_Parallel_MultiTable_Concurrency()
+        public async Task Enterprise_MultiContext_LockRetry_And_Parallel_MultiTable_Concurrency()
         {
             string dbPath = GetDbPath("lock_retry_and_striped_tables");
             var lockRetryOptions = new DatabaseOptions
@@ -573,7 +573,7 @@ namespace Xod.Tests
             {
                 ctx2.Insert(new UserAccount { Email = "waiter2@xod.dev", Score = 75 });
             }
-            holderTask.GetAwaiter().GetResult();
+            await holderTask;
 
             // Part 2: Parallel multi-table writes & reads across 3 independent tables (UserAccount, ToDoItem, FuzzEntity)
             // on a shared context (its writes one at a time)

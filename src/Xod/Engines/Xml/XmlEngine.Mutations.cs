@@ -283,7 +283,7 @@ namespace Xod.Engines.Xml
                             {
                                 XAttribute countAttr = tablePageElement.Attribute("count");
                                 if (countAttr != null && int.TryParse(countAttr.Value, out int currentCount))
-                                    countAttr.Value = (currentCount + 1).ToString();
+                                    countAttr.Value = (currentCount + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
                                 else
                                     tablePageElement.SetAttributeValue("count", pageFile.Rows().Count());
                             });

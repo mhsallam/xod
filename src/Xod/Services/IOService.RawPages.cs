@@ -829,14 +829,14 @@ namespace Xod.Services
                     {
                         rawPage.RowCount++;
                         if (countAttr != null)
-                            countAttr.Value = rawPage.RowCount.ToString();
+                            countAttr.Value = rawPage.RowCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
                         else
                             page.SetAttributeValue("count", rawPage.RowCount);
                     }
                     else if (countAttr != null && int.TryParse(countAttr.Value, out int currentCount))
                     {
                         rawPage.RowCount = currentCount + 1;
-                        countAttr.Value = rawPage.RowCount.ToString();
+                        countAttr.Value = rawPage.RowCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     }
                 }
                 finally
@@ -1133,7 +1133,7 @@ namespace Xod.Services
                         pos += System.Text.Encoding.UTF8.GetBytes(chars.Slice(start, i - start), buf.AsSpan(pos));
                     "&#x"u8.CopyTo(buf.AsSpan(pos));
                     pos += 3;
-                    ((int)c).TryFormat(buf.AsSpan(pos), out int hexLength, "X");
+                    ((int)c).TryFormat(buf.AsSpan(pos), out int hexLength, "X", System.Globalization.CultureInfo.InvariantCulture);
                     pos += hexLength;
                     buf[pos++] = (byte)';';
                     start = i + 1;

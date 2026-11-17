@@ -26,6 +26,8 @@ bug all ran".
 | 9 | Public API surface | the 2.0 surface is documented and breaking changes are listed | **green** (`XodApiSurfaceTests`: 605-line snapshot of every exported type and member in `fixtures/api-surface.txt`; any change fails the suite until regenerated with `XOD_UPDATE_API=1`) |
 | 10 | Platform matrix | `net8.0` **and** `net9.0`; Windows and Linux | **green** - 54/54 on Windows and 54/54 on Linux (Ubuntu 24.04 container, .NET 8 and 9 runtimes) for both frameworks; `.github/workflows/tests.yml` keeps it running on `ubuntu-latest` and `windows-latest` |
 
+Every layer that runs in the committed suite, and the format, stress and machine-details checks, run with one command, `node tools/gate.mjs`; the workflow runs the same script. A warning fails the build.
+
 ## Exit criteria
 
 1. Layers 1–3 fully green, no skipped cases.

@@ -688,7 +688,7 @@ namespace Xod.Sql
                 return new BConst { Type = SqlType.Null };
             // The type of the value as given, before it is converted: a value of no SQL type has none.
             if (!SqlTypes.TryTypeOfValue(v, out var type))
-                throw new XodSqlException("XQ012", $"parameter {(p.Name == null ? (p.Position + 1).ToString() : "@" + p.Name)} is a {v.GetType().Name}, which no SQL type holds");
+                throw new XodSqlException("XQ012", $"parameter {(p.Name == null ? (p.Position + 1).ToString(System.Globalization.CultureInfo.InvariantCulture) : "@" + p.Name)} is a {v.GetType().Name}, which no SQL type holds");
             object value = SqlTypes.ParameterValue(v);
             // A text value takes the type of what it meets, as a text literal does.
             return new BConst { Type = type, Value = value, FreeText = type == SqlType.Text };

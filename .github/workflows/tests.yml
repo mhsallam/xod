@@ -25,35 +25,8 @@ jobs:
         with:
           dotnet-version: ${{ matrix.framework }}.x
 
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build engine and tests
-        run: |
-          dotnet build src/Xod/Xod.csproj -c Release --nologo
-          dotnet build tests/Xod.CrashWriter/Xod.CrashWriter.csproj -c Release --nologo
-
-      - name: Test
-        run: dotnet test tests/Xod.Tests/Xod.Tests.csproj -c Release --nologo -f net${{ matrix.framework }}
-
-      # The conformance set (PLAN-047): the library against the committed cases and fixtures.
-      - name: Conformance cases
-        run: dotnet test conformance/Xod.Conformance/Xod.Conformance.csproj -c Release --nologo -f net${{ matrix.framework }}
-
-      # The file-format half: an independent reader (Node, no packages) reads every fixture.
-      - name: Conformance file format
-        if: matrix.framework == '9.0'
-        run: node conformance/format/read.mjs --check
-
-      # The same dataset as the library in the tree writes it today must read the same, with keys v2.
-      - name: Conformance fresh write
-        if: matrix.framework == '9.0'
-        run: |
-          dotnet run --project conformance/Xod.Conformance/Xod.Conformance.csproj -c Release -f net9.0 -- data "${{ runner.temp }}/fresh"
-          dotnet run --project conformance/Xod.Conformance/Xod.Conformance.csproj -c Release -f net9.0 -- stored-values "${{ runner.temp }}/fresh"
-          node conformance/format/read.mjs --check-fresh "${{ runner.temp }}/fresh"
-
-      # The stress harness writes the files the site publishes; these pin what those files must say.
-      - name: Stress harness tests
-        if: matrix.framework == '9.0'
-        run: dotnet test benchmarks/XodBench.Tests/XodBench.Tests.csproj -c Release --nologo
+      # The gate (tools/gate.mjs): the same steps a local run makes, so the two can't drift apart
+      # (ISS-158). Builds treat a warning as an error; the file format, the stress harness and the
+      # machine-details check run with 9.0.
+      - name: Gate
+        run: node tools/gate.mjs --framework ${{ matrix.framework }}
