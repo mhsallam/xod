@@ -925,23 +925,19 @@ namespace Xod.Engines.Xml
                 bool statement = BeginStatement();
                 try
                 {
-                    ioService.BeginBatch();
-                    int count = 0;
-                    try
+                    int count = InBatch(true, () =>
                     {
+                        int created = 0;
                         foreach (var item in items)
                         {
                             Create(type, item, lazyLoad);
-                            count++;
+                            created++;
                         }
-                    }
-                    finally
-                    {
-                        ioService.EndBatch();
-                        // The batch's pages are on disk and its indexes not yet (ISS-043's crash window).
-                        FaultInjection.Step("batch-written");
-                        indexService.SaveAfterRowsWritten(null);
-                    }
+                        return created;
+                    });
+                    // The batch's pages are on disk and its indexes not yet (ISS-043's crash window).
+                    FaultInjection.Step("batch-written");
+                    indexService.SaveAfterRowsWritten(null);
                     return count;
                 }
                 catch (Exception failure) when (statement)
@@ -1039,9 +1035,7 @@ namespace Xod.Engines.Xml
                     return false;
 
                 bool shouldBatch = !isCascade && !ioService.IsBatchOrBuffered;
-                if (shouldBatch)
-                    ioService.BeginBatch();
-                try
+                return InBatch(shouldBatch, () =>
                 {
                     bool deleted = false;
                     var meta = propertyService.GetMetadata(type);
@@ -1144,13 +1138,32 @@ namespace Xod.Engines.Xml
                     }
 
                     return deleted;
-                }
-                finally
-                {
-                    if (shouldBatch)
-                        ioService.EndBatch();
-                }
+                });
             });
+        }
+
+        // A statement's batch (InsertRange, a Delete): its changes wait in it, and are written at its end, each file
+        // once, when the statement succeeds (IOService.EndBatch). When the statement fails, the batch ends unwritten
+        // (IOService.EndBatchUnwritten, ISS-177), before the statement's undo: it used to be ended in a finally, so a
+        // failed statement wrote what it had done before its undo put the files back, and a write failing there
+        // replaced the statement's own exception with the write's. Not open: the body runs as it is.
+        private T InBatch<T>(bool open, Func<T> body)
+        {
+            if (!open)
+                return body();
+            ioService.BeginBatch();
+            T result;
+            try
+            {
+                result = body();
+            }
+            catch
+            {
+                ioService.EndBatchUnwritten();
+                throw;
+            }
+            ioService.EndBatch();
+            return result;
         }
 
         public bool DropType(Type type)

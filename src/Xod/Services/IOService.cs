@@ -135,14 +135,28 @@ namespace Xod.Services
             }
         }
 
+        // The one way a batch's end counts (EndBatch, EndBatchUnwritten, DiscardBatch): the depth goes down, and only the
+        // outermost end acts. Under syncLock.
+        private bool OutermostBatchEndsUnlocked()
+        {
+            if (batchDepth > 0)
+                batchDepth--;
+            return batchDepth == 0;
+        }
+
+        // Files and pages whose write wasn't made wait for the next flush in the buffer's sets: after a write that
+        // failed (FlushPending), and a batch ended unwritten (EndBatchUnwritten). Under syncLock.
+        private void WaitInBufferUnlocked(IEnumerable<XFile> files, IEnumerable<string> rawPages)
+        {
+            dirtyBufferedFiles.PutBack(files);
+            dirtyBufferedRawPages.UnionWith(rawPages);
+        }
+
         internal void EndBatch()
         {
             lock (syncLock)
             {
-                if (batchDepth > 0)
-                    batchDepth--;
-
-                if (batchDepth == 0)
+                if (OutermostBatchEndsUnlocked())
                 {
                     // The deletes, then the writes. A file the transaction deleted and then made again (a table
                     // dropped and made anew) isn't deleted: the flush replaces it. Deleted first, its name could be
@@ -226,8 +240,7 @@ namespace Xod.Services
             }
             catch
             {
-                dirtyBufferedFiles.PutBack(toFlush);
-                dirtyBufferedRawPages.UnionWith(rawToFlush);
+                WaitInBufferUnlocked(toFlush, rawToFlush);
                 throw;
             }
             saved.Written(toFlush, rawToFlush);
@@ -408,14 +421,32 @@ namespace Xod.Services
             }
         }
 
+        /// <summary>
+        /// The batch's statement failed (ISS-177): the batch ends and nothing of it is written. What it holds waits as a
+        /// write still to make, in the buffer's sets, as after a batch write that failed (<see cref="FlushPending"/>): in
+        /// direct mode the statement's undo forgets it with the rest (<see cref="UndoStatement"/>); in buffered mode the
+        /// statement's own undo takes its rows back in those files, and the next flush writes them. Inside an outer batch
+        /// (a transaction's) only the depth goes down: the outer batch keeps it all. No delete waits at depth 0: only a
+        /// transaction's are deferred (<see cref="DeleteUnlocked"/>), and its batch is the outer one.
+        /// </summary>
+        internal void EndBatchUnwritten()
+        {
+            lock (syncLock)
+            {
+                if (OutermostBatchEndsUnlocked())
+                {
+                    WaitInBufferUnlocked(dirtyBatchFiles.ToList(), dirtyBatchRawPages);
+                    dirtyBatchFiles.Clear();
+                    dirtyBatchRawPages.Clear();
+                }
+            }
+        }
+
         internal void DiscardBatch()
         {
             lock (syncLock)
             {
-                if (batchDepth > 0)
-                    batchDepth--;
-
-                if (batchDepth == 0)
+                if (OutermostBatchEndsUnlocked())
                 {
                     dirtyBatchFiles.Clear();
                     dirtyBatchRawPages.Clear();
