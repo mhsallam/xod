@@ -1142,7 +1142,53 @@ namespace Xod.Engines.Xml
             });
         }
 
-        // A statement's batch (InsertRange, a Delete): its changes wait in it, and are written at its end, each file
+        /// <summary>
+        /// The rows of a type a predicate matches, deleted as one write statement (ISS-176): the matches are found under
+        /// the statement's lock, and each is deleted by <see cref="Delete(Type, object)"/>, nested in it, its trigger
+        /// included. In direct mode a delete refused part way (a trigger) leaves every match, the ones before it too
+        /// (WriteStatement's savepoint); their changes wait in the statement's batch and are written once, at its end.
+        /// It used to query outside a write, then delete each match as a statement of its own. So the predicate runs
+        /// inside the write, as a trigger does: it may read, a write it makes is part of the statement, and it must not
+        /// wait for another thread's read or write of this context, which waits for the statement.
+        /// </summary>
+        int IXodEngine.DeleteWhere(Type type, Func<object, bool> predicate)
+        {
+            if (predicate == null)
+                exceptionService.Throw(new ArgumentNullException(nameof(predicate)));
+            return WriteStatement(type, () => InBatch(!ioService.IsBatchOrBuffered, () =>
+            {
+                var matches = QueryItems(type, predicate, "*").ToList();
+                int deleted = 0;
+                foreach (var match in matches)
+                {
+                    if (Delete(match.GetActualType(), match))
+                        deleted++;
+                }
+                return deleted;
+            }));
+        }
+
+        /// <summary>
+        /// Every registered table dropped as one write statement (ISS-176): each by <see cref="DropType"/>, nested in it.
+        /// In direct mode a drop refused part way (its trigger) leaves every table, the ones dropped before it too, with
+        /// their counters (WriteStatement's savepoint, AutonumberService.UndoStatement). Like a drop, it records no
+        /// schema. It used to drop each type as a statement of its own. True when every type was dropped.
+        /// </summary>
+        bool IXodEngine.DropAll()
+        {
+            return WriteStatement<bool>(null, () =>
+            {
+                bool allDropped = true;
+                foreach (var type in RegisteredTypes().ToList())
+                {
+                    if (!DropType(type))
+                        allDropped = false;
+                }
+                return allDropped;
+            }, recordSchemas: false);
+        }
+
+        // A statement's batch (InsertRange, a Delete, a DeleteWhere): its changes wait in it, and are written at its end, each file
         // once, when the statement succeeds (IOService.EndBatch). When the statement fails, the batch ends unwritten
         // (IOService.EndBatchUnwritten, ISS-177), before the statement's undo: it used to be ended in a finally, so a
         // failed statement wrote what it had done before its undo put the files back, and a write failing there

@@ -28,6 +28,12 @@ records it. The last release: [2.0.3](RELEASE-NOTES-2.0.3.md).
   A database password can't be set, changed or removed inside a write (a trigger) any more: `InvalidOperationException`. ([`PLAN-067`](plans/PLAN-067-a-write-statement-is-all-or-nothing.md))
 - **`InsertRange` is one write.** An item refused (a trigger, a key already used) leaves none of the range; the items
   before it used to stay. ([`PLAN-067`](plans/PLAN-067-a-write-statement-is-all-or-nothing.md))
+- **`DeleteWhere` and `DropAll` are each one write.** Outside a transaction, with the default durability, a delete or a
+  drop refused part way (a trigger) leaves every row or table as it was; the ones before it used to be gone.
+  `DeleteWhere`'s predicate now runs inside that write, as a trigger does: other threads wait for it, so it must not
+  wait for them, and a write it makes is part of the `DeleteWhere` (it used to be refused). `IXodEngine` has both as
+  members; an engine of your own that doesn't implement them deletes and drops one by one, as before.
+  ([`PLAN-070`](plans/PLAN-070-delete-where-and-drop-all-are-one-write.md))
 
 ## Fixed
 

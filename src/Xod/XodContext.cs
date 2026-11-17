@@ -227,14 +227,7 @@ namespace Xod
         public int DeleteWhere<T>(Func<T, bool> predicate)
         {
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
-            var matches = QueryDelegate(predicate, "*").ToList();
-            int deleted = 0;
-            foreach (var match in matches)
-            {
-                if (Delete(match))
-                    deleted++;
-            }
-            return deleted;
+            return engine.DeleteWhere(typeof(T), item => item is T typed && predicate(typed));
         }
 
         public bool Drop<T>()
@@ -249,14 +242,7 @@ namespace Xod
 
         public bool DropAll()
         {
-            var types = engine.RegisteredTypes().ToList();
-            bool allDropped = true;
-            foreach (var type in types)
-            {
-                if (!engine.DropType(type))
-                    allDropped = false;
-            }
-            return allDropped;
+            return engine.DropAll();
         }
 
         public Task<IReadOnlyList<T>> SelectAsync<T>(string include = "*", CancellationToken cancellationToken = default)

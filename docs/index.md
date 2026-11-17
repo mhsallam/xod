@@ -17,6 +17,7 @@ The project's memory. `xod2` is the active rework of XOD; `xod` and `xod.core` a
 - [PLAN-046](plans/PLAN-046-file-format-spec.md) - the XOD file format (accepted 2026-11-11): folder, encodings, encryption, pages and rows, scalar forms, the index, the journal; the schema manifest (E1-E3 decided); defects ISS-050 to ISS-055 (ISS-051 to ISS-055 fixed in PLAN-048)
 - [PLAN-047](plans/PLAN-047-conformance-set.md) - the XOD conformance set (built 2026-11-11): dataset and fixtures, 139 query cases, the C# runner, the independent file reader, known-defect markers; G1-G3 decided
 - [PLAN-048](plans/PLAN-048-format-defect-fixes.md) - fixes for the format defects (2026-11-11, not released): keys v2, one XML character policy, the autonumber mark, the row built before the table changes
+- [PLAN-070](plans/PLAN-070-delete-where-and-drop-all-are-one-write.md) - DeleteWhere and DropAll are one write (2026-11-17, done): ISS-176 resolved in direct mode
 - [PLAN-069](plans/PLAN-069-a-refused-drop-keeps-its-table.md) - a refused drop keeps its table (2026-11-17, done): ISS-178 resolved in direct mode
 - [PLAN-068](plans/PLAN-068-a-failed-statement-writes-nothing-of-its-batch.md) - a failed statement writes nothing of its batch (2026-11-17, done): ISS-177 resolved
 - [PLAN-067](plans/PLAN-067-a-write-statement-is-all-or-nothing.md) - a write statement outside a transaction is all or nothing (2026-11-17, done): ISS-125 resolved (a savepoint per statement in direct mode; one write at a time); ISS-176, ISS-177 and ISS-178 filed

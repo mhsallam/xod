@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Linq.Expressions;
 using Xod.Infra;
 
@@ -37,6 +38,39 @@ namespace Xod
         bool Delete(Type type, object item);
 
         bool DropType(Type type);
+
+        /// <summary>
+        /// Deletes the rows of <paramref name="type"/> the predicate matches, and returns how many were deleted. XOD's
+        /// engines make it one write (ISS-176): a delete refused part way leaves every match. This default, for an
+        /// engine with no such write, deletes the matches one by one.
+        /// </summary>
+        int DeleteWhere(Type type, Func<object, bool> predicate)
+        {
+            if (predicate == null) throw new ArgumentNullException(nameof(predicate));
+            int deleted = 0;
+            foreach (var match in Query(type, predicate, "*").ToList())
+            {
+                if (Delete(match.GetActualType(), match))
+                    deleted++;
+            }
+            return deleted;
+        }
+
+        /// <summary>
+        /// Drops every registered type, and returns whether each was dropped. XOD's engines make it one write
+        /// (ISS-176): a drop refused part way leaves every table. This default, for an engine with no such write, drops
+        /// the types one by one.
+        /// </summary>
+        bool DropAll()
+        {
+            bool allDropped = true;
+            foreach (var type in RegisteredTypes().ToList())
+            {
+                if (!DropType(type))
+                    allDropped = false;
+            }
+            return allDropped;
+        }
 
         IXodTransaction BeginTransaction();
         DatabaseStatistics GetStatistics();

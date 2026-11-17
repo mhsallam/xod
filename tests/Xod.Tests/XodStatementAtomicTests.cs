@@ -543,6 +543,68 @@ namespace Xod.Tests
             Assert.Equal(2, db.Insert(new AtomicCounted { Name = "next" }).Id);
         }
 
+        // ISS-176: DeleteWhere is one write: a delete its trigger refuses part way leaves every match, the ones before it
+        // included, in the context and after a reopen. Each match used to be a statement of its own.
+        [Fact]
+        public void A_delete_where_refused_part_way_leaves_every_match()
+        {
+            string path = NewPath("delete-where");
+            var options = new DatabaseOptions { InitialCreate = true };
+            using (var db = new XodContext(path, options: options))
+            {
+                db.InsertRange(new List<AtomicCounted>
+                {
+                    new AtomicCounted { Name = "x1" }, new AtomicCounted { Name = "keep" }, new AtomicCounted { Name = "x2" }
+                });
+                int deletes = 0;
+                db.AfterAction += (_, e) =>
+                {
+                    if (e.Action == DatabaseActions.Delete && ++deletes == 2)
+                        throw new InvalidOperationException("refused by the trigger");
+                };
+
+                Assert.Throws<InvalidOperationException>(() => db.DeleteWhere<AtomicCounted>(c => c.Name.StartsWith("x")));
+
+                Assert.Equal(new[] { "1=x1", "2=keep", "3=x2" }, Counted(db));
+            }
+            using (var reopened = new XodContext(path, options: options))
+            {
+                Assert.Equal(new[] { "1=x1", "2=keep", "3=x2" }, Counted(reopened));
+                Assert.Equal(2, reopened.DeleteWhere<AtomicCounted>(c => c.Name.StartsWith("x")));
+                Assert.Equal(new[] { "2=keep" }, Counted(reopened));
+            }
+        }
+
+        // ISS-176: DropAll is one write: a drop its trigger refuses part way leaves every table, the ones dropped before
+        // it included.
+        [Fact]
+        public void A_drop_all_refused_part_way_leaves_every_table()
+        {
+            string path = NewPath("drop-all");
+            var options = new DatabaseOptions { InitialCreate = true };
+            using (var db = new XodContext(path, options: options))
+            {
+                db.Insert(new AtomicCounted { Name = "a" });
+                db.Insert(Note(1));
+                int drops = 0;
+                db.AfterAction += (_, e) =>
+                {
+                    if (e.Action == DatabaseActions.Drop && ++drops == 2)
+                        throw new InvalidOperationException("refused by the trigger");
+                };
+
+                Assert.Throws<InvalidOperationException>(() => db.DropAll());
+
+                Assert.Equal(new[] { "1=a" }, Counted(db));
+                Assert.Equal(new[] { "1=note 1" }, Notes(db));
+            }
+            using (var reopened = new XodContext(path, options: options))
+            {
+                Assert.Equal(new[] { "1=a" }, Counted(reopened));
+                Assert.Equal(new[] { "1=note 1" }, Notes(reopened));
+            }
+        }
+
         // ISS-133: an insert that couldn't read its target page (another program held it) had noted its row for the undo
         // first; the undo failed on the same page, and the context refused every write until it was reopened. The
         // insert fails, and the next one is made.

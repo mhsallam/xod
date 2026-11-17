@@ -133,6 +133,65 @@ namespace Xod.Tests
                 Assert.Equal(new[] { 1, 2, 5 }, Ids(reopened));
         }
 
+        // ISS-176: a DeleteWhere its AfterAction refuses at its second match writes nothing, the first match's delete
+        // included, and the caller gets the trigger's exception; every row stays.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void A_refused_delete_where_writes_nothing_and_throws_its_own_failure(bool failWrites)
+        {
+            string path = NewPath("delete-where-" + failWrites);
+            using (var db = new XodContext(path, options: Options(buffered: false)))
+            {
+                db.InsertRange(new List<BatchNote> { Note(1), Note(2), Note(3) });
+                int deletes = 0;
+                db.AfterAction += (_, e) =>
+                {
+                    if (e.Action == DatabaseActions.Delete && ++deletes == 2)
+                        throw new InvalidOperationException("refused by the trigger");
+                };
+
+                var (failure, writes) = Watching(failWrites, () => db.DeleteWhere<BatchNote>(n => n.Id < 3));
+
+                Assert.IsType<InvalidOperationException>(failure);
+                Assert.Equal(0, writes);
+                Assert.Equal(new[] { 1, 2, 3 }, Ids(db));
+            }
+            NothingLeftBehind(path);
+            using (var reopened = new XodContext(path, options: Options(buffered: false)))
+                Assert.Equal(new[] { 1, 2, 3 }, Ids(reopened));
+        }
+
+        // ISS-176: a DeleteWhere's deletes wait in its batch and are written at its end, each data file once, however
+        // many of its matches the file holds.
+        [Fact]
+        public void A_delete_where_writes_each_file_once()
+        {
+            string path = NewPath("delete-where-once");
+            using var db = new XodContext(path, options: Options(buffered: false));
+            db.InsertRange(new List<BatchNote> { Note(1), Note(2), Note(3), Note(4) });
+            var files = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
+            FaultInjection.InProcess = step =>
+            {
+                if (watching.Value && step.StartsWith("file-write:", StringComparison.Ordinal))
+                    files.AddOrUpdate(step, 1, (_, n) => n + 1);
+            };
+            watching.Value = true;
+            try
+            {
+                Assert.Equal(3, db.DeleteWhere<BatchNote>(n => n.Id < 4));
+            }
+            finally
+            {
+                watching.Value = false;
+                FaultInjection.InProcess = null;
+            }
+
+            Assert.NotEmpty(files);
+            Assert.All(files, f => Assert.Equal(1, f.Value));
+            Assert.Equal(new[] { 4 }, Ids(db));
+        }
+
         // A trigger that writes another table inside a range refused later: its write is the range's, written with
         // nothing else of it, and gone with it after a reopen.
         [Theory]
