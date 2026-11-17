@@ -538,7 +538,7 @@ namespace Xod.Engines.Xml
         /// (<see cref="UndoWriteStatement"/>). In a transaction or buffered mode nothing reaches the disk before the
         /// commit or the flush, and a failed statement's own undo takes its created rows back (ISS-062, UndoStatement).
         /// </summary>
-        private T WriteStatement<T>(Type type, Func<T> body)
+        private T WriteStatement<T>(Type type, Func<T> body, bool recordSchemas = true)
         {
             // Started over, nothing is written: the lock goes with nothing to undo.
             EnterWithTurn(EnterGlobalWriteLock, ExitGlobalWriteLock);
@@ -548,12 +548,17 @@ namespace Xod.Engines.Xml
             {
                 savepoint = outermost && ioService.BeginStatement();
                 if (savepoint)
+                {
                     indexService.BeginStatement();
+                    autonumberService.BeginStatement();
+                }
                 statementSavepoint = savepoint || (statementSavepoint && !outermost);
 
                 // Every write records its tables' schema (PLAN-060 section 2.4), under the locks the write holds, as a
-                // change to the table file like any other: a transaction commits or rolls it back with the rows.
-                RecordSchemas(type);
+                // change to the table file like any other: a transaction commits or rolls it back with the rows. A drop
+                // records none: it deletes its table, and leaves the tables it reaches as they were.
+                if (recordSchemas)
+                    RecordSchemas(type);
                 T result = body();
 
                 // The statement's end, the outermost one's: in direct mode what it saved and its owner didn't write
@@ -566,6 +571,7 @@ namespace Xod.Engines.Xml
                 {
                     ioService.EndStatement();
                     indexService.EndStatement();
+                    autonumberService.EndStatement();
                 }
                 return result;
             }
@@ -597,8 +603,9 @@ namespace Xod.Engines.Xml
         /// <summary>
         /// A statement that failed in direct mode (WriteStatement): its data files back as it found them, everything
         /// this context holds forgotten (IOService.UndoStatement), then the indexes it changed or saved dropped and
-        /// rebuilt from the pages when next needed (IndexService.ForgetStatement). The counters stay where it left them:
-        /// the caller's items hold the numbers it handed out (ISS-083), recorded in the tables' marks by the next flush.
+        /// rebuilt from the pages when next needed (IndexService.ForgetStatement). The counters stay where it left them,
+        /// raised: the caller's items hold the numbers it handed out (ISS-083), recorded in the tables' marks by the next
+        /// flush. A counter it cleared (a drop) is raised back to what it had (AutonumberService.UndoStatement, ISS-178).
         /// The failure is what the caller sees. If a file can't be put back (another program holds it), the caller gets
         /// an XodException carrying both, and the context writes nothing more until it is reopened (ISS-091): what the
         /// disk holds is no longer what any statement left.
@@ -623,6 +630,7 @@ namespace Xod.Engines.Xml
             {
                 failures.Add(e);
             }
+            autonumberService.UndoStatement();
             autonumberMarksPending = true;
             if (failures.Count == 0)
                 return;

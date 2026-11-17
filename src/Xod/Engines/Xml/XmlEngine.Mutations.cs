@@ -1166,13 +1166,12 @@ namespace Xod.Engines.Xml
             return result;
         }
 
+        // A write statement like the others (WriteStatement, ISS-178): in direct mode its deletes are noted first and put
+        // back if it fails, its AfterAction included. It was a write of its own (the lock, the depth, and its end written
+        // in a finally, failed or not), with no savepoint: refused after its deletes, it kept them.
         public bool DropType(Type type)
         {
-            ThrowIfWritesRefused();
-            EnterExclusive();
-            // A statement, like any write (ISS-101): a flush from its triggers comes in its middle.
-            globalWriteDepth++;
-            try
+            return WriteStatement(type, () =>
             {
                 var trigger = new TriggerEventArgs
                 {
@@ -1201,6 +1200,8 @@ namespace Xod.Engines.Xml
                     }
 
                     ioService.Delete(tableFile.Path);
+                    // The counters go with the table; if the statement fails, its undo gives them back
+                    // (AutonumberService.UndoStatement).
                     autonumberService.ClearType(type);
                     indexService.Remove(type);
 
@@ -1209,20 +1210,7 @@ namespace Xod.Engines.Xml
                 }
 
                 return false;
-            }
-            finally
-            {
-                try
-                {
-                    if (WritesRefused() == null)
-                        ioService.WriteSaved();
-                }
-                finally
-                {
-                    globalWriteDepth--;
-                    ExitExclusive();
-                }
-            }
+            }, recordSchemas: false);
         }
         private bool DeleteByItemCode(Type type, string itemCode, bool isCascade, bool cascadeChildren = true)
         {

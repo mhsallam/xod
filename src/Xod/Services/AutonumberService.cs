@@ -228,12 +228,59 @@ namespace Xod.Services
         }
 
         /// <summary>A drop: the table is gone, so its numbering starts again from the seed.</summary>
+        // ISS-178: while a write statement is under way in direct mode, the counters it cleared (a drop), with the highs
+        // they had, given back if it fails (UndoStatement); null when it cleared none. Clearing is the one change that
+        // lowers a counter: every other raises it, and a failed statement leaves those raised (ISS-083).
+        private bool inStatement;
+        private Dictionary<(Type Type, string Property), decimal> statementCleared;
+
+        /// <summary>A write statement starts in direct mode (XmlEngine.WriteStatement, with its savepoint).</summary>
+        internal void BeginStatement()
+        {
+            lock (syncLock)
+            {
+                inStatement = true;
+                statementCleared = null;
+            }
+        }
+
+        /// <summary>The statement succeeded: what it cleared stays cleared.</summary>
+        internal void EndStatement()
+        {
+            lock (syncLock)
+            {
+                inStatement = false;
+                statementCleared = null;
+            }
+        }
+
+        /// <summary>
+        /// The statement failed, and its undo puts its tables back: the counters it cleared are raised back to the highs
+        /// they had. A number a failed statement took is held only here until the next flush records it in the table's
+        /// mark, so the table put back doesn't hold it. Raising never lowers a counter the statement raised since.
+        /// </summary>
+        internal void UndoStatement()
+        {
+            Dictionary<(Type Type, string Property), decimal> cleared;
+            lock (syncLock)
+            {
+                cleared = statementCleared;
+                inStatement = false;
+                statementCleared = null;
+            }
+            RaiseTo(cleared);
+        }
+
         internal void ClearType(Type type)
         {
             lock (syncLock)
             {
                 foreach (var key in counters.Keys.Where(k => k.Type == type).ToList())
+                {
+                    if (inStatement && counters[key].High is decimal high)
+                        (statementCleared ??= new Dictionary<(Type Type, string Property), decimal>()).TryAdd(key, high);
                     counters.Remove(key);
+                }
             }
         }
 

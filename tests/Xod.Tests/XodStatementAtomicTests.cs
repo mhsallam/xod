@@ -392,6 +392,157 @@ namespace Xod.Tests
                 Assert.Equal(new[] { 1 }, db.Select<AtomicNote>().Select(n => n.Id).ToArray());
         }
 
+        private static string[] Counted(XodContext db) =>
+            db.Select<AtomicCounted>().OrderBy(c => c.Id).Select(c => c.Id + "=" + c.Name).ToArray();
+
+        // ISS-178: a drop its AfterAction refuses, once the table's files are deleted, keeps the table: its files back,
+        // its rows read, by key too, after a reopen. It was a write of its own, with no savepoint, and kept its deletes.
+        [Fact]
+        public void A_drop_refused_after_its_deletes_keeps_the_table()
+        {
+            string path = NewPath("drop-refused");
+            var options = new DatabaseOptions { InitialCreate = true };
+            using (var db = new XodContext(path, options: options))
+            {
+                db.InsertRange(new List<AtomicCounted> { new AtomicCounted { Name = "a" }, new AtomicCounted { Name = "b" } });
+                db.AfterAction += (_, e) =>
+                {
+                    if (e.Action == DatabaseActions.Drop)
+                        throw new InvalidOperationException("refused by the trigger");
+                };
+
+                Assert.Throws<InvalidOperationException>(() => db.Drop<AtomicCounted>());
+
+                Assert.Equal(new[] { "1=a", "2=b" }, Counted(db));
+                Assert.Equal("b", db.Find<AtomicCounted>(c => c.Id == 2).Name);
+            }
+            using (var reopened = new XodContext(path, options: options))
+            {
+                Assert.Equal(new[] { "1=a", "2=b" }, Counted(reopened));
+                Assert.Equal("b", reopened.Find<AtomicCounted>(c => c.Id == 2).Name);
+            }
+        }
+
+        // A drop clears its table's counters; refused, it gives them back: a number a failed statement took before it
+        // isn't handed out again (ISS-083), though the table's mark doesn't hold it yet.
+        [Fact]
+        public void A_drop_refused_keeps_the_numbers_already_taken()
+        {
+            string path = NewPath("drop-numbers");
+            using var db = new XodContext(path, options: new DatabaseOptions { InitialCreate = true });
+            db.Insert(new AtomicCounted { Name = "a" });
+            db.AfterAction += (_, e) =>
+            {
+                if (e.Action == DatabaseActions.Drop || e.Item is AtomicCounted { Name: "refused" })
+                    throw new InvalidOperationException("refused by the trigger");
+            };
+            Assert.Throws<InvalidOperationException>(() => db.Insert(new AtomicCounted { Name = "refused" }));
+
+            Assert.Throws<InvalidOperationException>(() => db.Drop<AtomicCounted>());
+
+            Assert.Equal(3, db.Insert(new AtomicCounted { Name = "c" }).Id);
+            Assert.Equal(new[] { "1=a", "3=c" }, Counted(db));
+        }
+
+        // A number a failed insert takes, held only in memory until the next flush records it (ISS-083): 1 is "a", 2 the
+        // refused insert's.
+        private static void TakeTwo(XodContext db)
+        {
+            db.Insert(new AtomicCounted { Name = "a" });
+            EventHandler<TriggerEventArgs> refuse = (_, e) =>
+            {
+                if (e.Item is AtomicCounted { Name: "refused" })
+                    throw new InvalidOperationException("refused by the trigger");
+            };
+            db.AfterAction += refuse;
+            Assert.Throws<InvalidOperationException>(() => db.Insert(new AtomicCounted { Name = "refused" }));
+            db.AfterAction -= refuse;
+        }
+
+        // A drop that fails at its statement's end (writing what its trigger saved), after its body returned: the table
+        // comes back, and so do its counters.
+        [Fact]
+        public void A_drop_failed_at_its_end_keeps_the_table_and_its_numbers()
+        {
+            string path = NewPath("drop-end");
+            using (var db = new XodContext(path, options: new DatabaseOptions { InitialCreate = true }))
+            {
+                TakeTwo(db);
+                db.AfterAction += (_, e) =>
+                {
+                    if (e.Action == DatabaseActions.Drop)
+                        db.Insert(Note(9));
+                };
+                int failed = 0;
+                FaultInjection.InProcess = step =>
+                {
+                    if (failing.Value && (step.StartsWith("statement-saving", StringComparison.Ordinal) ||
+                        step.StartsWith("file-write:", StringComparison.Ordinal)) && Interlocked.Exchange(ref failed, 1) == 0)
+                        throw new IOException("Injected failure: " + step);
+                };
+                failing.Value = true;
+                Exception failure;
+                try
+                {
+                    failure = Record.Exception(() => db.Drop<AtomicCounted>());
+                }
+                finally
+                {
+                    failing.Value = false;
+                    FaultInjection.InProcess = null;
+                }
+
+                Assert.IsType<IOException>(failure);
+                Assert.Equal(new[] { "1=a" }, Counted(db));
+                Assert.Equal(3, db.Insert(new AtomicCounted { Name = "c" }).Id);
+            }
+            using (var reopened = new XodContext(path, options: new DatabaseOptions()))
+                Assert.Equal(new[] { "1=a", "3=c" }, Counted(reopened));
+        }
+
+        // A drop inside another statement's trigger, which then fails: the outer statement's undo puts the table back,
+        // and its counters.
+        [Fact]
+        public void A_drop_inside_a_failed_statement_keeps_the_table_and_its_numbers()
+        {
+            string path = NewPath("drop-nested");
+            using var db = new XodContext(path, options: new DatabaseOptions { InitialCreate = true });
+            TakeTwo(db);
+            db.AfterAction += (_, e) =>
+            {
+                if (e.Item is AtomicNote { Id: 7 })
+                {
+                    Assert.True(db.Drop<AtomicCounted>());
+                    throw new InvalidOperationException("refused by the trigger");
+                }
+            };
+
+            Assert.Throws<InvalidOperationException>(() => db.Insert(Note(7)));
+
+            Assert.Equal(new[] { "1=a" }, Counted(db));
+            Assert.Equal(3, db.Insert(new AtomicCounted { Name = "c" }).Id);
+        }
+
+        // A drop that succeeds restarts its table's numbering, and a later statement that fails doesn't bring the old
+        // numbers back: what a statement cleared is given back only by its own undo.
+        [Fact]
+        public void A_drop_that_succeeds_restarts_the_numbering_past_a_later_failure()
+        {
+            string path = NewPath("drop-ok");
+            using var db = new XodContext(path, options: new DatabaseOptions { InitialCreate = true });
+            TakeTwo(db);
+            Assert.True(db.Drop<AtomicCounted>());
+            Assert.Equal(1, db.Insert(new AtomicCounted { Name = "new" }).Id);
+            db.AfterAction += (_, e) =>
+            {
+                if (e.Item is AtomicNote { Id: 8 })
+                    throw new InvalidOperationException("refused by the trigger");
+            };
+            Assert.Throws<InvalidOperationException>(() => db.Insert(Note(8)));
+
+            Assert.Equal(2, db.Insert(new AtomicCounted { Name = "next" }).Id);
+        }
+
         // ISS-133: an insert that couldn't read its target page (another program held it) had noted its row for the undo
         // first; the undo failed on the same page, and the context refused every write until it was reopened. The
         // insert fails, and the next one is made.
@@ -424,6 +575,12 @@ namespace Xod.Tests
             Name = "parent " + id,
             Children = children.Select(c => new AtomicChild { Id = c, Name = "child " + c }).ToList(),
         };
+    }
+
+    public class AtomicCounted
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
     }
 
     public class AtomicNote
