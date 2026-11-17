@@ -15,7 +15,7 @@ namespace Xod.Engines.Xml
     {
         private readonly ReaderWriterLockSlim rwLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
 
-        // How deep the thread holding rwLock's write lock is in EnterTableWriteLock's engine-wide write (a trigger's
+        // How deep the thread holding rwLock's write lock is in WriteStatement's engine-wide write (a trigger's
         // write nests one deeper). Only that thread changes or reads it while it is above 0: every other thread that
         // reads it holds rwLock in some mode, which the write lock excludes. The statement undo asks it (ISS-062),
         // since ReaderWriterLockSlim.IsWriteLockHeld is for asserts and debugging only, per its documentation.
@@ -27,10 +27,6 @@ namespace Xod.Engines.Xml
         // in some mode, which the write lock excludes, so on any other thread it reads 0 (ISS-101: FlushToDisk read
         // ReaderWriterLockSlim.IsWriteLockHeld, which its documentation reserves for asserts and debugging).
         private int exclusiveDepth;
-        // One lock per table, by its name in any case: SQL names a table by its file, which a case-insensitive file
-        // system may spell differently from its class's full name, by which its writers name it.
-        private readonly ConcurrentDictionary<string, ReaderWriterLockSlim> tableLocks = new(StringComparer.OrdinalIgnoreCase);
-        private readonly ConcurrentDictionary<string, bool> standaloneTableCache = new(StringComparer.Ordinal);
         // ISS-132: whose turn it is to write, the open transaction's flow or the others (TransactionTurns).
         private readonly TransactionTurns turns = new TransactionTurns();
         // The transaction this flow began: an AsyncLocal, so an await or a Task.Run inside it (the *Async wrappers)
@@ -249,64 +245,23 @@ namespace Xod.Engines.Xml
             }
         }
 
-        private ReaderWriterLockSlim GetTableLock(Type type) => GetTableLock(type?.FullName ?? "__global__");
-
-        // A table's lock by its file's name (Type.FullName): SQL reads tables it may have no class for.
-        private ReaderWriterLockSlim GetTableLock(string fullName) =>
-            tableLocks.GetOrAdd(fullName, _ => new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion));
-
-        // The table locks this thread holds (each with its table and how many times it entered it), kept by the
-        // helpers that take and give them back: EnterTableReadLock, EnterTableWriteLock, their exits, and SQL's
-        // (SqlSource). SQL reads it to take its own in order around what the thread already holds. Not the lock's
-        // IsReadLockHeld: its documentation reserves that for asserts and debugging (ISS-101).
-        private readonly ThreadLocal<Dictionary<ReaderWriterLockSlim, (string Table, int Count)>> heldTableLocks = new(() => new());
-
-        private void Holding(ReaderWriterLockSlim tableLock, string table)
-        {
-            var held = heldTableLocks.Value;
-            held[tableLock] = held.TryGetValue(tableLock, out var h) ? (h.Table, h.Count + 1) : (table, 1);
-        }
-
-        private void LettingGo(ReaderWriterLockSlim tableLock)
-        {
-            var held = heldTableLocks.Value;
-            if (!held.TryGetValue(tableLock, out var h)) return;
-            if (h.Count == 1) held.Remove(tableLock);
-            else held[tableLock] = (h.Table, h.Count - 1);
-        }
-
-        private bool IsStandaloneTable(Type type)
-        {
-            if (type == null || type == typeof(object))
-                return false;
-
-            var meta = propertyService.GetMetadata(type);
-            return meta != null && meta.IsStandalone;
-        }
-
         // Every lock helper here either returns holding all it took or throws holding nothing: the caller's try, which
         // gives the locks back, starts only after it returns (ISS-080, ISS-086).
-        private void EnterTableReadLock(Type type, out ReaderWriterLockSlim tableLock)
+
+        /// <summary>
+        /// The locks of a read: its turn, then the engine-wide read lock, whatever its table. Every write takes the
+        /// engine-wide write lock (WriteStatement, ISS-125), which this keeps out. A read nested in another on its
+        /// thread (a query's predicate) enters the read lock again without waiting, whatever waits for it, so nested
+        /// reads can't wait for each other (ISS-163: a standalone table's read took its table's lock too, in any order).
+        /// </summary>
+        private void EnterReadOperation(Type type)
         {
             // Before the lock: this loads the type, which may refuse it (its attributes).
-            bool standalone = IsStandaloneTable(type);
-            ReaderWriterLockSlim taken = null;
-            EnterWithTurn(() => taken = EnterTableReadLocks(type, standalone), () => ExitTableReadLocks(taken));
-            tableLock = taken;
-            // Last, and it can't throw: ExitTableReadLock ends it (ISS-138).
+            if (type != null && type != typeof(object))
+                propertyService.GetMetadata(type);
+            EnterWithTurn(EnterRead, ExitRead);
+            // Last, and it can't throw: ExitReadOperation ends it (ISS-138).
             itemsCacheService.BeginRead();
-        }
-
-        // The locks of a read, under its turn (EnterTableReadLock): the engine's read lock, and a standalone table's.
-        private ReaderWriterLockSlim EnterTableReadLocks(Type type, bool standalone)
-        {
-            EnterRead();
-            if (!standalone)
-                return null;
-            var tableLock = GetTableLock(type);
-            EnterSecond(tableLock.EnterReadLock, ExitRead);
-            Holding(tableLock, type.FullName);
-            return tableLock;
         }
 
         // The engine-wide read lock (refused once closed, ISS-103).
@@ -344,8 +299,8 @@ namespace Xod.Engines.Xml
             }
         }
 
-        // A thread reading a table (inside a query's predicate, or enumerating its results) can't write it: a read
-        // lock can't be upgraded to a write lock. Said in XOD's terms rather than the lock's.
+        // A thread inside a read (a query's predicate, or enumerating its results) can't write: a read lock can't be
+        // upgraded to a write lock. Said in XOD's terms rather than the lock's.
         private static void EnterWrite(Action enter)
         {
             try
@@ -358,32 +313,16 @@ namespace Xod.Engines.Xml
             }
         }
 
-        private void ExitTableReadLock(ReaderWriterLockSlim tableLock)
+        private void ExitReadOperation()
         {
             itemsCacheService.EndRead();
             try
             {
-                ExitTableReadLocks(tableLock);
+                ExitRead();
             }
             finally
             {
                 GiveTurn();
-            }
-        }
-
-        private void ExitTableReadLocks(ReaderWriterLockSlim tableLock)
-        {
-            try
-            {
-                if (tableLock != null)
-                {
-                    LettingGo(tableLock);
-                    tableLock.ExitReadLock();
-                }
-            }
-            finally
-            {
-                ExitRead();
             }
         }
 
@@ -446,7 +385,7 @@ namespace Xod.Engines.Xml
 
         /// <summary>
         /// The turn of a read or a write, then its locks (<paramref name="enterLocks"/>): the one way either takes the
-        /// engine's locks (EnterTableReadLock, EnterTableWriteLock, EnterExclusive, SQL's read). The turn is decided
+        /// engine's locks (EnterReadOperation, WriteStatement, EnterExclusive, SQL's read). The turn is decided
         /// before the locks and checked under them (TurnHolds); when the transaction it decided for ended in between, the
         /// locks (<paramref name="exitLocks"/>) and the turn go, nothing done, and it starts over, outside any
         /// transaction now. Returns holding the turn and the locks, or throws holding neither.
@@ -566,6 +505,8 @@ namespace Xod.Engines.Xml
                 throw Closed();
             }
             exclusiveDepth++;
+            // Taken inside a read only by a thread that holds it already (a trigger's read): what that read has shared
+            // ends here (ISS-138).
             itemsCacheService.WriteStarted();
         }
 
@@ -583,79 +524,63 @@ namespace Xod.Engines.Xml
         // waited for it while the close held it finds the context closed.
         private static ObjectDisposedException Closed() => new ObjectDisposedException(nameof(XodContext), "The database context is closed.");
 
-        // This thread is inside a standalone table's write (no relations: the engine's read lock and the table's write
-        // lock), where its statement runs beside others on other tables (BeginStatement, ISS-120).
-        private readonly ThreadLocal<int> standaloneWriteDepth = new ThreadLocal<int>();
-
-        private void EnterTableWriteLock(Type type, out ReaderWriterLockSlim tableLock, out bool usedGlobalWriteLock)
+        /// <summary>
+        /// A write statement (Insert, InsertRange, InsertOrUpdate, Update, Delete): the one way each takes its locks and
+        /// ends. Its turn, then the engine-wide write lock, for every table: one write at a time (ISS-125), so a statement
+        /// that fails can put the context back as it was with no other write under way beside it. A standalone table's
+        /// write used to take the engine's read lock and its table's write lock, beside the writes of other tables, and
+        /// inside a read on its thread; a write inside a read is now refused, as a relational one always was (a read
+        /// lock can't be upgraded).
+        /// The outermost statement (a trigger's write nests in its statement) is all or nothing in direct mode (no
+        /// transaction, no buffer): every data file it writes is noted before its first write (IOService.BeginStatement),
+        /// and when it fails, wherever it fails (a trigger, a refused value, a file write at its end), the files are
+        /// put back, the context forgets what it holds, and the indexes it touched are rebuilt from the pages
+        /// (<see cref="UndoWriteStatement"/>). In a transaction or buffered mode nothing reaches the disk before the
+        /// commit or the flush, and a failed statement's own undo takes its created rows back (ISS-062, UndoStatement).
+        /// </summary>
+        private T WriteStatement<T>(Type type, Func<T> body)
         {
-            ReaderWriterLockSlim taken = null;
-            bool global = false;
-            // Started over, nothing is written: the locks go with no statement end (ExitTableWriteLock's WriteSaved).
-            EnterWithTurn(() => EnterTableWriteLocks(type, out taken, out global), () => ExitTableWriteLocks(taken, global));
-            tableLock = taken;
-            usedGlobalWriteLock = global;
-
-            // Every write records its tables' schema (PLAN-060 section 2.4), under the locks the write holds, as a
-            // change to the table file like any other: a transaction commits or rolls it back with the rows.
+            // Started over, nothing is written: the lock goes with nothing to undo.
+            EnterWithTurn(EnterGlobalWriteLock, ExitGlobalWriteLock);
+            bool outermost = globalWriteDepth == 1;
+            bool savepoint = false;
             try
             {
+                savepoint = outermost && ioService.BeginStatement();
+                if (savepoint)
+                    indexService.BeginStatement();
+                statementSavepoint = savepoint || (statementSavepoint && !outermost);
+
+                // Every write records its tables' schema (PLAN-060 section 2.4), under the locks the write holds, as a
+                // change to the table file like any other: a transaction commits or rolls it back with the rows.
                 RecordSchemas(type);
-            }
-            catch
-            {
-                ExitTableWriteLock(tableLock, usedGlobalWriteLock);
-                throw;
-            }
-        }
+                T result = body();
 
-        // The locks of a write, under its turn (EnterTableWriteLock).
-        private void EnterTableWriteLocks(Type type, out ReaderWriterLockSlim tableLock, out bool usedGlobalWriteLock)
-        {
-            ThrowIfWritesRefused();
-            // Read once: a commit on another thread may end the transaction meanwhile (the choice is checked under the
-            // locks, TurnHolds).
-            var transaction = activeTransaction;
-            if (BeforeAction == null && AfterAction == null &&
-                (transaction == null || !transaction.IsActive) &&
-                IsStandaloneTable(type))
-            {
-                usedGlobalWriteLock = false;
-                EnterRead();
-                var table = GetTableLock(type);
-                EnterSecond(() => EnterWrite(table.EnterWriteLock), ExitRead);
-                tableLock = table;
-                standaloneWriteDepth.Value++;
-                Holding(table, type.FullName);
-                // A standalone table's write can be made inside a read of another table on this thread (a query's
-                // predicate): what that read has shared ends here (ISS-138). The global write lock does the same.
-                itemsCacheService.WriteStarted();
-            }
-            else
-            {
-                usedGlobalWriteLock = true;
-                EnterExclusiveLock();
-                globalWriteDepth++;
-                tableLock = null;
-            }
-        }
-
-        private void ExitTableWriteLock(ReaderWriterLockSlim tableLock, bool usedGlobalWriteLock)
-        {
-            try
-            {
-                // The statement's end (the outermost write: a trigger's nests one deeper): in direct mode what it saved
-                // and its owner didn't write (Create, UpdateItem) is written now, after its index changes (ISS-099).
-                // Before the locks go, so no write of another thread comes between. Not by a context that writes
-                // nothing more: its cache may not be what the disk should hold (ISS-091).
-                if ((!usedGlobalWriteLock || globalWriteDepth == 1) && WritesRefused() == null)
+                // The statement's end, the outermost one's: in direct mode what it saved and its owner didn't write
+                // (Create, UpdateItem) is written now, after its index changes (ISS-099), before the lock goes, so no
+                // other write comes between. Not by a context that writes nothing more: its cache may not be what the
+                // disk should hold (ISS-091).
+                if (outermost && WritesRefused() == null)
                     ioService.WriteSaved();
+                if (savepoint)
+                {
+                    ioService.EndStatement();
+                    indexService.EndStatement();
+                }
+                return result;
+            }
+            catch (Exception failure) when (savepoint)
+            {
+                UndoWriteStatement(failure);
+                throw;
             }
             finally
             {
+                if (outermost)
+                    statementSavepoint = false;
                 try
                 {
-                    ExitTableWriteLocks(tableLock, usedGlobalWriteLock);
+                    ExitGlobalWriteLock();
                 }
                 finally
                 {
@@ -664,30 +589,62 @@ namespace Xod.Engines.Xml
             }
         }
 
-        // The locks of a write, each let go even if the one before fails.
-        private void ExitTableWriteLocks(ReaderWriterLockSlim tableLock, bool usedGlobalWriteLock)
+        // The outermost write statement under way is all or nothing by its files (WriteStatement): the statement's
+        // own undo of its created rows (ISS-062) is for the other modes. Changed only by the thread holding the write
+        // lock, and read by it.
+        private bool statementSavepoint;
+
+        /// <summary>
+        /// A statement that failed in direct mode (WriteStatement): its data files back as it found them, everything
+        /// this context holds forgotten (IOService.UndoStatement), then the indexes it changed or saved dropped and
+        /// rebuilt from the pages when next needed (IndexService.ForgetStatement). The counters stay where it left them:
+        /// the caller's items hold the numbers it handed out (ISS-083), recorded in the tables' marks by the next flush.
+        /// The failure is what the caller sees. If a file can't be put back (another program holds it), the caller gets
+        /// an XodException carrying both, and the context writes nothing more until it is reopened (ISS-091): what the
+        /// disk holds is no longer what any statement left.
+        /// </summary>
+        private void UndoWriteStatement(Exception failure)
         {
+            var failures = new List<Exception>();
             try
             {
-                if (tableLock != null)
-                {
-                    standaloneWriteDepth.Value--;
-                    LettingGo(tableLock);
-                    tableLock.ExitWriteLock();
-                }
+                ioService.UndoStatement();
             }
-            finally
+            catch (Exception e)
             {
-                if (usedGlobalWriteLock)
-                {
-                    globalWriteDepth--;
-                    ExitExclusiveLock();
-                }
-                else
-                {
-                    ExitRead();
-                }
+                failures.Add(e);
             }
+            // After the files: dropping an index deletes its file, a write this refuses once writes are refused.
+            try
+            {
+                indexService.ForgetStatement();
+            }
+            catch (Exception e)
+            {
+                failures.Add(e);
+            }
+            autonumberMarksPending = true;
+            if (failures.Count == 0)
+                return;
+            statementFault = "A statement failed, and putting back the files it wrote failed too (" + failures[0].Message +
+                "): what this context holds may not be what the disk holds, so it writes nothing more. Reopen the database.";
+            failures.Insert(0, failure);
+            throw new XodException("The statement failed, and the files it wrote couldn't all be put back: the database may " +
+                "hold part of it. Reopen it to go on writing.", new AggregateException(failures));
+        }
+
+        // The lock of a write, under its turn (WriteStatement).
+        private void EnterGlobalWriteLock()
+        {
+            ThrowIfWritesRefused();
+            EnterExclusiveLock();
+            globalWriteDepth++;
+        }
+
+        private void ExitGlobalWriteLock()
+        {
+            globalWriteDepth--;
+            ExitExclusiveLock();
         }
 
         public void Dispose()

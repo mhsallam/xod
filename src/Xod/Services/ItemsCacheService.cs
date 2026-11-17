@@ -13,12 +13,14 @@ namespace Xod.Services
     /// Keyed by the reference as stored ("page.row"): a row's code alone is unique only within its page, and pages
     /// written by different runs can share one.
     /// <para>
-    /// A read is the outermost read on its thread, from the engine's read entry (XmlEngine.EnterTableReadLock, the
+    /// A read is the outermost read on its thread, from the engine's read entry (XmlEngine.EnterReadOperation, the
     /// SQL query) to its exit: <see cref="BeginRead"/> and <see cref="EndRead"/>, paired by those helpers. Nested
-    /// reads (a query inside a predicate) share their outer read's objects. A write ends the sharing for the rest of
-    /// the read it is made in (<see cref="WriteStarted"/>, from the engine's write entries): the rows the read takes
-    /// after it are built afresh. Outside a read nothing is kept, so a read made inside a write (a trigger's) shares
-    /// only within itself, and the threads a read lends rows to (a parallel read of a standalone table) keep nothing.
+    /// reads (a query inside a predicate) share their outer read's objects. A write inside a read is refused on the
+    /// read's thread, and another thread's waits for the read to end (ISS-125), except inside a write: a trigger's read
+    /// may write (its thread holds the write lock already). A write ends the sharing for the rest of the read it is
+    /// made in (<see cref="WriteStarted"/>, from the engine's write entry): the rows the read takes after it are built
+    /// afresh. Outside a read nothing is kept, so a read made inside a write (a trigger's) shares only within itself,
+    /// and the threads a read lends rows to (a parallel read of a standalone table) keep nothing.
     /// </para>
     /// </summary>
     internal sealed class ItemsCacheService

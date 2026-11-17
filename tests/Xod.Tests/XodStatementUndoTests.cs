@@ -166,18 +166,17 @@ namespace Xod.Tests
         // ISS-091: an undo that failed part-way left the index without the row while the page still held it (the
         // index entry went before the page delete failed, and the undo saved the index anyway): a lookup missed a
         // row a scan found. The index now agrees with the pages, the caller gets both failures, and the context
-        // writes nothing more until it is reopened. The undo fails here by an injected fault (in the crash writer's
-        // process): a page another program holds fails only the undo's write, which stays to be made (below).
+        // writes nothing more until it is reopened. The statement's trigger flushes what it has written, then
+        // refuses it; putting back its first file fails by an injected fault (in the crash writer's process).
         [Fact]
         public void An_undo_that_fails_leaves_the_index_agreeing_with_the_pages()
         {
             string dir = Path.GetDirectoryName(NewDatabase("undo-fails-injected"))!;
-            var run = XodCrashSafetyTests.RunWriterProcess("undo-fails", dir, ("XOD_FAIL_AT_STEP", "undo-statement:1"));
+            var run = XodCrashSafetyTests.RunWriterProcess("undo-fails", dir, ("XOD_FAIL_AT_STEP", "undo-file:1"));
             Assert.Contains("BOTH FAILED", run.Output);
             Assert.Contains("REFUSED", run.Output);
-            // The undo stopped once it had taken one row back (the order), the customer still there. The indexes of
-            // both tables are dropped, their files too: the other contexts trust index files while this one's marker
-            // is held.
+            // The undo put back no file. The indexes of both tables are dropped, their files too: the other contexts
+            // trust index files while this one's marker is held.
             string before = run.Output.Split('\n').Single(l => l.StartsWith("INDEX FILES BEFORE", StringComparison.Ordinal));
             string after = run.Output.Split('\n').Single(l => l.StartsWith("INDEX FILES AFTER", StringComparison.Ordinal));
             Assert.Contains("CrashCustomer.xidx", before);
@@ -188,24 +187,6 @@ namespace Xod.Tests
             Assert.Equal(db.Select<CrashCustomer>().Count(c => c.Name == "refused"), db.Query<CrashCustomer>(c => c.Id == 2).Count());
             Assert.DoesNotContain(db.Select<CrashCustomer>(), c => c.Name == "after");
             db.Insert(new CrashCustomer { Name = "after reopening", Orders = new List<CrashOrder>() });
-        }
-
-        // ISS-124: the undo of a standalone table's statement (no relations: it runs beside statements on other tables)
-        // opened a batch, which is the context's: a statement on another table that ended while it was open joined it,
-        // and returned before its row was written. The undo writes as a statement's end does now, its own saves only.
-        // The crash writer's process pauses the undo, and inserts on the other table meanwhile.
-        [Fact]
-        public void An_undo_leaves_a_statement_on_another_table_its_own_write()
-        {
-            string dir = Path.GetDirectoryName(NewDatabase("undo-beside"))!;
-            var seed = XodCrashSafetyTests.RunWriterProcess("undo-beside-seed", dir);
-            Assert.True(seed.ExitCode == 0, seed.Output);
-            var run = XodCrashSafetyTests.RunWriterProcess("undo-beside", dir,
-                ("XOD_FAIL_AT_STEP", "statement-saving"), ("XOD_PAUSE_AT_STEP", "undo-statement:1"));
-            Assert.True(run.ExitCode == 0, run.Output);
-            Assert.Contains("BESIDE WRITTEN", run.Output);
-            Assert.Contains("FIRST IOException", run.Output);
-            Assert.Contains("MEMBERS 1 NOTES 2", run.Output);
         }
 
         // ISS-120: the undo of a statement that failed (here its trigger throws) takes its row back, but its write
@@ -485,17 +466,31 @@ namespace Xod.Tests
             }
         }
 
-        // Each item of a range is one statement: the items before the refused one stay, as before; the refused
-        // item leaves nothing.
-        [Fact]
-        public void A_range_keeps_the_items_before_a_refused_one_and_nothing_of_it()
+        // A range is one statement (ISS-125): an item refused leaves nothing of the range, the items before it
+        // included, outside a transaction and inside one. Each item used to be a statement of its own, and the items
+        // before the refused one stayed.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void A_range_with_a_refused_item_leaves_nothing_of_it(bool inTransaction)
         {
-            string path = NewDatabase("range");
-            using var db = new XodContext(path);
-            var good = new RefusedParent { Name = "good", Children = new() { new RefusedChild { Label = "g" } } };
-            Assert.ThrowsAny<XodException>(() => db.InsertRange(new[] { good, ParentWithRefusedSecondChild("bad") }));
-            Assert.Equal(new[] { "good" }, db.Select<RefusedParent>().Select(p => p.Name));
-            Assert.Equal(new[] { "g" }, db.Select<RefusedChild>().Select(c => c.Label));
+            string path = NewDatabase("range-" + inTransaction);
+            using (var db = new XodContext(path))
+            {
+                db.Insert(new RefusedParent { Name = "before", Children = new() { new RefusedChild { Label = "b" } } });
+                var good = new RefusedParent { Name = "good", Children = new() { new RefusedChild { Label = "g" } } };
+                var tx = inTransaction ? db.BeginTransaction() : null;
+                Assert.ThrowsAny<XodException>(() => db.InsertRange(new[] { good, ParentWithRefusedSecondChild("bad") }));
+                tx?.Commit();
+                tx?.Dispose();
+                Assert.Equal(new[] { "before" }, db.Select<RefusedParent>().Select(p => p.Name));
+                Assert.Equal(new[] { "b" }, db.Select<RefusedChild>().Select(c => c.Label));
+            }
+            using (var reopened = new XodContext(path))
+            {
+                Assert.Equal(new[] { "before" }, reopened.Select<RefusedParent>().Select(p => p.Name));
+                Assert.Equal(new[] { "b" }, reopened.Select<RefusedChild>().Select(c => c.Label));
+            }
         }
 
         // An update that adds children, the second refused, leaves no new child and the row as it was.

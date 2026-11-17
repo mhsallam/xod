@@ -282,6 +282,74 @@ namespace Xod.Services
         // Set of types whose in-memory index has unpersisted changes
         private readonly HashSet<Type> dirtyTypes = new();
 
+        // ISS-125: the types whose index the write statement under way changed or saved, in direct mode (null outside
+        // one, and in a transaction or buffered mode, where nothing of it reaches the disk before a commit or a flush).
+        // A statement that fails drops them (ForgetStatement).
+        private HashSet<Type> statementTouched;
+
+        /// <summary>
+        /// An index built from the pages, or saved, in the middle of a write statement: the statement's, dropped if it
+        /// fails, once the statement has changed what the context holds (it may hold those changes). Before that, it
+        /// holds the pages as they are on disk, and stays: a statement refused before any change (a key already used)
+        /// used to drop the index it had built, and the next one built it again from every page.
+        /// </summary>
+        private void BuiltInStatement(Type type)
+        {
+            if (ioService?.StatementChangedAnything != true)
+                return;
+            lock (syncLock)
+            {
+                statementTouched?.Add(type);
+            }
+        }
+
+        // An index changed (under syncLock): it is to be saved, and it is the statement's.
+        private void ChangedUnlocked(Type type)
+        {
+            dirtyTypes.Add(type);
+            statementTouched?.Add(type);
+        }
+
+        /// <summary>A write statement starts in direct mode (IOService.BeginStatement): its indexes are noted.</summary>
+        internal void BeginStatement()
+        {
+            lock (syncLock)
+            {
+                statementTouched = new HashSet<Type>();
+            }
+        }
+
+        /// <summary>The statement succeeded.</summary>
+        internal void EndStatement()
+        {
+            lock (syncLock)
+            {
+                statementTouched = null;
+            }
+        }
+
+        /// <summary>
+        /// The statement failed, and its data files were put back (IOService.UndoStatement): each index it changed or
+        /// saved holds keys of rows the pages no longer have, or lost keys of rows they still have, in memory and maybe
+        /// in its file. Each is dropped, in memory and on disk, and rebuilt from the pages when next needed, as an index
+        /// whose file is missing is (a derived cache, PLAN-046 section 8). An index the statement didn't touch stays:
+        /// it agrees with the pages as they were. The cost of a rebuild is paid only after a statement that failed
+        /// part way; one refused before it changed an index (a key already used, say) drops none.
+        /// </summary>
+        internal void ForgetStatement()
+        {
+            List<Type> touched;
+            lock (syncLock)
+            {
+                touched = statementTouched?.ToList();
+                statementTouched = null;
+            }
+            if (touched == null)
+                return;
+            foreach (var type in touched)
+                Remove(type);
+        }
+
         // Types whose index file this context couldn't load and then couldn't delete (AbandonIndexFile): the file
         // misses what this context changed since, so it never loads it, and the file goes when a snapshot replaces
         // it or a later deletion succeeds. Not cleared with the caches: it says what is on disk (ISS-042). Inside a
@@ -623,7 +691,7 @@ namespace Xod.Services
                         }
                     }
                     if (holdsIndex)
-                        dirtyTypes.Add(type);
+                        ChangedUnlocked(type);
                 }
                 finally
                 {
@@ -757,7 +825,7 @@ namespace Xod.Services
                         codeToIndexEntries.Remove(itemCodePath);
                     }
 
-                    dirtyTypes.Add(type);
+                    ChangedUnlocked(type);
                 }
                 finally
                 {
@@ -870,7 +938,7 @@ namespace Xod.Services
                         }
                     }
 
-                    dirtyTypes.Add(type);
+                    ChangedUnlocked(type);
                 }
                 finally
                 {
@@ -903,7 +971,7 @@ namespace Xod.Services
 
                     LogFor(type).Record(DeltaLog.OpRemove, null, null, itemCodePath);
 
-                    dirtyTypes.Add(type);
+                    ChangedUnlocked(type);
                 }
                 finally
                 {

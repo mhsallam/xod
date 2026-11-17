@@ -635,6 +635,9 @@ namespace Xod.Services
                 return;
             }
 
+            // Written now: a statement that fails drops it (ForgetStatement), as it may hold the statement's keys.
+            BuiltInStatement(type);
+
             string indexFilePath = Path.Combine(ioService.RootDirectory, GetIndexFileName(type));
 
             if (!string.IsNullOrEmpty(ioService.Password))
@@ -904,6 +907,9 @@ namespace Xod.Services
         /// </summary>
         private bool ForEachPageRow(Type type, Action<XElement, string> onRow)
         {
+            // The pages as this context holds them, a write statement's changes included: what is built from them is the
+            // statement's too, dropped if it fails (ForgetStatement, ISS-125).
+            BuiltInStatement(type);
             XFile tableFile = ioService.OpenFileOrCreate($"{type.FullName}.xtab", typeof(Table), openOnly: true);
             if (tableFile == null)
                 return false;

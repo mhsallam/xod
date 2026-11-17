@@ -20,32 +20,6 @@ public class CrashNote
     public string Text { get; set; }
 }
 
-// Signals when fault injection pauses (it writes PAUSED), and lets it go on when the test says so: the process
-// drives its own pause, so a thread of it can act while another is paused.
-public sealed class PauseSignal : TextWriter
-{
-    private readonly TextWriter inner;
-    private readonly System.Threading.ManualResetEventSlim paused;
-    public PauseSignal(TextWriter inner, System.Threading.ManualResetEventSlim paused) { this.inner = inner; this.paused = paused; }
-    public override System.Text.Encoding Encoding => inner.Encoding;
-    public override void Write(char value) => inner.Write(value);
-    public override void Write(string value) { inner.Write(value); Seen(value); }
-    public override void WriteLine(string value) { inner.WriteLine(value); Seen(value); }
-    public override void Flush() => inner.Flush();
-    private void Seen(string value)
-    {
-        if (value != null && value.StartsWith("PAUSED", StringComparison.Ordinal))
-            paused.Set();
-    }
-}
-
-public sealed class ReleaseOnRead : TextReader
-{
-    private readonly System.Threading.ManualResetEventSlim release;
-    public ReleaseOnRead(System.Threading.ManualResetEventSlim release) { this.release = release; }
-    public override string ReadLine() { release.Wait(); return ""; }
-}
-
 public class CrashCustomer
 {
     public int Id { get; set; }
@@ -411,10 +385,15 @@ public static class Program
         {
             using var db = new XodContext(path, options: options);
             db.Insert(new CrashCustomer { Name = "seed", Orders = new List<CrashOrder> { new CrashOrder { Status = "seed" } } });
+            // The trigger writes what the statement has done so far (a flush in its middle), then refuses it: its undo
+            // has files to put back.
             db.AfterAction += (_, e) =>
             {
                 if (e.Item is CrashOrder order && order.Status == "x")
+                {
+                    db.Flush();
                     throw new InvalidOperationException("refused by the trigger");
+                }
             };
             Console.WriteLine("INDEX FILES BEFORE " + string.Join(",", Array.ConvertAll(Directory.GetFiles(dir, "*.xidx"), Path.GetFileName)));
             try
@@ -487,73 +466,6 @@ public static class Program
             {
                 Console.WriteLine("REFUSED " + e.Message);
             }
-            return 0;
-        }
-
-        if (mode == "undo-beside-seed")
-        {
-            using var db = new XodContext(path, options: options);
-            db.Insert(new CrashMember { Id = 1, Email = "seed" });
-            db.Insert(new CrashNote { Id = 1, Text = "seed" });
-            return 0;
-        }
-
-        // ISS-124: a standalone table's statement fails at its write (XOD_FAIL_AT_STEP=statement-saving) and its undo
-        // is paused (XOD_PAUSE_AT_STEP=undo-statement) while a statement on another standalone table runs beside it.
-        // That statement's row must be on disk when its insert returns.
-        if (mode == "undo-beside")
-        {
-            var paused = new System.Threading.ManualResetEventSlim();
-            var release = new System.Threading.ManualResetEventSlim();
-            Console.SetOut(new PauseSignal(Console.Out, paused));
-            Console.SetIn(new ReleaseOnRead(release));
-            try
-            {
-            using (var db = new XodContext(path, options: options))
-            {
-                var first = System.Threading.Tasks.Task.Run(() =>
-                {
-                    try
-                    {
-                        db.Insert(new CrashMember { Id = 2, Email = "refused" });
-                        return "WROTE";
-                    }
-                    catch (Exception e)
-                    {
-                        return e.GetType().Name;
-                    }
-                });
-                if (!paused.Wait(TimeSpan.FromSeconds(60)))
-                {
-                    release.Set();
-                    Console.WriteLine("NOT PAUSED: " + first.Result);
-                    return 1;
-                }
-                db.Insert(new CrashNote { Id = 2, Text = "beside-marker" });
-                bool onDisk = false;
-                foreach (string file in Directory.GetFiles(dir))
-                {
-                    // The pages and table files only: an index or a marker isn't a row's write, and the context holds its
-                    // marker.
-                    if (file.EndsWith(".xidx", StringComparison.Ordinal) || file.EndsWith(".xidxdirty", StringComparison.Ordinal) ||
-                        file.EndsWith(".lock", StringComparison.Ordinal))
-                        continue;
-                    using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                    if (new StreamReader(stream).ReadToEnd().Contains("beside-marker"))
-                        onDisk = true;
-                }
-                Console.WriteLine(onDisk ? "BESIDE WRITTEN" : "BESIDE NOT WRITTEN");
-                release.Set();
-                Console.WriteLine("FIRST " + first.Result);
-            }
-            }
-            finally
-            {
-                // A paused thread holds the process open: let it go whatever happened here.
-                release.Set();
-            }
-            using (var again = new XodContext(path, options: options))
-                Console.WriteLine("MEMBERS " + again.Count<CrashMember>() + " NOTES " + again.Count<CrashNote>());
             return 0;
         }
 

@@ -6,11 +6,10 @@ namespace Xod.Services
 {
     /// <summary>
     /// In direct mode (no batch, no buffer), what each statement under way saved and hasn't written yet, by the thread
-    /// running it: written when that statement ends (IOService.WriteSaved, ISS-099). Statements on standalone tables
-    /// run side by side, one per table, on their threads; one set for the context had a statement's end write the
-    /// files another thread's statement had saved, while that statement could still be changing them, outside the
-    /// file service's lock (review of TASK-068). Each file saved here also waits in the buffer's sets, so a flush
-    /// writes it if its statement doesn't (Written). Used under IOService's syncLock.
+    /// running it: written when that statement ends (IOService.WriteSaved, ISS-099). The sets are by thread from when
+    /// statements on standalone tables ran side by side (review of TASK-068); every write statement now takes the
+    /// engine's write lock (ISS-124), so one set is in use at a time. Each file saved here also waits in the buffer's
+    /// sets, so a flush writes it if its statement doesn't (Written). Used under IOService's syncLock.
     /// </summary>
     internal sealed class StatementSaves
     {
@@ -66,10 +65,6 @@ namespace Xod.Services
                     byThread.Remove(kv.Key);
             }
         }
-
-        /// <summary>The statement on this thread failed: what it saved and didn't write is left to the next flush, in
-        /// the buffer's sets, where each waits too.</summary>
-        internal void LeaveThisThreadsToFlush() => byThread.Remove(Environment.CurrentManagedThreadId);
 
         /// <summary>The file is deleted: no statement writes it.</summary>
         internal void Remove(string name)

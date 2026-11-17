@@ -229,8 +229,8 @@ namespace Xod.Services
         {
             if (!switchPending)
                 return;
-            // One thread finishes it: writes on other threads (a standalone table's, under the engine's read lock) pass
-            // here too, and two finishing at once moved the same staged file twice; the second failed its write.
+            // One thread finishes it: two finishing at once moved the same staged file twice, and the second failed its
+            // write (when standalone tables' writes ran side by side, before ISS-124).
             lock (finishing)
             {
                 if (!switchPending)

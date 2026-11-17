@@ -20,8 +20,24 @@ records it. The last release: [2.0.3](RELEASE-NOTES-2.0.3.md).
   and writes wait for it; begin it where its work is done. A transaction never disposed keeps other threads waiting
   until the context closes. ([`PLAN-065`](plans/PLAN-065-a-transaction-is-its-flow-s.md),
   [`PLAN-066`](plans/PLAN-066-reads-wait-for-another-flow-s-transaction.md))
+- **Writes are made one at a time, and a write inside a read is refused.** Writes to tables without relations used to
+  run side by side, one per table; now each waits for the write under way, as writes with relations always did. A
+  write from inside a read on the same thread (a query's predicate, or while its results are enumerated; not in a trigger) now throws
+  `XodException` for every table, as it did for tables with relations: make it after the read. A write on another
+  thread waits for the read too, so a read that waits for one (`InsertAsync(...).Wait()` in a predicate) never ends.
+  A database password can't be set, changed or removed inside a write (a trigger) any more: `InvalidOperationException`. ([`PLAN-067`](plans/PLAN-067-a-write-statement-is-all-or-nothing.md))
+- **`InsertRange` is one write.** An item refused (a trigger, a key already used) leaves none of the range; the items
+  before it used to stay. ([`PLAN-067`](plans/PLAN-067-a-write-statement-is-all-or-nothing.md))
 
 ## Fixed
+
+- **A write that fails leaves nothing behind.** Outside a transaction, with the default durability, an `Insert`, `InsertRange`, `InsertOrUpdate`,
+  `Update` or `Delete` that throws (a trigger refuses it, a file another program holds) leaves the database, and what
+  the context shows, as they were. It could keep part of its change, or have it written by the next flush, so a retry
+  was refused or stored twice. A crash in the middle of a write is not covered: use a transaction for that. Nor is
+  buffered durability, where a failed write still keeps part of its change. ([`PLAN-067`](plans/PLAN-067-a-write-statement-is-all-or-nothing.md))
+- **Queries nested in other queries' predicates no longer wait forever** behind writers, and SQL run inside a read is
+  no longer refused. ([`PLAN-067`](plans/PLAN-067-a-write-statement-is-all-or-nothing.md))
 
 - **A transaction completed twice at once no longer ends the next one.** A `Commit` on one thread and a `Dispose` on
   another could both go ahead; the second then ended, discarded or committed the transaction another thread had

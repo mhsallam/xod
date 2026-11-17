@@ -42,7 +42,7 @@ namespace Xod.Engines.Xml
         }
 
         /// <summary>
-        /// At each write (EnterTableWriteLock), the tables it may write: its class's and those its relations reach.
+        /// At each write (WriteStatement), the tables it may write: its class's and those its relations reach.
         /// A table file whose manifest differs from the class's (or has none: written by 2.0.1 or earlier) gets the
         /// class's, saved as any change to the table file. A table without a file gets its manifest when a write
         /// creates it (<see cref="NewFileDocument"/>). Once checked, a table costs a reference lookup.

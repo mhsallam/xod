@@ -124,6 +124,11 @@ namespace Xod.Engines.Xml
                 // A rollback would restore files as they were before the switch, under the old password.
                 if (activeTransaction != null && activeTransaction.IsActive)
                     throw new TransactionException("A database password can't be set, changed or removed inside a transaction.");
+                // Nor inside a write (a trigger): the switch rewrites every file itself, and the write's undo, if it
+                // failed, would put its files back as they were before the switch, under the old password.
+                if (globalWriteDepth > 0)
+                    throw new InvalidOperationException("A database password can't be set, changed or removed inside a write (a " +
+                        "trigger, for example): change it once the write has returned.");
                 check();
 
                 // No other context may have the database open: one would go on writing under the old password.

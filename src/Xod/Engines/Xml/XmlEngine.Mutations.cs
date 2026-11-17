@@ -15,20 +15,14 @@ namespace Xod.Engines.Xml
 {
     public partial class XmlEngine
     {
-        // The rows the statement under way has created, so that a statement that fails removes them (ISS-062): a
-        // row whose second child is refused leaves no first child behind. The outermost Create or UpdateItem of a
-        // statement keeps the list, inside one of EnterTableWriteLock's locks. Each thread keeps its own, as it keeps
-        // what its statement saved (StatementSaves): statements on standalone tables (no relations) run side by side,
-        // one per table, under the engine's read lock and their table's write lock; every other statement runs
-        // alone, under the engine-wide write lock. What isn't per thread: IOService's batch, which a standalone
-        // Delete or InsertRange still opens (ISS-124), and the indexes' set of types to save. A standalone table's
-        // row creates nothing else, but its own row is taken back too when its write fails at the statement's end
-        // (ISS-120: it stayed in the cache and the index, and the next flush wrote the row its caller was told had
-        // failed).
+        // The rows the statement under way has created, so that a statement that fails in a transaction or in buffered
+        // mode removes them (ISS-062): a row whose second child is refused leaves no first child behind. The outermost
+        // Create or UpdateItem of a statement keeps the list, under WriteStatement's engine-wide write lock. In direct
+        // mode the outermost statement puts its files back instead, all or nothing (WriteStatement, ISS-125).
         //
-        // A mitigation, not all or nothing (ISS-090): it removes created rows only, while the process runs. What a
-        // failed statement changed in rows that were there before (an update's replaced row, children it dropped)
-        // isn't put back (ISS-089), and a crash leaves the created rows (they were written as they were created).
+        // A mitigation, not all or nothing: it removes created rows only. What a failed statement changed in rows that
+        // were there before (an update's replaced row, children it dropped) isn't put back (ISS-089): in a transaction
+        // its rollback takes back the rest; in buffered mode the rest stays, written by the next flush.
         // What the statement under way has done that its undo takes back (null outside a statement): the rows it
         // created, each noted once its path is chosen and before anything is written for it, and the entries it
         // added to existing parents' lists (a child inserted on its own), noted as they are added. Noting before the
@@ -49,9 +43,11 @@ namespace Xod.Engines.Xml
             set => statementLogs.Value = value;
         }
 
+        // The statement's own undo of its created rows, in a transaction or buffered mode: in direct mode the outermost
+        // statement puts its files back instead (WriteStatement).
         private bool BeginStatement()
         {
-            if (statementLog != null || (globalWriteDepth == 0 && standaloneWriteDepth.Value == 0))
+            if (statementLog != null || globalWriteDepth == 0 || statementSavepoint)
                 return false;
             statementLog = new StatementLog();
             return true;
@@ -80,16 +76,7 @@ namespace Xod.Engines.Xml
         {
             var log = statementLog;
             statementLog = null;
-            try
-            {
-                TakeStatementBack(failure, log);
-            }
-            finally
-            {
-                // What the statement and its undo saved and didn't write waits for the next flush, not for the
-                // statement's end, where a write failing again would replace the failure the caller should see.
-                ioService.LeaveSavedToFlush();
-            }
+            TakeStatementBack(failure, log);
         }
 
         private void TakeStatementBack(Exception failure, StatementLog log)
@@ -116,28 +103,6 @@ namespace Xod.Engines.Xml
             catch (Exception e)
             {
                 undoFailure = e;
-            }
-            // Written as any statement's end writes, with no batch: a batch is the context's, and statements on
-            // standalone tables run side by side, so it would take in another thread's writes (ISS-124). This thread's
-            // saves, then the indexes of the tables it took rows from. Not in a transaction or buffered mode, which
-            // write later. In a context closed meanwhile (ISS-103) every write is refused (ThrowIfWritesRefused), and
-            // the caller sees ObjectDisposedException.
-            if (undoFailure == null && !ioService.IsBatchOrBuffered)
-            {
-                try
-                {
-                    ioService.WriteSaved();
-                    indexService.SaveAfterRowsWritten(created.Select(c => c.Type).Concat(log.Linked.Select(l => l.ParentType)).Distinct().ToList());
-                }
-                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
-                {
-                    // The rows are taken back in the cache and the index; only writing that failed (the statement's
-                    // own write often failed the same way: a page another program holds). It stays to be made, by the
-                    // next statement that saves it or the next flush, as any write that fails does (ISS-098), and the
-                    // indexes stay marked behind until then. Not a reason to refuse writes, which is for a cache that
-                    // may not be what the disk should hold (ISS-120: an undo that met the held page faulted the
-                    // context). The caller sees the statement's failure.
-                }
             }
             if (undoFailure != null)
             {
@@ -167,12 +132,7 @@ namespace Xod.Engines.Xml
             bool statement = BeginStatement();
             try
             {
-                string code = CreateRow(type, item, shallowWrite, writeTrack);
-                // What the statement saved is written inside its undo: a write that fails takes its rows back, as a
-                // failure in its middle does (ISS-062, ISS-099).
-                if (statement)
-                    ioService.WriteSaved();
-                return code;
+                return CreateRow(type, item, shallowWrite, writeTrack);
             }
             catch (Exception failure) when (statement)
             {
@@ -564,10 +524,7 @@ namespace Xod.Engines.Xml
             bool statement = BeginStatement();
             try
             {
-                bool updated = UpdateRows(type, item, newItem, track, filter);
-                if (statement)
-                    ioService.WriteSaved();
-                return updated;
+                return UpdateRows(type, item, newItem, track, filter);
             }
             catch (Exception failure) when (statement)
             {
@@ -947,56 +904,61 @@ namespace Xod.Engines.Xml
 
         public object Insert(Type type, object item, bool lazyLoad = false)
         {
-            EnterTableWriteLock(type, out var tLock, out bool usedGlobalWrite);
-            try
+            return WriteStatement<object>(type, () =>
             {
                 propertyService.LoadType(type);
                 Create(type, item, lazyLoad);
                 return GetPrimaryValues(type, item);
-            }
-            finally
-            {
-                ExitTableWriteLock(tLock, usedGlobalWrite);
-            }
+            });
         }
 
         public int InsertRange(Type type, IEnumerable<object> items, bool lazyLoad = false)
         {
             if (items == null) return 0;
 
-            EnterTableWriteLock(type, out var tLock, out bool usedGlobalWrite);
-            try
+            return WriteStatement(type, () =>
             {
                 propertyService.LoadType(type);
-                ioService.BeginBatch();
-                int count = 0;
+                // The range is one statement (ISS-125): an item refused takes the items before it back too. In direct
+                // mode its files go back (WriteStatement); in the other modes its own undo takes back every row it
+                // created. Each item used to be a statement of its own.
+                bool statement = BeginStatement();
                 try
                 {
-                    foreach (var item in items)
+                    ioService.BeginBatch();
+                    int count = 0;
+                    try
                     {
-                        Create(type, item, lazyLoad);
-                        count++;
+                        foreach (var item in items)
+                        {
+                            Create(type, item, lazyLoad);
+                            count++;
+                        }
                     }
+                    finally
+                    {
+                        ioService.EndBatch();
+                        // The batch's pages are on disk and its indexes not yet (ISS-043's crash window).
+                        FaultInjection.Step("batch-written");
+                        indexService.SaveAfterRowsWritten(null);
+                    }
+                    return count;
+                }
+                catch (Exception failure) when (statement)
+                {
+                    UndoStatement(failure);
+                    throw;
                 }
                 finally
                 {
-                    ioService.EndBatch();
-                    // The batch's pages are on disk and its indexes not yet (ISS-043's crash window).
-                    FaultInjection.Step("batch-written");
-                    indexService.SaveAfterRowsWritten(null);
+                    EndStatement(statement);
                 }
-                return count;
-            }
-            finally
-            {
-                ExitTableWriteLock(tLock, usedGlobalWrite);
-            }
+            });
         }
 
         public object InsertOrUpdate(Type type, object item, bool lazyLoad = false, UpdateFilter filter = null)
         {
-            EnterTableWriteLock(type, out var tLock, out bool usedGlobalWrite);
-            try
+            return WriteStatement<object>(type, () =>
             {
                 propertyService.LoadType(type);
                 var primValues = GetPrimaryValues(type, item);
@@ -1011,30 +973,20 @@ namespace Xod.Engines.Xml
                     Create(type, item, lazyLoad);
 
                 return GetPrimaryValues(type, item);
-            }
-            finally
-            {
-                ExitTableWriteLock(tLock, usedGlobalWrite);
-            }
+            });
         }
 
         public bool Update(Type type, object item, object newItem, UpdateFilter filter = null)
         {
-            EnterTableWriteLock(type, out var tLock, out bool usedGlobalWrite);
-            try
+            return WriteStatement(type, () =>
             {
                 return UpdateItem(type, item, newItem, null, filter);
-            }
-            finally
-            {
-                ExitTableWriteLock(tLock, usedGlobalWrite);
-            }
+            });
         }
 
         public bool Update(Type type, object item, UpdateFilter filter = null)
         {
-            EnterTableWriteLock(type, out var tLock, out bool usedGlobalWrite);
-            try
+            return WriteStatement(type, () =>
             {
                 propertyService.LoadType(type);
                 if (item == null)
@@ -1062,19 +1014,14 @@ namespace Xod.Engines.Xml
                     return UpdateItem(type, old, item, null, filter);
 
                 return false;
-            }
-            finally
-            {
-                ExitTableWriteLock(tLock, usedGlobalWrite);
-            }
+            });
         }
 
         public bool Delete(Type type, object item) => Delete(type, item, false);
 
         public bool Delete(Type type, object item, bool isCascade)
         {
-            EnterTableWriteLock(type, out var tLock, out bool usedGlobalWrite);
-            try
+            return WriteStatement(type, () =>
             {
                 propertyService.LoadType(type);
                 if (item == null)
@@ -1203,11 +1150,7 @@ namespace Xod.Engines.Xml
                     if (shouldBatch)
                         ioService.EndBatch();
                 }
-            }
-            finally
-            {
-                ExitTableWriteLock(tLock, usedGlobalWrite);
-            }
+            });
         }
 
         public bool DropType(Type type)

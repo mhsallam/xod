@@ -14,6 +14,7 @@ using Xunit;
 
 namespace Xod.Tests
 {
+    [Collection(InProcessHookCollection.Name)]
     public class XodTransactionFlowTests : IDisposable
     {
         private readonly string tempRoot = Path.Combine(Path.GetTempPath(), "xod-transaction-flow-" + Guid.NewGuid().ToString("N")[..8]);
@@ -255,11 +256,11 @@ namespace Xod.Tests
             _ => throw new ArgumentException(read),
         };
 
-        // A write inside another flow's read goes on, though a transaction waits to begin: the read holds its turn, the
-        // transaction waits for the read, and the write is made in the read's turn. It used to be refused while the
-        // transaction waited (and a transaction could be open beside the read). The transaction begins after the read.
+        // A write inside another flow's read, while a transaction waits to begin, is refused at once, as every write
+        // inside a read is (ISS-125): it is in the read's turn, so it doesn't wait behind the transaction, which waits for
+        // the read. The transaction begins after the read.
         [Fact]
-        public async Task A_write_inside_another_flow_s_read_goes_on_while_a_transaction_waits()
+        public async Task A_write_inside_another_flow_s_read_is_refused_while_a_transaction_waits()
         {
             string path = NewPath("write-inside-read");
             var options = new DatabaseOptions { InitialCreate = true };
@@ -285,9 +286,10 @@ namespace Xod.Tests
                     tx.Dispose();
                     return true;
                 });
-                Assert.Single(await read.WaitAsync(Deadline));
+                var refused = await Assert.ThrowsAsync<XodException>(() => read.WaitAsync(Deadline));
+                Assert.Contains("inside a read", refused.Message);
                 Assert.True(await begin.WaitAsync(Deadline));
-                Assert.Equal(new[] { 1 }, db.Select<FlowOther>().Select(o => o.Id).ToArray());
+                Assert.Empty(db.Select<FlowOther>());
             }
             finally
             {

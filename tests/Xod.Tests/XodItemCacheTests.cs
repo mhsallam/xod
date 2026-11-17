@@ -121,18 +121,39 @@ namespace Xod.Tests
             Assert.Equal("New", db.Find<CacheOrder>(o => o.Id == 1).Customer.Name);
         }
 
-        // A write made inside a read (a standalone table's write, from a query's predicate) ends what the read
-        // shares: the rows it reads after the write reference the row as written.
+        // A write inside a read (a standalone table's, from a query's predicate) is refused, as every write is there
+        // (ISS-125): it went on, and what the read shared was dropped for the rest of it. What the read shares is
+        // what the disk holds until it ends.
         [Fact]
-        public void A_write_inside_a_read_is_seen_by_the_rest_of_that_read()
+        public void A_write_inside_a_read_is_refused()
         {
             using var db = new XodContext(NewDb("inside"));
             var c = Seed(db, orders: 2);
 
-            var seen = db.Query<CacheOrder>(o => RenameOnFirst(db, c.Id, o)).ToList();
+            var refused = Assert.Throws<XodException>(() => db.Query<CacheOrder>(o => RenameOnFirst(db, c.Id, o)).ToList());
+
+            Assert.Contains("inside a read", refused.Message);
+            Assert.Equal("Old", db.Find<CacheCustomer>(x => x.Id == c.Id).Name);
+        }
+
+        // A write inside a read inside a write (a trigger's query whose predicate writes) is made: the thread holds the
+        // write lock already. It ends what that read shares: the rows the read takes after it reference the row as
+        // written.
+        [Fact]
+        public void A_write_inside_a_trigger_s_read_is_seen_by_the_rest_of_that_read()
+        {
+            using var db = new XodContext(NewDb("inside-trigger"));
+            var c = Seed(db, orders: 2);
+            List<CacheOrder> seen = null;
+            db.AfterAction += (_, e) =>
+            {
+                if (e.Action == DatabaseActions.Insert && e.Item is CacheCustomer { Name: "trigger" })
+                    seen = db.Query<CacheOrder>(o => RenameOnFirst(db, c.Id, o)).ToList();
+            };
+
+            db.Insert(new CacheCustomer { Name = "trigger" });
 
             Assert.Equal(2, seen.Count);
-            Assert.Equal("New", db.Find<CacheCustomer>(x => x.Id == c.Id).Name);
             Assert.Equal("New", seen.Single(o => o.Id == 2).Customer.Name);
         }
 

@@ -23,35 +23,14 @@ namespace Xod.Engines.Xml
             if (positional.Length > questionMarks)
                 throw new XodSqlException("XQ012", $"{positional.Length} value{(positional.Length == 1 ? " was" : "s were")} given for {questionMarks} ? parameter{(questionMarks == 1 ? "" : "s")}");
 
-            // Writes with relations take the engine's write lock, which this read lock keeps out; a standalone table's
-            // write takes the engine's read lock and its table's write lock, which the query's table read locks keep
-            // out (SqlSource). Both are held from the first table read to the last row computed.
-            // A turn first, as every read: it waits for a transaction of another flow (ISS-175).
+            // Every write takes the engine's write lock (ISS-125), which this read lock keeps out, from the first table
+            // read to the last row computed. A turn first, as every read: it waits for a transaction of another flow
+            // (ISS-175).
             EnterWithTurn(EnterRead, ExitRead);
             itemsCacheService.BeginRead();
             try
             {
-                var now = DateTimeOffset.Now;
-                // The tables to take before binding, in order: those an earlier attempt found it needed (SqlSource.Lock).
-                var tables = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-                while (true)
-                {
-                    var source = new SqlSource(this);
-                    try
-                    {
-                        source.LockInOrder(tables);
-                        return Run(stmt, source, now, positional, named);
-                    }
-                    catch (SqlSource.TakeInOrder again)
-                    {
-                        // Each attempt starts again with at least one more table, of the database's finitely many.
-                        tables.UnionWith(again.Tables);
-                    }
-                    finally
-                    {
-                        source.Release();
-                    }
-                }
+                return Run(stmt, new SqlSource(this), DateTimeOffset.Now, positional, named);
             }
             finally
             {
@@ -89,8 +68,7 @@ namespace Xod.Engines.Xml
         /// <summary>
         /// The database as one query reads it (ISqlDatabase): its tables (a table file each, or a class this context
         /// knows), each one's schema (from its class, or the manifest its file records, or every column as text), and
-        /// its rows decoded column by column. Each table's read lock is taken the first time the query touches it and
-        /// held to the end, in one order for every query (by full name, ordinal ignoring case; see <see cref="Lock"/>).
+        /// its rows decoded column by column, under the engine's read lock the query holds (<see cref="XmlEngine.Sql"/>).
         /// </summary>
         private sealed class SqlSource : ISqlDatabase
         {
@@ -101,58 +79,15 @@ namespace Xod.Engines.Xml
             private readonly Dictionary<string, TableSchema> schemas = new(StringComparer.Ordinal);
             private readonly Dictionary<string, XFile> files = new(StringComparer.Ordinal);
             private readonly Dictionary<string, List<(string Name, bool Attribute)>> storedNames = new(StringComparer.Ordinal);
-            private readonly List<ReaderWriterLockSlim> held = new();
-            private readonly HashSet<string> locked = new(StringComparer.OrdinalIgnoreCase);
-            // The tables this thread held before the query started (SQL run inside a read's predicate, or while an
-            // InsertRange reads its items): the query can't give them back.
-            private readonly HashSet<string> outside = new(StringComparer.OrdinalIgnoreCase);
-            private readonly string outsideLast;
-            private string last; // the table that sorts last among those held, the outside ones included
             private IReadOnlyList<string> catalog;
 
             public SqlSource(XmlEngine engine)
             {
                 this.engine = engine;
                 fromClasses = engine.options.SqlSchema == SqlSchemaSource.Classes;
-                foreach (var (table, _) in engine.heldTableLocks.Value.Values)
-                {
-                    outside.Add(table);
-                    if (outsideLast == null || Order(table, outsideLast) > 0)
-                        outsideLast = table;
-                }
-                last = outsideLast;
             }
-
-            private static int Order(string a, string b) => StringComparer.OrdinalIgnoreCase.Compare(a, b);
 
             public Exec Exec { get; set; }
-
-            public void Release()
-            {
-                for (int i = held.Count - 1; i >= 0; i--)
-                {
-                    engine.LettingGo(held[i]);
-                    held[i].ExitReadLock();
-                }
-                held.Clear();
-                locked.Clear();
-                last = outsideLast;
-            }
-
-            /// <summary>Takes these tables' read locks, in ascending order, before the query is bound.</summary>
-            public void LockInOrder(IEnumerable<string> fullNames)
-            {
-                foreach (var fullName in fullNames.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
-                    Lock(fullName);
-            }
-
-            /// <summary>The query needs a table that sorts before one it holds, and can't have it now: it gives every
-            /// table back and starts again, taking these first, in order.</summary>
-            public sealed class TakeInOrder : Exception
-            {
-                public TakeInOrder(IReadOnlyList<string> tables) : base("SQL takes its tables' locks again, in order") => Tables = tables;
-                public IReadOnlyList<string> Tables { get; }
-            }
 
             // ---- tables ----
 
@@ -205,50 +140,10 @@ namespace Xod.Engines.Xml
             {
                 if (!files.TryGetValue(fullName, out var file))
                 {
-                    Lock(fullName);
                     file = engine.ioService.OpenFileOrCreate(fullName + ".xtab", ClassOf(fullName), openOnly: true);
                     files[fullName] = file;
                 }
                 return file;
-            }
-
-            /// <summary>
-            /// A table's read lock, held to the end of the query. A writer waiting for a table's write lock keeps new
-            /// readers out of it (ReaderWriterLockSlim prefers writers), so two queries that each hold a table and wait
-            /// for the other's, behind waiting writers, would wait forever. So a query waits for a lock only when the
-            /// table sorts after every table it holds: one order for every query, and a writer holds at most one table
-            /// lock (a write to a table with relations takes the engine's write lock, which the query's read lock keeps
-            /// out). A table that sorts earlier is taken only if it is free now; otherwise <see cref="TakeInOrder"/>
-            /// starts the query again with its tables taken in order.
-            /// The tables this thread held before the query count as held: one of them is entered again without waiting
-            /// (a thread in a lock passes the writers waiting for it), and the query waits only above them all. A table
-            /// below them that isn't free now can't be waited for, and they can't be given back to start again, so the
-            /// query is refused, as a write inside a read is (EnterWrite).
-            /// </summary>
-            private void Lock(string fullName)
-            {
-                if (locked.Contains(fullName)) return;
-                var tableLock = engine.GetTableLock(fullName);
-                if (outside.Contains(fullName))
-                {
-                    tableLock.EnterReadLock();
-                }
-                else if (last == null || Order(fullName, last) > 0)
-                {
-                    tableLock.EnterReadLock();
-                    last = fullName;
-                }
-                else if (!tableLock.TryEnterReadLock(0))
-                {
-                    if (outside.Count == 0)
-                        throw new TakeInOrder(locked.Append(fullName).ToList());
-                    throw new XodException($"A SQL query inside a read or write of {string.Join(", ", outside)} on the same " +
-                        $"thread (a query's predicate, for example) needs {fullName}, which another thread is writing or waiting " +
-                        "to write: waiting for it there could wait forever. Run the query after that read or write has returned.");
-                }
-                engine.Holding(tableLock, fullName);
-                locked.Add(fullName);
-                held.Add(tableLock);
             }
 
             private TableSchema Schema(string fullName)

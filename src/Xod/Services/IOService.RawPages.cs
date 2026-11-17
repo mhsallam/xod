@@ -603,7 +603,7 @@ namespace Xod.Services
                     return;
                 }
 
-                RawPagePendingUnlocked(normalizedName, fullPath);
+                RawPagePendingUnlocked(normalizedName, fullPath, rawPage, startOffset);
                 if (newRowElement == null)
                 {
                     // Fast in-place tombstone: overwrite deleted row with whitespace padding without shifting bytes
@@ -795,7 +795,7 @@ namespace Xod.Services
                         return false;
                 }
 
-                RawPagePendingUnlocked(pageFileName, Path.Combine(root, pageFileName));
+                RawPagePendingUnlocked(pageFileName, Path.Combine(root, pageFileName), rawPage, insertPos);
                 int newLength = insertPos + rowByteLen + XmlPageTrailerBytes.Length;
                 if (newLength > rawPage.Bytes.Length)
                 {
@@ -1509,11 +1509,14 @@ namespace Xod.Services
         }
 
         /// <summary>
-        /// The raw page counterpart of <see cref="FilePendingUnlocked"/>: called before a cached raw page changes, so a
-        /// change that fails part way, or whose write fails, is still a write to make (ISS-099). Called under syncLock.
+        /// The raw page counterpart of <see cref="FilePendingUnlocked"/>: called before a cached raw page changes (from
+        /// <paramref name="from"/> on), so a change that fails part way, or whose write fails, is still a write to make
+        /// (ISS-099), and a statement's savepoint notes the bytes it replaces (ISS-125). Called under syncLock.
         /// </summary>
-        private void RawPagePendingUnlocked(string pageFileName, string fullPath)
+        private void RawPagePendingUnlocked(string pageFileName, string fullPath, RawPageBuffer rawPage, int from)
         {
+            StatementChangesUnlocked();
+            KeepRawPage(fullPath, rawPage, from);
             if (batchDepth > 0)
             {
                 // The hook first, then the batch (FilePendingUnlocked says why).
@@ -1548,30 +1551,35 @@ namespace Xod.Services
 
             // No transaction is open here (RefuseWriteInsideTransaction above): a transaction's pages are written by
             // its commit, once it is no longer active, in place like any other, its journal holding their before-images.
-            Action<string> changed = FileChangedOnDisk;
+            Action<string> changed = ChangedOnDisk;
             if (items.Count < 4)
             {
                 for (int i = 0; i < items.Count; i++)
                 {
-                    FlushRawPageToDisk(items[i].FullPath, items[i].Page, changed);
+                    FlushRawPageToDisk(items[i].FullPath, items[i].Page, changed, Capture);
                 }
             }
             else
             {
-                System.Threading.Tasks.Parallel.ForEach(items, item => FlushRawPageToDisk(item.FullPath, item.Page, changed));
+                ParallelWrites(items, item => FlushRawPageToDisk(item.FullPath, item.Page, changed, Capture));
             }
         }
 
-        // changed: IOService.FileChangedOnDisk, called once the file on disk may differ (may run on pool threads).
-        private static void FlushRawPageToDisk(string fullPath, RawPageBuffer rawPage, Action<string> changed)
+        // changed: IOService.ChangedOnDisk, called once the file on disk may differ (may run on pool threads).
+        // capture: IOService.Capture, before each write (a statement's savepoint notes what the write replaces).
+        private static void FlushRawPageToDisk(string fullPath, RawPageBuffer rawPage, Action<string> changed, Action<string, long> capture)
         {
             if (rawPage?.Bytes == null || rawPage.Length <= 0)
                 return;
 
-            if (!rawPage.IsNewFile &&
+            bool inPlace = !rawPage.IsNewFile &&
                 rawPage.DirtyStartOffset < rawPage.Length &&
                 rawPage.DirtyStartOffset >= 0 &&
-                File.Exists(fullPath))
+                File.Exists(fullPath);
+            // What the write replaces: in place, from where it starts.
+            capture(fullPath, inPlace ? rawPage.DirtyStartOffset : 0);
+            FaultInjection.Step("file-write", file: System.IO.Path.GetFileName(fullPath));
+            if (inPlace)
             {
                 using (var fs = new FileStream(fullPath, FileMode.Open, FileAccess.Write, FileShare.None, 65536, FileOptions.None))
                 {
@@ -1591,6 +1599,8 @@ namespace Xod.Services
                 }
             }
 
+            // Not as last written: the file is written whole, so the rest of it is noted too.
+            capture(fullPath, 0);
             if (File.Exists(fullPath))
             {
                 WriteRawBytesAtomic(fullPath, rawPage.Bytes, rawPage.Length);
@@ -1609,6 +1619,23 @@ namespace Xod.Services
             rawPage.IsNewFile = false;
             rawPage.DiskSyncedLength = rawPage.Length;
             rawPage.DirtyStartOffset = int.MaxValue;
+        }
+
+        /// <summary>
+        /// Writes these files side by side (4 or more: Parallel.ForEach). One that fails is thrown as itself, as a
+        /// write of fewer files throws it, not wrapped in the AggregateException Parallel.ForEach throws (ISS-137: the
+        /// caller's handling depended on how many files the statement saved). Several failures stay together.
+        /// </summary>
+        private static void ParallelWrites<T>(List<T> items, Action<T> write)
+        {
+            try
+            {
+                System.Threading.Tasks.Parallel.ForEach(items, write);
+            }
+            catch (AggregateException e) when (e.InnerExceptions.Count == 1)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerExceptions[0]).Throw();
+            }
         }
 
         /// <summary>Writes a whole file so that a crash leaves the old one or the new one: beside it as

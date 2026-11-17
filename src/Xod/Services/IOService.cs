@@ -197,7 +197,7 @@ namespace Xod.Services
                     continue;
                 string fullPath = Path.Combine(root, name);
                 File.Delete(fullPath);
-                FileChangedOnDisk?.Invoke(fullPath);
+                ChangedOnDisk(fullPath);
             }
         }
 
@@ -233,22 +233,139 @@ namespace Xod.Services
             saved.Written(toFlush, rawToFlush);
         }
 
-        /// <summary>
-        /// The statement on this thread failed: what it saved and didn't write waits for the next flush (or the next
-        /// statement that saves it) rather than for its end, where a write failing again would replace the failure
-        /// the caller should see (ISS-120: a page another program holds failed the statement, then its end).
-        /// </summary>
-        internal void LeaveSavedToFlush()
+        // The statement under way in direct mode (ISS-125), null otherwise: its data-file writes note the bytes they
+        // replace (Capture). One statement at a time: every write statement holds the engine-wide write lock.
+        private StatementSavepoint savepoint;
+        // The statement under way has changed what this context holds (a document, a page, a hint, a delete): set by
+        // each of those, under syncLock. A statement refused before it changed anything (a key already used) has
+        // nothing to forget, and the cache stays.
+        private bool statementChanged;
+
+        // Called under syncLock, by each change to what this context holds of a file.
+        private void StatementChangesUnlocked()
         {
-            lock (syncLock)
+            if (savepoint != null)
+                statementChanged = true;
+        }
+
+        /// <summary>
+        /// The statement under way in direct mode has changed what this context holds: an index built from the pages
+        /// now holds its changes (IndexService). False outside a statement, and in a transaction or buffered mode.
+        /// </summary>
+        internal bool StatementChangedAnything
+        {
+            get
             {
-                saved.LeaveThisThreadsToFlush();
+                lock (syncLock)
+                {
+                    return savepoint != null && statementChanged;
+                }
             }
         }
 
         /// <summary>
+        /// A write statement starts: in direct mode (no transaction, no batch, no buffer) every data file it writes is
+        /// noted first, so its failure can put them back (<see cref="UndoStatement"/>). False in any other mode, where
+        /// nothing reaches the disk before a commit or a flush, and the statement's own undo applies (ISS-062).
+        /// </summary>
+        internal bool BeginStatement()
+        {
+            lock (syncLock)
+            {
+                if (bufferedDurability || batchDepth > 0 || (HasActiveTransaction != null && HasActiveTransaction()))
+                    return false;
+                savepoint = new StatementSavepoint();
+                statementChanged = false;
+                return true;
+            }
+        }
+
+        /// <summary>The statement succeeded: what it noted is let go.</summary>
+        internal void EndStatement()
+        {
+            StatementSavepoint done;
+            lock (syncLock)
+            {
+                done = savepoint;
+                savepoint = null;
+            }
+            done?.Release();
+        }
+
+        /// <summary>
+        /// The statement failed: every data file it wrote is put back as it found it, then everything this context
+        /// holds is forgotten, written or not, as after a rollback (<see cref="DiscardPendingWrites"/>): the cached
+        /// pages and table files it changed, and its saves still to write. The disk is what counts. Forgotten even when
+        /// putting a file back fails, which throws: the caller then refuses every write (XmlEngine, ISS-091). Nothing
+        /// is forgotten when the statement changed nothing this context holds.
+        /// </summary>
+        internal void UndoStatement()
+        {
+            StatementSavepoint undo;
+            bool changed;
+            lock (syncLock)
+            {
+                undo = savepoint;
+                changed = statementChanged;
+                savepoint = null;
+                statementChanged = false;
+            }
+            try
+            {
+                undo?.Undo();
+            }
+            finally
+            {
+                if (changed)
+                    DiscardPendingWrites();
+            }
+        }
+
+        /// <summary>
+        /// The one report that a file on disk has changed, or may have from here (a write in place has opened it):
+        /// after a whole file's rename into place, a delete, or the open of a write in place, never for a write that
+        /// failed before any of those. To the statement under way (its undo puts back only such files: one whose write
+        /// failed before changing it, another program holding it, is left alone, and putting it back would fail too)
+        /// and to the transaction committing (<see cref="FileChangedOnDisk"/>). May run on pool threads.
+        /// </summary>
+        private void ChangedOnDisk(string fullPath)
+        {
+            savepoint?.Changed(fullPath);
+            FileChangedOnDisk?.Invoke(fullPath);
+        }
+
+        // Not an index file or the database file (StatementSavepoint says why).
+        private StatementSavepoint Noting(string fullPath)
+        {
+            var noting = savepoint;
+            return noting == null || IsIndex(fullPath) || Helpers.DatabaseFiles.IsDatabaseFile(fullPath) ? null : noting;
+        }
+
+        // Before a write of a data file that changes it from `from` to its end (0: the whole file, or its delete), when
+        // what the context holds of it was noted as it changed (KeepRawPage) or isn't known: read from the file then.
+        private void Capture(string fullPath, long from) => Noting(fullPath)?.BeforeWrite(fullPath, from);
+
+        // Before a document is written whole: its bytes as last read or written (XFile.DiskBytes).
+        private void CaptureWhole(XFile file) => Noting(file.Path)?.KeepWhole(file.Path, file.DiskBytes);
+
+        // Before a cached page changes from `from` on: its cached bytes are the file's below every change still to be
+        // written, so they are what is on disk from `from` when each such change is the statement's own (at or above
+        // what it noted). A change from before the statement still to be written (a flush that failed): the file is read.
+        private void KeepRawPage(string fullPath, RawPageBuffer rawPage, long from)
+        {
+            var noting = Noting(fullPath);
+            if (noting == null || rawPage?.Bytes == null || rawPage.IsNewFile)
+                return; // a page not on disk yet is noted at its write, as a file the statement made
+            long synced = rawPage.DiskSyncedLength;
+            if (rawPage.DirtyStartOffset < synced && !noting.Covers(fullPath, rawPage.DirtyStartOffset))
+                noting.BeforeWrite(fullPath, from);
+            else
+                noting.Keep(fullPath, from, synced, rawPage.Bytes);
+        }
+
+        /// <summary>
         /// ISS-099: in direct mode (no batch, no buffer) what a statement saved is written when the statement ends
-        /// (XmlEngine.ExitTableWriteLock), after its index changes, not at each save in its middle: a write that failed
+        /// (XmlEngine.WriteStatement), after its index changes, not at each save in its middle: a write that failed
         /// there threw before the index was changed, and left the cache (and soon the disk) ahead of the index: the
         /// row on its page, its key not in the index. Each is written, and only then no longer pending; one that fails
         /// stays, to be written at the next statement's end or flush, and the call that ended the statement throws.

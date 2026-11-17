@@ -129,9 +129,14 @@ namespace Xod.Services
                 if (cachedRawPages.TryGetValue(normalizedName, out var rawPage) && rawPage?.Bytes != null)
                 {
                     cachedRawPages.Remove(normalizedName);
-                    XDocument doc = storageSerializer.Deserialize(rawPage.ToExactArray());
+                    byte[] exact = rawPage.ToExactArray();
+                    XDocument doc = storageSerializer.Deserialize(exact);
+                    // Its bytes are the file's when nothing of it waits to be written.
+                    bool asOnDisk = !rawPage.IsNewFile && rawPage.DirtyStartOffset >= rawPage.DiskSyncedLength && rawPage.Length == rawPage.DiskSyncedLength;
+                    if (asOnDisk && ReferenceEquals(exact, rawPage.Bytes))
+                        exact = (byte[])exact.Clone(); // the page's own array goes back to the pool below
                     rawPage.ReleasePooledBuffer();
-                    file = new XFile(doc, type, filePath, password);
+                    file = new XFile(doc, type, filePath, password) { DiskBytes = asOnDisk ? exact : null };
                     if (dirtyBatchRawPages.Remove(normalizedName))
                     {
                         dirtyBatchFiles.Add(file);
@@ -148,6 +153,7 @@ namespace Xod.Services
                 }
                 else if (!openOnly && type != null)
                 {
+                    StatementChangesUnlocked();
                     XDocument doc = ItemWriterDelegate(type, normalizedName);
                     file = new XFile(doc, type, filePath, password);
                     // A new database's file is on disk when the open returns, in every mode: the next open must find
@@ -203,6 +209,7 @@ namespace Xod.Services
             // No file I/O here: this runs on the save/load path for every page. A page that has not
             // been saved yet is assumed to occupy a full page, which is the honest upper bound.
             long cost = file.LastSavedSize > 0 ? file.LastSavedSize : 512L * 1024;
+            cost += file.DiskBytes?.Length ?? 0;
             if (storageSerializer.Format == StorageFormat.Binary)
                 cost = Math.Max(cost, 512L * 1024);
             return cost;
@@ -269,6 +276,7 @@ namespace Xod.Services
         {
             lock (syncLock)
             {
+                StatementChangesUnlocked();
                 bool outer = !file.HintChanging;
                 file.HintChanging = true;
                 try
@@ -290,6 +298,7 @@ namespace Xod.Services
         /// </summary>
         private void FilePendingUnlocked(XFile file)
         {
+            StatementChangesUnlocked();
             if (batchDepth > 0)
             {
                 // The hook first (a transaction keeps the file's bytes before it), and the file joins the batch only
@@ -550,8 +559,11 @@ namespace Xod.Services
                 : serializedBytes;
 
             file.LastSavedSize = payloadBytes.Length;
+            CaptureWhole(file);
+            FaultInjection.Step("file-write", file: System.IO.Path.GetFileName(file.Path));
             WriteRawBytesAtomic(file.Path, payloadBytes, payloadBytes.Length);
-            FileChangedOnDisk?.Invoke(file.Path);
+            file.DiskBytes = payloadBytes;
+            ChangedOnDisk(file.Path);
         }
 
         private void FlushFilesList(List<XFile> toFlush)
@@ -573,7 +585,7 @@ namespace Xod.Services
                 }
             }
 
-            System.Threading.Tasks.Parallel.ForEach(toFlush, FlushFileToDiskCore);
+            ParallelWrites(toFlush, FlushFileToDiskCore);
         }
 
         /// <summary>
@@ -615,7 +627,8 @@ namespace Xod.Services
 
         private XFile LoadUnlocked(Type type, string filePath, string pwd)
         {
-            byte[] rawBytes = File.ReadAllBytes(filePath);
+            byte[] diskBytes = File.ReadAllBytes(filePath);
+            byte[] rawBytes = diskBytes;
             if (!string.IsNullOrEmpty(pwd))
             {
                 rawBytes = FileCryptoHelper.DecryptBytes(rawBytes, pwd);
@@ -628,7 +641,7 @@ namespace Xod.Services
             try
             {
                 XDocument doc = storageSerializer.Deserialize(rawBytes);
-                return new XFile(doc, type, filePath, pwd);
+                return new XFile(doc, type, filePath, pwd) { DiskBytes = diskBytes };
             }
             catch (Exception ex) when (!(ex is XodException))
             {
@@ -732,6 +745,21 @@ namespace Xod.Services
         {
             if (onDisk)
                 BeforeFileMutate?.Invoke(fullPath);
+            StatementChangesUnlocked();
+            bool inTransaction = HasActiveTransaction != null && HasActiveTransaction();
+            if (onDisk && !(batchDepth > 0 && inTransaction) && File.Exists(fullPath))
+            {
+                // Deleted at once, below: a statement's savepoint notes the file first, from what this context holds.
+                if (cachedRawPages.TryGetValue(normalizedName, out var heldPage) && heldPage?.Bytes != null)
+                {
+                    KeepRawPage(fullPath, heldPage, 0);
+                    Capture(fullPath, 0); // a page made by the statement, or one it couldn't take from the cache
+                }
+                else if (cachedFiles.TryGetValue(normalizedName, out var heldFile))
+                    CaptureWhole(heldFile.File);
+                else
+                    Capture(fullPath, 0);
+            }
             dirtyBatchFiles.Remove(normalizedName);
             dirtyBufferedFiles.Remove(normalizedName);
             dirtyBatchRawPages.Remove(normalizedName);
@@ -745,7 +773,6 @@ namespace Xod.Services
             }
             if (onDisk && File.Exists(fullPath))
             {
-                bool inTransaction = HasActiveTransaction != null && HasActiveTransaction();
                 // ISS-166: inside a transaction a data file (never an index file: Delete refuses one) is deleted by its commit, as its other files are written
                 // then; until then it stays on disk, gone for this context (pendingDeletes). Deleted at once, a page
                 // a delete emptied was lost though nothing was committed (ISS-107); renamed aside (2.0.2), a crash
@@ -760,7 +787,7 @@ namespace Xod.Services
                 else
                 {
                     File.Delete(fullPath);
-                    FileChangedOnDisk?.Invoke(fullPath);
+                    ChangedOnDisk(fullPath);
                 }
             }
         }

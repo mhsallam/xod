@@ -14,14 +14,14 @@ namespace Xod.Engines.Xml
     {
         public IEnumerable<object> Select(Type type, bool backward = false, string include = "*")
         {
-            EnterTableReadLock(type, out var tLock);
+            EnterReadOperation(type);
             try
             {
                 return SelectItems(type, null, backward, include).ToList();
             }
             finally
             {
-                ExitTableReadLock(tLock);
+                ExitReadOperation();
             }
         }
 
@@ -30,7 +30,7 @@ namespace Xod.Engines.Xml
             if (take <= 0)
                 return Enumerable.Empty<object>();
 
-            EnterTableReadLock(type, out var tLock);
+            EnterReadOperation(type);
             try
             {
                 propertyService.LoadType(type);
@@ -115,13 +115,13 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                ExitTableReadLock(tLock);
+                ExitReadOperation();
             }
         }
 
         public int Count(Type type)
         {
-            EnterTableReadLock(type, out var tLock);
+            EnterReadOperation(type);
             try
             {
                 propertyService.LoadType(type);
@@ -165,20 +165,20 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                ExitTableReadLock(tLock);
+                ExitReadOperation();
             }
         }
 
         public IEnumerable<object> Query(Type type, Func<dynamic, bool> query = null, string include = "*")
         {
-            EnterTableReadLock(type, out var tLock);
+            EnterReadOperation(type);
             try
             {
                 return QueryItems(type, query, include).ToList();
             }
             finally
             {
-                ExitTableReadLock(tLock);
+                ExitReadOperation();
             }
         }
 
@@ -189,7 +189,7 @@ namespace Xod.Engines.Xml
 
             Type type = typeof(T);
 
-            EnterTableReadLock(type, out var tLock);
+            EnterReadOperation(type);
             try
             {
                 EnsureIndexHydrated(type);
@@ -262,78 +262,78 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                ExitTableReadLock(tLock);
+                ExitReadOperation();
             }
         }
 
         public IEnumerable<object> QueryByExample(Type type, object example, string include = "*")
         {
-            EnterTableReadLock(type, out var tLock);
+            EnterReadOperation(type);
             try
             {
                 return SelectItemsByExample(type, example, include).ToList();
             }
             finally
             {
-                ExitTableReadLock(tLock);
+                ExitReadOperation();
             }
         }
 
         public IEnumerable<object> QueryByExample(Type type, object[] examples, string include = "*")
         {
-            EnterTableReadLock(type, out var tLock);
+            EnterReadOperation(type);
             try
             {
                 return SelectItemsByExamples(type, examples, include).ToList();
             }
             finally
             {
-                ExitTableReadLock(tLock);
+                ExitReadOperation();
             }
         }
 
         public object Find(Type type, Func<dynamic, bool> query, string include = "*")
         {
-            EnterTableReadLock(type, out var tLock);
+            EnterReadOperation(type);
             try
             {
                 return SelectItems(type, query, false, include).FirstOrDefault();
             }
             finally
             {
-                ExitTableReadLock(tLock);
+                ExitReadOperation();
             }
         }
 
         public object FindLast(Type type, Func<dynamic, bool> query, string include = "*")
         {
-            EnterTableReadLock(type, out var tLock);
+            EnterReadOperation(type);
             try
             {
                 return SelectItems(type, query, true, include).FirstOrDefault();
             }
             finally
             {
-                ExitTableReadLock(tLock);
+                ExitReadOperation();
             }
         }
 
         public object First(Type type, string include = "*")
         {
-            EnterTableReadLock(type, out var tLock);
+            EnterReadOperation(type);
             try
             {
                 return SelectItems(type, null, false, include).FirstOrDefault();
             }
             finally
             {
-                ExitTableReadLock(tLock);
+                ExitReadOperation();
             }
         }
 
         public object Last(Type type, string include = "*")
         {
-            EnterTableReadLock(type, out var tLock);
+            EnterReadOperation(type);
             try
             {
                 propertyService.LoadType(type);
@@ -367,7 +367,7 @@ namespace Xod.Engines.Xml
             }
             finally
             {
-                ExitTableReadLock(tLock);
+                ExitReadOperation();
             }
         }
 

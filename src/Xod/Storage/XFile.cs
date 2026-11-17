@@ -17,6 +17,11 @@ namespace Xod
 
         public long LastSavedSize { get; set; }
 
+        // The file's bytes on disk as this context last read or wrote them (null: unknown, a file not on disk or a
+        // document made from a page with changes not yet written). Never changed in place: a write replaces the array.
+        // A statement's savepoint keeps them as the file it found (IOService.Capture, ISS-125).
+        internal byte[] DiskBytes;
+
         // IOService watches the document of a file it caches, once (ISS-099).
         internal bool Watched;
         // A change to the file's hints is under way (IOService.ChangeHint): not a write to make.

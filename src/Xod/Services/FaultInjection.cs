@@ -14,8 +14,9 @@ namespace Xod.Services
     /// </list>
     /// A step is <c>name</c>, <c>name:count</c> (after that many files) or <c>name:file</c>. Password changes:
     /// <c>staged</c>, <c>committed</c>, <c>switching</c>, <c>switched</c>. Commits: <c>commit-written</c>
-    /// (the batch's files written, not the indexes), <c>undo</c>. A failed statement's undo: <c>undo-statement:n</c>
-    /// (once it has taken back n of the rows it created). Opening: <c>open-checked</c> (the folder checked
+    /// (the batch's files written, not the indexes), <c>undo</c>. A failed statement's undo: <c>undo-file:n</c> (before
+    /// it puts back the nth file it changed, outside a transaction), <c>undo-statement:n</c> (once it has taken back n of
+    /// the rows it created, in a transaction or buffered mode). Opening: <c>open-checked</c> (the folder checked
     /// to hold one database, before the hold; a conversion's too), <c>creating</c> (a new database's file about
     /// to be written, the database held alone), <c>recover-restoring</c> (before a transaction journal's snapshot
     /// is written back). So a fault lands at an exact, repeatable point instead of a random one.</summary>
@@ -45,7 +46,8 @@ namespace Xod.Services
         }
 
         /// <summary>
-        /// In process, for the tests (null otherwise): called with each step's name, on the thread at the step. For an
+        /// In process, for the tests (null otherwise): called with each step's name (and <c>:file</c> when it names one),
+        /// on the thread at the step. It may throw, as a failed write would (<c>file-write</c>). For an
         /// interleaving no public call can hold, such as a write between its turn and its locks (<c>write-turn</c>,
         /// ISS-132). A test that sets it acts only for the flow it marks: tests of other contexts run beside it.
         /// </summary>
@@ -55,7 +57,7 @@ namespace Xod.Services
         /// when the count is 0), at <paramref name="file"/> when there is one.</summary>
         internal static void Step(string step, int count = 0, string file = null)
         {
-            InProcess?.Invoke(step);
+            InProcess?.Invoke(file == null ? step : step + ":" + file);
             if (CrashAtStep == null && FailAtSteps.Length == 0 && PauseAtStep == null)
                 return;
 

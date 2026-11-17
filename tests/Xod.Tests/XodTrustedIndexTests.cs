@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,30 +38,6 @@ namespace Xod.Tests
     {
         public int Id { get; set; }
         [Crypto(CryptoMethod.AES256)] public string Text { get; set; }
-    }
-
-    // A row whose Name getter blocks once, for the row "block": it is read inside the insert's locks.
-    public class TrustGate
-    {
-        internal static readonly ManualResetEventSlim Entered = new(false);
-        internal static readonly ManualResetEventSlim Go = new(false);
-        internal static volatile bool Armed;
-        private string name;
-        [PrimaryKey] public string Code { get; set; }
-        public string Name
-        {
-            get
-            {
-                if (Armed && Code == "block")
-                {
-                    Armed = false;
-                    Entered.Set();
-                    Go.Wait(10000);
-                }
-                return name;
-            }
-            set => name = value;
-        }
     }
 
     public class XodTrustedIndexTests : IDisposable
@@ -147,7 +124,8 @@ namespace Xod.Tests
 
         // ISS-099: with no batch and no buffer (the default), a page write that failed left its change in the cache
         // and in no set of writes still to make; the next write carried the row to the page, and the close called
-        // the indexes caught up without it.
+        // the indexes caught up without it. Now the failed insert leaves nothing, in the cache, the index or the pages
+        // (ISS-125): the index agrees with the pages either way.
         [Theory]
         [InlineData(StorageFormat.Xml, true)]
         [InlineData(StorageFormat.Xml, false)]
@@ -174,7 +152,8 @@ namespace Xod.Tests
         // ISS-120: an insert whose page write fails is taken back, so the caller can make it again. A standalone table
         // (no references) had no statement: its row stayed in the cache and the index, the next flush wrote it, and
         // the retry was refused as a duplicate. A table with relations has one, but its undo's own write met the same
-        // held page, and the context refused every write until reopened.
+        // held page, and the context refused every write until reopened. Now the statement's files go back, and the
+        // held page, which its write never changed, is left alone (ISS-125).
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
@@ -213,46 +192,6 @@ namespace Xod.Tests
                     ? again.Find<TrustParent>(p => p.Code == code) != null
                     : again.Find<TrustMember>(m => m.Email == code) != null, code + " not found by its key");
             }
-        }
-
-        // ISS-120: statements on standalone tables run side by side, one per table, so each thread keeps its own
-        // statement. With one for the context, the second statement found the first one's and kept none: its row,
-        // whose write failed, stayed, and the retry was refused.
-        [Fact]
-        public void Two_standalone_statements_side_by_side_each_take_their_own_row_back()
-        {
-            string path = NewDatabase("side-by-side");
-            var options = new DatabaseOptions { InitialCreate = true };
-            using (var db = new XodContext(path, options: options))
-            {
-                db.Insert(new TrustGate { Code = "seed", Name = "s" });
-                db.Insert(new TrustMember { Id = 1, Email = "a" });
-                db.Flush();
-
-                TrustGate.Entered.Reset();
-                TrustGate.Go.Reset();
-                TrustGate.Armed = true;
-                var first = Task.Run(() => db.Insert(new TrustGate { Code = "block", Name = "late" }));
-                Assert.True(TrustGate.Entered.Wait(10000)); // the first statement is under way, on its own table
-                Exception failure;
-                try
-                {
-                    using (HoldPage(PageOf(path, typeof(TrustMember))))
-                        failure = Record.Exception(() => db.Insert(new TrustMember { Id = 2, Email = "b" }));
-                }
-                finally
-                {
-                    TrustGate.Go.Set();
-                }
-                Assert.True(first.Wait(10000));
-                AssertWriteFailed(failure);
-                if (failure != null)
-                    db.Insert(new TrustMember { Id = 2, Email = "b" });
-            }
-
-            using var again = new XodContext(path, options: options);
-            Assert.Equal(new[] { "a", "b" }, again.QueryDelegate<TrustMember>(m => m.Email != null).Select(m => m.Email).OrderBy(e => e).ToArray());
-            Assert.Equal(new[] { "block", "seed" }, again.QueryDelegate<TrustGate>(g => g.Code != null).Select(g => g.Code).OrderBy(c => c).ToArray());
         }
 
         // ISS-099, an update: its page write fails too while another program holds the page; the row's new key and
@@ -668,32 +607,35 @@ namespace Xod.Tests
 
         // ISS-103, review of TASK-068: a close from inside a read takes no write lock, so a standalone table's write
         // on another thread, under way before the close, went on after it: it landed in a database another context
-        // then held alone, and left a marker no context closed. It now fails, and nothing of it is written.
+        // then held alone, and left a marker no context closed. No write is under way beside a read now (ISS-125): one
+        // waits for the read, and after a close from inside it fails, with nothing of it written.
         [Fact]
-        public void A_write_under_way_when_a_close_comes_from_inside_a_read_doesn_t_land_after_it()
+        public void A_write_waiting_when_a_close_comes_from_inside_a_read_doesn_t_land_after_it()
         {
             string path = NewDatabase("close-in-read-race");
             string dir = Path.GetDirectoryName(path)!;
             var db = new XodContext(path, options: new DatabaseOptions { InitialCreate = true });
-            db.Insert(new TrustGate { Code = "seed", Name = "s" });
+            db.Insert(new TrustMember { Id = 1, Email = "seed" });
             db.Insert(new TrustParent { Id = 1, Code = "x", Kids = new List<TrustKid>() });
             db.Flush();
 
-            TrustGate.Entered.Reset();
-            TrustGate.Go.Reset();
-            TrustGate.Armed = true;
+            var engineLock = (ReaderWriterLockSlim)db.Engine.GetType().GetField("rwLock", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(db.Engine)!;
             Exception writerFailure = null;
-            var writer = Task.Run(() => writerFailure = Record.Exception(() => db.Insert(new TrustGate { Code = "block", Name = "late" })));
-            Assert.True(TrustGate.Entered.Wait(10000));
-            db.QueryDelegate<TrustParent>(p => { db.Dispose(); return true; }).ToList();
+            Task writer = null;
+            db.QueryDelegate<TrustParent>(p =>
+            {
+                writer = Task.Run(() => writerFailure = Record.Exception(() => db.Insert(new TrustMember { Id = 2, Email = "late" })));
+                Assert.True(SpinWait.SpinUntil(() => engineLock.WaitingWriteCount == 1, 10000), "the write never waited");
+                db.Dispose();
+                return true;
+            }).ToList();
 
-            using var alone = new XodContext(path, options: new DatabaseOptions { LockDatabase = true });
             int markers = Directory.GetFiles(dir, "*.xidxdirty").Length;
-            TrustGate.Go.Set();
             Assert.True(writer.Wait(10000));
             Assert.IsType<ObjectDisposedException>(writerFailure);
+            using var alone = new XodContext(path, options: new DatabaseOptions { LockDatabase = true });
             Assert.Equal(markers, Directory.GetFiles(dir, "*.xidxdirty").Length);
-            Assert.Equal(new[] { "seed" }, alone.QueryDelegate<TrustGate>(g => g.Code != null).Select(g => g.Code).ToArray());
+            Assert.Equal(new[] { "seed" }, alone.QueryDelegate<TrustMember>(m => m.Email != null).Select(m => m.Email).ToArray());
         }
 
         // Review of TASK-068: a new database's file was queued to be written at the first statement's end, so it

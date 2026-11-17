@@ -576,7 +576,7 @@ namespace Xod.Tests
             holderTask.GetAwaiter().GetResult();
 
             // Part 2: Parallel multi-table writes & reads across 3 independent tables (UserAccount, ToDoItem, FuzzEntity)
-            // using per-table lock striping on a shared context
+            // on a shared context (its writes one at a time)
             using (var sharedDb = new XodContext(dbPath))
             {
                 Assert.Equal(2, sharedDb.Count<UserAccount>());
