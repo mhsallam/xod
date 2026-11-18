@@ -17,8 +17,8 @@ never open from two versions at once. The file format is the same.
 
 - **A key part at its type's default.** A row whose key isn't an autonumber is refused
   (`MissingPrimaryKeyValueException`) when a key part is `0`, `false`, an enum's first member, an empty `Guid`, or an
-  empty or null string. So is an update or delete by such a key, or by an example that sets some key parts and not
-  others. A row 2.0.x stored that way can't be updated or deleted by its key: remove it with `DeleteWhere`.
+  empty or null string. So is an update by such a key, and an update or delete by an example that sets some key
+  parts and not others. A row 2.0.x stored that way can't be updated or deleted by its key: remove it with `DeleteWhere`.
 - **A type XOD can't store or read back.** A class with a property of `Int128`, `Half`, `BigInteger`, `nint`, a tuple
   or a struct of your own, or a collection a `List<T>` can't be assigned to (`class Notes : List<Note>`, `HashSet<T>`,
   `ArrayList`), is refused with `XodException` when it is first used. Mark the property `[NotMapped]` or change its
