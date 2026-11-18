@@ -8,7 +8,7 @@
     <AssemblyName>Xod</AssemblyName>
     <RootNamespace>Xod</RootNamespace>
     <PackageId>Xod</PackageId>
-    <Version>2.0.3</Version>
+    <Version>2.1.0</Version>
     <Authors>Mohammed Sallam</Authors>
     <Product>XOD - embedded object database for .NET</Product>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
@@ -19,7 +19,7 @@
     <RepositoryUrl>https://github.com/mhsallam/xod</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>database;embedded-database;embedded;nosql;object;dotnet;csharp;xml;json;sql</PackageTags>
-    <PackageReleaseNotes>2.0.3: a database is open in one XodContext at a time: keep one per database for the life of the application and dispose it; a second open, in this process or another, throws DatabaseLockedException (LockDatabase has no effect). A transaction changes no file before its commit, and a rollback touches none; a failed commit is undone even when another program holds one of its files. Matching by example is exact. Encrypted 1.x databases open with their password. Read https://xod.sabaeon.com/docs/upgrading before upgrading. All notes: https://github.com/mhsallam/xod/blob/main/docs/RELEASE-NOTES-2.0.3.md. XOD 2.0: a rework of the 2017 library. Versions before 2.0.0 (0.1.x and the 1.0.0 betas) were MIT; 2.0.0 is Apache-2.0. Migration guide from 1.x: https://github.com/mhsallam/xod/blob/main/docs/MIGRATION-GUIDE.md</PackageReleaseNotes>
+    <PackageReleaseNotes>2.1.0: writes are all or nothing and made one at a time; a transaction belongs to the code that began it, and other threads wait for it; a key part at its type's default, and a property or collection type XOD can't store, are refused; a parent's update writes its children and its Cascade = Update relations only. Fixes to relations, cascade deletes, crash recovery and password-protected writes. Read https://xod.sabaeon.com/docs/upgrading before upgrading. All notes: https://github.com/mhsallam/xod/blob/main/docs/RELEASE-NOTES-2.1.0.md. XOD 2.0: a rework of the 2017 library. Versions before 2.0.0 (0.1.x and the 1.0.0 betas) were MIT; 2.0.0 is Apache-2.0. Migration guide from 1.x: https://github.com/mhsallam/xod/blob/main/docs/MIGRATION-GUIDE.md</PackageReleaseNotes>
     <Description>XOD is an embedded, object-oriented database for .NET: native POCOs, concurrent readers and writers behind a commit journal, three storage formats (XML, JSON, Binary) and no server to run.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
