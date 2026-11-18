@@ -126,6 +126,28 @@ namespace Xod.Tests
 
     public class CountMap : Dictionary<string, int> { }
 
+    // ISS-142: value types outside the scalars the format stores (PLAN-046 section 7.5), alone and in collections.
+    public struct PointValue { public int X; public int Y; public override string ToString() => X + "," + Y; }
+    public class WithInt128 { public int Id { get; set; } public Int128 Big { get; set; } }
+    public class WithHalf { public int Id { get; set; } public Half Small { get; set; } }
+    public class WithBigInteger { public int Id { get; set; } public System.Numerics.BigInteger Huge { get; set; } }
+    public class WithStruct { public int Id { get; set; } public PointValue Point { get; set; } }
+    public class WithNullableStruct { public int Id { get; set; } public PointValue? Point { get; set; } }
+    public class WithNint { public int Id { get; set; } public nint Native { get; set; } }
+    public class WithTuple { public int Id { get; set; } public (int A, int B) Pair { get; set; } }
+    public class WithHalfList { public int Id { get; set; } public List<Half> Smalls { get; set; } }
+    public class WithStructArray { public int Id { get; set; } public PointValue[] Points { get; set; } }
+    public class WithInt128Map { public int Id { get; set; } public Dictionary<string, Int128> Bigs { get; set; } }
+    public class PointMap : Dictionary<string, PointValue> { }
+    public class WithPointMap { public int Id { get; set; } public PointMap Points { get; set; } }
+    public class WithImmutable { public int Id { get; set; } public System.Collections.Immutable.ImmutableArray<int> Values { get; set; } }
+    public class WithSegment { public int Id { get; set; } public ArraySegment<int> Values { get; set; } }
+    public class WithObjectValue { public int Id { get; set; } public object Value { get; set; } }
+    public class WithComputedStruct { public int Id { get; set; } public string Name { get; set; } public Int128 Computed => 5; }
+    public class ShadowOfInt128 { public int Id { get; set; } public string Name { get; set; } }
+    public class WithInt128Stats { public int Id { get; set; } public Int128 Name { get; set; } }
+    public class WithStructSkipped { public int Id { get; set; } [NotMapped] public PointValue Point { get; set; } public string Name { get; set; } }
+
     public class XodStoredValueTests
     {
         public static IEnumerable<object[]> Formats() => XodTextRoundTripTests.Formats();
@@ -158,6 +180,91 @@ namespace Xod.Tests
             When = default,
             Span = TimeSpan.Zero,
         };
+
+        // ISS-142: a property of a value type the format doesn't store, alone, nullable, or as a collection's elements or
+        // a map's values, is refused when its type loads, naming it, and nothing is written. Each used to be written as
+        // its text and read back as its default (an nint made the read throw).
+        public static IEnumerable<object[]> Unstorable() => new[]
+        {
+            new object[] { new WithInt128 { Big = 170141183460469231 }, "Big" },
+            new object[] { new WithHalf { Small = (Half)1.5 }, "Small" },
+            new object[] { new WithBigInteger { Huge = System.Numerics.BigInteger.Pow(10, 30) }, "Huge" },
+            new object[] { new WithStruct { Point = new PointValue { X = 3, Y = 4 } }, "Point" },
+            new object[] { new WithNullableStruct { Point = new PointValue { X = 3, Y = 4 } }, "Point" },
+            new object[] { new WithNint { Native = 7 }, "Native" },
+            new object[] { new WithTuple { Pair = (1, 2) }, "Pair" },
+            new object[] { new WithHalfList { Smalls = new List<Half> { (Half)1.5 } }, "Smalls" },
+            new object[] { new WithStructArray { Points = new[] { new PointValue { X = 1, Y = 2 } } }, "Points" },
+            new object[] { new WithInt128Map { Bigs = new Dictionary<string, Int128> { ["a"] = 5 } }, "Bigs" },
+            new object[] { new WithPointMap { Points = new PointMap { ["a"] = new PointValue { X = 1, Y = 2 } } }, "Points" },
+            new object[] { new WithImmutable { Values = System.Collections.Immutable.ImmutableArray.Create(1, 2) }, "Values" },
+            new object[] { new WithSegment { Values = new ArraySegment<int>(new[] { 1, 2 }) }, "Values" },
+        };
+
+        [Theory]
+        [MemberData(nameof(Unstorable))]
+        public void A_value_type_the_format_does_not_store_is_refused(object item, string property)
+        {
+            string path = NewDatabase("unstorable-" + item.GetType().Name);
+            using (var db = new XodContext(path, options: new DatabaseOptions { InitialCreate = true }))
+            {
+                var refused = Assert.ThrowsAny<XodException>(() => db.Insert(item));
+                Assert.Contains("'" + property + "'", refused.Message);
+                Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(path)!, item.GetType().FullName + ".*"));
+            }
+        }
+
+        // An object property holding such a value is refused by the write, which has no way to store it, and nothing of
+        // the row is written; it was dropped, and read back null (review of ISS-142).
+        [Fact]
+        public void An_object_property_holding_a_value_the_format_does_not_store_is_refused()
+        {
+            string path = NewDatabase("unstorable-object");
+            using var db = new XodContext(path, options: new DatabaseOptions { InitialCreate = true });
+            var refused = Assert.ThrowsAny<XodException>(() => db.Insert(new WithObjectValue { Value = (Int128)77 }));
+            Assert.Contains("'Value'", refused.Message);
+            Assert.Equal(0, db.Count<WithObjectValue>());
+            db.Insert(new WithObjectValue { Value = "text" });
+            Assert.Equal(1, db.Count<WithObjectValue>());
+        }
+
+        // A read-only property is never stored, so its type is not refused (review of ISS-142).
+        [Fact]
+        public void A_read_only_value_type_is_left_alone()
+        {
+            string path = NewDatabase("unstorable-read-only");
+            using var db = new XodContext(path, options: new DatabaseOptions { InitialCreate = true });
+            db.Insert(new WithComputedStruct { Name = "kept" });
+            Assert.Equal("kept", db.Find<WithComputedStruct>(w => w.Id == 1).Name);
+        }
+
+        // A class refused when it loads is refused each time it is looked up by its table's name, here by the statistics:
+        // it stayed registered, so the second lookup found it with no properties and went on (review of ISS-142).
+        [Fact]
+        public void A_refused_class_is_refused_each_time_its_table_is_looked_up()
+        {
+            string path = NewDatabase("unstorable-registered");
+            string dir = Path.GetDirectoryName(path)!;
+            using (var db = new XodContext(path, options: new DatabaseOptions { InitialCreate = true }))
+                db.Insert(new ShadowOfInt128 { Name = "x" });
+            File.Move(Path.Combine(dir, typeof(ShadowOfInt128).FullName + ".xtab"), Path.Combine(dir, typeof(WithInt128Stats).FullName + ".xtab"));
+
+            using (var db = new XodContext(path))
+            {
+                Assert.IsAssignableFrom<XodException>(Record.Exception(() => db.GetStatistics()));
+                Assert.IsAssignableFrom<XodException>(Record.Exception(() => db.GetStatistics()));
+            }
+        }
+
+        // The refusal is of a mapped property only: one [NotMapped] is left alone, as before.
+        [Fact]
+        public void A_not_mapped_value_type_is_left_alone()
+        {
+            string path = NewDatabase("unstorable-not-mapped");
+            using var db = new XodContext(path, options: new DatabaseOptions { InitialCreate = true });
+            db.Insert(new WithStructSkipped { Point = new PointValue { X = 1, Y = 2 }, Name = "kept" });
+            Assert.Equal("kept", db.Find<WithStructSkipped>(w => w.Id == 1).Name);
+        }
 
         [Theory]
         [MemberData(nameof(Formats))]

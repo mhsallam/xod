@@ -82,11 +82,16 @@ namespace Xod.Helpers
             return DefaultValueCache.GetOrAdd(type, static t => Activator.CreateInstance(t));
         }
 
+        /// <summary>
+        /// The scalars the format stores, and their nullable forms (PLAN-046 section 7.5): every reader, writer and index
+        /// key knows these. Any other value type was taken too, written as its text and read back as its default
+        /// (ISS-142); a property of one is now refused when its type loads (<see cref="UnstorableValueType"/>).
+        /// </summary>
         public static bool IsScalarType(Type type)
         {
             if (type == null) return false;
             var underlying = Nullable.GetUnderlyingType(type) ?? type;
-            return underlying.IsPrimitive
+            return (underlying.IsPrimitive && underlying != typeof(IntPtr) && underlying != typeof(UIntPtr))
                 || underlying.IsEnum
                 || underlying == typeof(string)
                 || underlying == typeof(decimal)
@@ -95,9 +100,42 @@ namespace Xod.Helpers
                 || underlying == typeof(DateOnly)
                 || underlying == typeof(TimeOnly)
                 || underlying == typeof(TimeSpan)
-                || underlying == typeof(Guid)
-                || underlying.IsValueType;
+                || underlying == typeof(Guid);
         }
+
+        /// <summary>
+        /// The value type in a property of <paramref name="type"/> that the writer would store as nothing, or as text no
+        /// reader gives back (ISS-142); null when there is none. It follows the writer's branches (XmlEngine.WriteProperty):
+        /// a struct outside <see cref="IsScalarType"/>, a collection struct too (an ImmutableArray); an array's elements; a
+        /// map's keys and values, written as text (by the IDictionary&lt;K, V&gt; it implements, a subclass too); a generic
+        /// collection's first type argument, its items. A class is no value: its own properties are checked when it loads.
+        /// </summary>
+        internal static Type UnstorableValueType(Type type)
+        {
+            if (type == null) return null;
+            Type underlying = Nullable.GetUnderlyingType(type) ?? type;
+            if (IsScalarType(underlying))
+                return null;
+            if (underlying.IsValueType)
+                return underlying;
+            if (underlying.IsArray)
+                return UnstorableValueType(underlying.GetElementType());
+            if (IsMapType(underlying))
+            {
+                Type map = underlying.IsGenericType && underlying.GetGenericTypeDefinition() == typeof(IDictionary<,>)
+                    ? underlying
+                    : underlying.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>));
+                return map?.GetGenericArguments().Select(UnstorableValueType).FirstOrDefault(t => t != null);
+            }
+            if (underlying.IsGenericType && typeof(System.Collections.IEnumerable).IsAssignableFrom(underlying))
+                return UnstorableValueType(underlying.GetGenericArguments().FirstOrDefault());
+            return null;
+        }
+
+        /// <summary>A map, which the writer stores as entries (PropertyTypeCategory.Dictionary): the one test.</summary>
+        internal static bool IsMapType(Type type) =>
+            typeof(System.Collections.IDictionary).IsAssignableFrom(type) ||
+            (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>));
 
         public static string FormatScalar(object value)
         {
@@ -121,6 +159,11 @@ namespace Xod.Helpers
             Type underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
             if (underlying == typeof(string))
                 return stringValue;
+
+            // A char is the one character stored, whitespace too (ISS-140): the blank-text rule below made ' ', a tab
+            // or a no-break space read back '\0' (a char? null), and an index rebuilt from the rows key it 0.
+            if (underlying == typeof(char) && stringValue.Length == 1)
+                return stringValue[0];
 
             if (string.IsNullOrWhiteSpace(stringValue))
                 return Nullable.GetUnderlyingType(targetType) != null ? null : DefaultOf(underlying);

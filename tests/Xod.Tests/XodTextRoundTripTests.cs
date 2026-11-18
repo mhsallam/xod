@@ -33,6 +33,29 @@ namespace Xod.Tests
         public string Value { get; set; }
     }
 
+    // ISS-140: a char, flat (the fast row writer and reader) and in a document (with an attribute), and indexed.
+    public class FlatChar
+    {
+        public int Id { get; set; }
+        [Property(Indexed = true)] public char Letter { get; set; }
+        public char? Maybe { get; set; }
+    }
+
+    public class CharHolder
+    {
+        public int Id { get; set; }
+        public char Letter { get; set; }
+        [Property(Position = ValuePosition.Attribute)] public char Tag { get; set; }
+        [Children] public List<CharPart> Parts { get; set; }
+    }
+
+    public class CharPart
+    {
+        public int Id { get; set; }
+        public int CharHolderId { get; set; }
+        public string Value { get; set; }
+    }
+
     public class XodTextRoundTripTests
     {
         public static readonly string[] Values =
@@ -120,6 +143,63 @@ namespace Xod.Tests
             }
             using (var db = new XodContext(path, password, options))
                 Check(db, "reopened");
+
+            Assert.True(wrong.Count == 0, string.Join("\n", wrong));
+        }
+
+        // ISS-140: a char reads back as written, whitespace too, in every format and by every reader, and the index
+        // keys it alike from the object and from the row: a whitespace char used to read back '\0' (a char? null),
+        // and an index rebuilt from the rows keyed it 0, so a query by it found the row only until the rebuild.
+        public static readonly char[] Chars = { ' ', '\u00A0', '\t', '\u2003', '\r', '\n', 'x', '<' };
+
+        [Theory]
+        [MemberData(nameof(Formats))]
+        public void Every_char_reads_back_exactly(StorageFormat format, string password)
+        {
+            string path = NewDatabase("char-" + format + (password ?? ""));
+            var options = new DatabaseOptions { StorageFormat = format };
+            var wrong = new List<string>();
+            string U(char? c) => c == null ? "null" : $"U+{(int)c.Value:X4}";
+
+            void Check(XodContext db, string when)
+            {
+                var flats = db.Select<FlatChar>().OrderBy(f => f.Id).ToList();
+                var paged = db.Select<FlatChar>(0, Chars.Length).OrderBy(f => f.Id).ToList();
+                var holders = db.Select<CharHolder>().OrderBy(h => h.Id).ToList();
+                for (int i = 0; i < Chars.Length; i++)
+                {
+                    char want = Chars[i];
+                    void Same(string what, char? got)
+                    {
+                        if (got != want) wrong.Add($"{when}: {what} {U(want)} read back as {U(got)}");
+                    }
+                    Same("flat", flats.ElementAtOrDefault(i)?.Letter);
+                    Same("flat char?", flats.ElementAtOrDefault(i)?.Maybe);
+                    Same("flat by page (fast row reader)", paged.ElementAtOrDefault(i)?.Letter);
+                    Same("document element", holders.ElementAtOrDefault(i)?.Letter);
+                    Same("document attribute", holders.ElementAtOrDefault(i)?.Tag);
+                    int found = db.Query<FlatChar>(f => f.Letter == want).Count();
+                    if (found != 1) wrong.Add($"{when}: an indexed query by {U(want)} found {found}");
+                }
+                if (db.Query<FlatChar>(f => f.Letter == '\0').Any())
+                    wrong.Add($"{when}: an indexed query by U+0000 found a row");
+            }
+
+            using (var db = new XodContext(path, password, options))
+            {
+                foreach (char c in Chars)
+                {
+                    db.Insert(new FlatChar { Letter = c, Maybe = c });
+                    db.Insert(new CharHolder { Letter = c, Tag = c, Parts = new() { new CharPart { Value = "p" } } });
+                }
+                Check(db, "same context");
+            }
+            using (var db = new XodContext(path, password, options))
+                Check(db, "reopened");
+            foreach (var index in Directory.GetFiles(Path.GetDirectoryName(path)!, "*.xidx"))
+                File.Delete(index);
+            using (var db = new XodContext(path, password, options))
+                Check(db, "reopened, the index rebuilt from the rows");
 
             Assert.True(wrong.Count == 0, string.Join("\n", wrong));
         }

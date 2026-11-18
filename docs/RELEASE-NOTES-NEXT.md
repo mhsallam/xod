@@ -34,9 +34,11 @@ records it. The last release: [2.0.3](RELEASE-NOTES-2.0.3.md).
   wait for them, and a write it makes is part of the `DeleteWhere` (it used to be refused). `IXodEngine` has both as
   members; an engine of your own that doesn't implement them deletes and drops one by one, as before.
   ([`PLAN-070`](plans/PLAN-070-delete-where-and-drop-all-are-one-write.md))
+- **A property XOD can't store is refused.** A property of `Int128`, `Half`, `BigInteger`, `nint`, a tuple or a struct of your own (alone, nullable, or in an array, a list or a map) used to be accepted, written as text and read back as its default. Now its class is refused when it is first used, with an `XodException` naming the property: mark it `[NotMapped]` or change its type. An `object` property holding such a value is refused by the write. ([`PLAN-073`](plans/PLAN-073-a-value-xod-cant-store-is-refused.md))
 
 ## Fixed
 
+- **A `char` that is a space, a tab or another whitespace character reads back as written.** It read back `'\0'` (a `char?` as null), and a query by it found the row only until the index was rebuilt. ([`PLAN-072`](plans/PLAN-072-a-char-reads-back-as-written.md))
 - **A write that fails leaves nothing behind.** Outside a transaction, with the default durability, an `Insert`, `InsertRange`, `InsertOrUpdate`,
   `Update` or `Delete` that throws (a trigger refuses it, a file another program holds) leaves the database, and what
   the context shows, as they were. It could keep part of its change, or have it written by the next flush, so a retry

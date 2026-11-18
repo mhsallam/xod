@@ -27,8 +27,6 @@ namespace Xod.Services
             if (string.IsNullOrEmpty(fullName))
                 return;
 
-            registeredTypes[fullName] = type;
-
             if (!properties.ContainsKey(fullName) && GetPropertyTypeCategory(type) == PropertyTypeCategory.Class)
             {
                 var innerTypes = new List<Type>();
@@ -47,6 +45,12 @@ namespace Xod.Services
                             var atts = prop.GetCustomAttributes(true).ToArray();
                             if (atts.OfType<NotMappedAttribute>().Any())
                                 continue;
+                            // A value the format can't store is refused before anything is written (ISS-142): it was
+                            // written as its text and read back as its default. A read-only property is never stored.
+                            if (prop.CanWrite && ValueHelper.UnstorableValueType(prop.PropertyType) is Type unstorable)
+                                throw new XodException($"Property '{prop.Name}' of {type.Name} holds {unstorable.Name}, which XOD " +
+                                    "can't store: a property holds a number, bool, char, string, enum, Guid, DateTime, DateTimeOffset, " +
+                                    "DateOnly, TimeOnly or TimeSpan, a class, or a collection of these. Mark it [NotMapped] to leave it out.");
 
                             PropertyTypeCategory propTypeCategory = GetPropertyTypeCategory(prop.PropertyType);
                             var propInfoItem = new PropertyInfoItem
@@ -284,6 +288,10 @@ namespace Xod.Services
                         LoadType(innerType);
                 }
             }
+
+            // Registered once it has loaded (review of ISS-142): a class refused part way through its load used to stay
+            // registered, so the next lookup by name found it with no properties.
+            registeredTypes[fullName] = type;
         }
 
         /// <summary>
@@ -649,11 +657,8 @@ namespace Xod.Services
                     : PropertyTypeCategory.Array;
             }
 
-            if (typeof(IDictionary).IsAssignableFrom(type) ||
-                (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>)))
-            {
+            if (ValueHelper.IsMapType(type))
                 return PropertyTypeCategory.Dictionary;
-            }
 
             if (type != typeof(string) && typeof(IEnumerable).IsAssignableFrom(type) && type.IsGenericType)
             {

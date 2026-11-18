@@ -88,7 +88,8 @@ namespace Xod.Sql
         // ---- the manifest's types (PLAN-046 section 10.2) ----
 
         /// <summary>The manifest type of a scalar .NET type: finer than the SQL types, as writes need the C# range.
-        /// A value type XOD stores by its text but SQL has no type for is <c>text</c>.</summary>
+        /// Every scalar XOD stores (ValueHelper.IsScalarType) has one; a property of any other value type is refused when
+        /// its type loads (ISS-142). The last line, <c>text</c>, is for a column a table written before that may hold.</summary>
         public static string StoredTypeOf(Type t)
         {
             t = Nullable.GetUnderlyingType(t) ?? t;

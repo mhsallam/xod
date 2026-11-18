@@ -515,6 +515,13 @@ namespace Xod.Engines.Xml
             {
                 ParseReference(type, item, value, prop, effectivePropType, xItem, writeTrack);
             }
+            // A value no branch stores (ISS-142): refused, never dropped. Its class's load refuses a declared one; this is
+            // one an object property holds.
+            else if (value != null && effectivePropType.IsValueType)
+            {
+                exceptionService.Throw(new XodException($"Property '{prop.PropertyName}' of {type.Name} holds {effectivePropType.Name}, " +
+                    "which XOD can't store."));
+            }
 
             return propertyElement;
         }

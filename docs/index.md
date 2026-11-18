@@ -17,6 +17,8 @@ The project's memory. `xod2` is the active rework of XOD; `xod` and `xod.core` a
 - [PLAN-046](plans/PLAN-046-file-format-spec.md) - the XOD file format (accepted 2026-11-11): folder, encodings, encryption, pages and rows, scalar forms, the index, the journal; the schema manifest (E1-E3 decided); defects ISS-050 to ISS-055 (ISS-051 to ISS-055 fixed in PLAN-048)
 - [PLAN-047](plans/PLAN-047-conformance-set.md) - the XOD conformance set (built 2026-11-11): dataset and fixtures, 139 query cases, the C# runner, the independent file reader, known-defect markers; G1-G3 decided
 - [PLAN-048](plans/PLAN-048-format-defect-fixes.md) - fixes for the format defects (2026-11-11, not released): keys v2, one XML character policy, the autonumber mark, the row built before the table changes
+- [PLAN-073](plans/PLAN-073-a-value-xod-cant-store-is-refused.md) - a value XOD can't store is refused, not lost (2026-11-18, done): ISS-142 resolved; ISS-184 filed
+- [PLAN-072](plans/PLAN-072-a-char-reads-back-as-written.md) - a char reads back as written (2026-11-18, done): ISS-140 resolved; ISS-183 filed
 - [VERIFY-2026-11-18](VERIFY-2026-11-18-open-issues.md) - every open issue checked against the code with probes (2026-11-18): 2 closed, 4 filed (ISS-179 to ISS-182), texts corrected
 - [PLAN-071](plans/PLAN-071-the-gate-runs-itself.md) - the gate in the repository, and warnings that fail the build (2026-11-18, done): ISS-158 resolved in part
 - [PLAN-070](plans/PLAN-070-delete-where-and-drop-all-are-one-write.md) - DeleteWhere and DropAll are one write (2026-11-17, done): ISS-176 resolved in direct mode
