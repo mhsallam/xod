@@ -187,6 +187,26 @@ namespace Xod.Tests
                 AssertParentsKeepTheirKids(db, 6);
         }
 
+        // ISS-180: the entry an update drops is deleted, and only that row: another parent's equal kid stays.
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void An_update_that_drops_a_kid_deletes_only_that_row(bool indexing)
+        {
+            string path = NewPath("update-drop", indexing);
+            using (var db = Open(path, indexing))
+            {
+                SeedParents(db);
+                var p1 = db.Find<CdParent>(p => p.Id == 1, include: "*");
+                Assert.True(db.Update(p1, new CdParent { Id = 1, Name = "P1", Kids = new List<CdKid> { new CdKid { Tag = "own1", Pad = "k" } } }));
+
+                AssertParentsKeepTheirKids(db, 5);
+                Assert.Equal(new[] { "own1" }, db.Find<CdParent>(p => p.Id == 1, include: "*").Kids.Select(k => k.Tag));
+            }
+            using (var db = Open(path, indexing))
+                AssertParentsKeepTheirKids(db, 5);
+        }
+
         public class CdNode
         {
             public int Id { get; set; }

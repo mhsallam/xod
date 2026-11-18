@@ -349,13 +349,15 @@ namespace Xod.Services
             return null;
         }
 
+        // The table that lists a page, among the tables this context sees (TableFileNames): one not written yet
+        // included. It looked at the table files on disk only, so in buffered mode a row of a table not flushed yet
+        // had no type, and an update kept the rows it dropped, a cascade through an object property the rows it named.
         internal Type GetPageType(string xpagCode)
         {
             if (!Directory.Exists(root)) return null;
-            string[] files = Directory.GetFiles(root, "*.xtab");
-            foreach (var file in files.Where(f => !DeletedHere(f)))
+            foreach (var file in TableFileNames())
             {
-                XFile tableFile = OpenFileOrCreate(Path.GetFileName(file), typeof(Table), openOnly: true);
+                XFile tableFile = OpenFileOrCreate(file, typeof(Table), openOnly: true);
                 if (tableFile != null && tableFile.Pages().Any(s => s.Attribute("file")?.Value == xpagCode + ".xpag"))
                 {
                     string typeString = Path.GetFileNameWithoutExtension(file);
@@ -488,7 +490,8 @@ namespace Xod.Services
         }
 
         /// <summary>The table files this context sees, as <see cref="PageFileNames"/> lists pages: on disk, and those
-        /// it holds not written yet. For SQL's list of tables (PLAN-060).</summary>
+        /// it holds not written yet. Every list of the tables goes through here: SQL's (PLAN-060), the registered types
+        /// (DropAll) and the table of a page (PLAN-076).</summary>
         internal IReadOnlyCollection<string> TableFileNames()
         {
             // Ordinal: two names that differ only by case are two tables (where the file system allows it), and a

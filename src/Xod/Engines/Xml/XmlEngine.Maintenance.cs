@@ -177,8 +177,9 @@ namespace Xod.Engines.Xml
                 var types = new List<Type>();
                 if (!Directory.Exists(root)) return types;
 
-                var files = Directory.GetFiles(root, "*.xtab").Where(f => !ioService.DeletedHere(f));
-                foreach (var file in files)
+                // The tables this context sees, one not written yet included (in buffered mode before a flush, or in
+                // a transaction that made it): the table files on disk alone missed those, and DropAll kept them.
+                foreach (var file in ioService.TableFileNames())
                 {
                     string typeName = System.IO.Path.GetFileNameWithoutExtension(file);
                     Type t = propertyService.RegisteredType(typeName) ?? Type.GetType(typeName);

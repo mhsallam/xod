@@ -797,7 +797,13 @@ namespace Xod.Engines.Xml
                                         ? propRefProp.PropertyType.GetElementType()
                                         : propRefProp.PropertyType.GetGenericArguments().FirstOrDefault();
 
-                                    var children = (newRefItem as IEnumerable)?.Cast<object>().ToList();
+                                    // A child without a key: the write above wrote it as a new row holding its
+                                    // values, and it can't be updated by key; every update of a parent whose list
+                                    // held one threw (ISS-179). A child with a key is updated by key after the write,
+                                    // whether the write linked its stored row or created it.
+                                    var children = ListLinksStoredRows(childType)
+                                        ? (newRefItem as IEnumerable)?.Cast<object>().ToList()
+                                        : null;
                                     if (children != null && children.Count > 0)
                                     {
                                         foreach (var child in children)

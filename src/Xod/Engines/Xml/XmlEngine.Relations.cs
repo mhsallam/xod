@@ -139,7 +139,7 @@ namespace Xod.Engines.Xml
             }
             else
             {
-                bool isRefChild = propertyService.Properties(childType.FullName).Any(s => s.IsPrimaryKey);
+                bool isRefChild = ListLinksStoredRows(childType);
                 xProp.SetAttributeValue("refType", isRefChild ? "reference" : "complex");
 
                 foreach (var itm in children)
@@ -173,6 +173,16 @@ namespace Xod.Engines.Xml
                 }
             }
         }
+
+        /// <summary>
+        /// Whether a child of this type in a list can be linked to its stored row: its type has a key. A plain list
+        /// links by it (<see cref="ParseChildren"/>), and an update of the parent updates such children by key after
+        /// its write (<see cref="UpdateRows"/>); a child without a key is always written as a new row, which holds its
+        /// values (ISS-179). A <c>[Children]</c> list decides per child, by its key values (<see cref="SetChildItem"/>),
+        /// which comes to the same for a type without a key.
+        /// </summary>
+        private bool ListLinksStoredRows(Type childType) =>
+            propertyService.Properties(childType.FullName).Any(s => s.IsPrimaryKey);
 
         private string SetChildItem(Type type, object item, PropertyInfoItem prop, Dictionary<string, object> itemPrimarySets, bool lazyLoad = false, ReadWriteTrack writeTrack = null)
         {
