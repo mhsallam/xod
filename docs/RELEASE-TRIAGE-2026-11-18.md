@@ -36,5 +36,5 @@ small API defects wait; they stay open in [KNOWN-ISSUES](KNOWN-ISSUES.md).
 - Small API defects and limitations: `ISS-092`, `ISS-094`, `ISS-095`, `ISS-106`, `ISS-111`, `ISS-114`, `ISS-118`,
   `ISS-121`, `ISS-122`, `ISS-123`, `ISS-127`, `ISS-128`, `ISS-145`, `ISS-146`, `ISS-156`, `ISS-161`, `ISS-162`,
   `ISS-168`, `ISS-183`, `ISS-190`, `ISS-193`, `ISS-194`, and `ISS-191` beyond its documentation.
-- Found during the work, rare or by reading: `ISS-195` to `ISS-201`, `ISS-203` to `ISS-206`.
+- Found during the work, rare or by reading: `ISS-195` to `ISS-201`, `ISS-204` to `ISS-208`.
 - Public text (`ISS-157`): checked when the release is prepared.

@@ -10,12 +10,6 @@ namespace Xod.Engines.Xml
 {
     public partial class XmlEngine
     {
-        private void RemoveFromParent(Type childType, string childCode, PropertyInfoItem parentChildrenProp, object parent)
-        {
-            if (parent != null)
-                RemoveChildEntry(GetRow(parentChildrenProp.PropertyType, parent), parentChildrenProp.PropertyType, childType, childCode);
-        }
-
         /// <summary>
         /// Removes the entry naming <paramref name="childCode"/> from the parent row's lists of
         /// <paramref name="childType"/>, and saves the parent's page: the one place an entry leaves a parent's list.
@@ -59,15 +53,26 @@ namespace Xod.Engines.Xml
             return RecursionError(track, parent.Parent);
         }
 
+        /// <summary>
+        /// The parent property of <paramref name="childType"/> that the <c>[Children]</c> list
+        /// <paramref name="childrenProp"/> of <paramref name="parentType"/> pairs with: the one it names
+        /// (<c>[Children(RemoteParentProperty = ...)]</c>), else the child's first parent property of the parent's type.
+        /// The one rule for which list a child is in and which parent a list makes: a child with two parent properties
+        /// of one type, or a parent with two lists of one type, was decided by type alone (ISS-203).
+        /// </summary>
+        private PropertyInfoItem ChildParentProperty(PropertyInfoItem childrenProp, Type parentType, Type childType) =>
+            childrenProp == null || childrenProp.ReferenceType != PropertyReferenceType.Children ? null
+            : !string.IsNullOrEmpty(childrenProp.ChildParentProperty)
+                ? propertyService.Properties(childType.FullName).FirstOrDefault(s => s.PropertyName == childrenProp.ChildParentProperty)
+                : propertyService.Properties(childType.FullName).FirstOrDefault(s => s.PropertyType == parentType && s.ReferenceType == PropertyReferenceType.Parent);
+
         private void ParseChildren(Type type, object item, Type childType, IEnumerable<object> children, PropertyInfoItem prop, XElement xProp, bool lazyLoad = false, ReadWriteTrack writeTrack = null)
         {
             propertyService.LoadType(childType);
 
             if (prop.ReferenceType == PropertyReferenceType.Children)
             {
-                PropertyInfoItem childParentPropItem = !string.IsNullOrEmpty(prop.ChildParentProperty)
-                    ? propertyService.Properties(childType.FullName).FirstOrDefault(s => s.PropertyName == prop.ChildParentProperty)
-                    : propertyService.Properties(childType.FullName).FirstOrDefault(s => s.PropertyType == type && s.ReferenceType == PropertyReferenceType.Parent);
+                PropertyInfoItem childParentPropItem = ChildParentProperty(prop, type, childType);
 
                 var parentKeys = childParentPropItem?.ParentKeys;
                 if (parentKeys == null || !parentKeys.Any())
@@ -214,9 +219,7 @@ namespace Xod.Engines.Xml
                 }
             }
 
-            if (writeTrack != null)
-                writeTrack.RootProperty = prop;
-            return Create(type, item, lazyLoad, writeTrack);
+            return Create(type, item, lazyLoad, writeTrack, via: prop.ReferenceType == PropertyReferenceType.Children ? prop : null);
         }
 
         private void ParseReference(Type type, object item, object value, PropertyInfoItem prop, Type effectivePropType, XElement xItem, ReadWriteTrack writeTrack)
@@ -266,9 +269,13 @@ namespace Xod.Engines.Xml
             }
             else if (prop.ReferenceType == PropertyReferenceType.Parent && prop.ParentKeys != null && writeTrack != null)
             {
-                string relationshipName = writeTrack.Parent?.RootProperty?.PropertyName;
+                string relationshipName = writeTrack.Via?.PropertyName;
 
-                if (writeTrack.Parent != null && effectivePropType == writeTrack.Parent.Type)
+                // The parent the row is written through, for the parent property its list pairs with (ISS-203). It
+                // took any parent of the property's type: a row a parent wrote through a reference was made that
+                // parent's child, and a row with two parent properties of one type got the same parent for both.
+                if (writeTrack.Parent != null && effectivePropType == writeTrack.Parent.Type &&
+                    ChildParentProperty(writeTrack.Via, writeTrack.Parent.Type, type)?.PropertyName == prop.PropertyName)
                 {
                     var xpe = new XElement(prop.PropertyName,
                         new XAttribute("refType", "parent"),
@@ -331,17 +338,18 @@ namespace Xod.Engines.Xml
                     XRow xParentRow = GetRow(effectivePropType, childParentItem);
                     if (xParentRow?.Row != null)
                     {
-                        var parentChildrenProps = propertyService.Properties(effectivePropType.FullName)
-                            .Where(s => s.ReferenceType == PropertyReferenceType.Children && s.CollectionItemType == type)
-                            .ToList();
-
-                        PropertyInfoItem childrenProp = parentChildrenProps.FirstOrDefault();
+                        // The list that pairs with this parent property (ISS-203): it was the parent's first list
+                        // of the child's type.
+                        PropertyInfoItem childrenProp = propertyService.Properties(effectivePropType.FullName)
+                            .FirstOrDefault(s => s.ReferenceType == PropertyReferenceType.Children && s.CollectionItemType == type &&
+                                ChildParentProperty(s, effectivePropType, type)?.PropertyName == prop.PropertyName);
                         writeTrack.Parent = new ReadWriteTrack
                         {
                             Code = $"{xParentRow.Page.GetFileCode()}.{xParentRow.Row.Attribute("code").Value}",
                             Item = childParentItem,
                             Type = effectivePropType
                         };
+                        writeTrack.Via = childrenProp;
 
                         if (childrenProp != null)
                         {

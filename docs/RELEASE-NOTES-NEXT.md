@@ -45,6 +45,8 @@ records it. The last release: [2.0.3](RELEASE-NOTES-2.0.3.md).
 
 ## Fixed
 
+- **A child moved to another parent leaves the old one.** Updating a child read on its own to point at another parent left it listed by both, and deleting the old parent deleted it. ([`PLAN-085`](plans/PLAN-085-a-moved-child-leaves-the-parent-its-row-names.md))
+- **A row a parent holds through a reference stays with its own parent.** A row with a `[ParentKey]` that another row of the parent's type held through a `Cascade = Update` reference was taken as that row's child, and its key rewritten. A row with two parent properties of one type kept the first one's parent for both, and a parent with two `[Children]` lists of one type listed a child written on its own in the first. ([`PLAN-085`](plans/PLAN-085-a-moved-child-leaves-the-parent-its-row-names.md))
 - **With a password, writes are fast again and memory no longer grows.** Each write derived a key afresh and kept it for the life of the process: an insert took about 20 ms, and memory grew at every write. A database derives its key once now, and lets it go with its context. Files are written in the same format. ([`PLAN-083`](plans/PLAN-083-a-context-owns-its-file-keys.md))
 - **A crash while a new page or table file is written no longer leaves the table unreadable.** The next open put the part written in place, and every read of the table failed. ([`PLAN-084`](plans/PLAN-084-every-file-written-whole-goes-through-its-tmp.md))
 - **A child without a key, inserted or updated on its own, keeps its place in its parent's list.** It took the place of the first child listed, so the parent listed only the newest. ([`PLAN-081`](plans/PLAN-081-a-child-s-entry-is-found-by-its-row.md))

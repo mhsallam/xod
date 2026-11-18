@@ -127,12 +127,13 @@ namespace Xod.Engines.Xml
             }
         }
 
-        private string Create(Type type, object item, bool shallowWrite = false, ReadWriteTrack writeTrack = null)
+        // via: the [Children] list of writeTrack's row this row is written through (ReadWriteTrack.Via).
+        private string Create(Type type, object item, bool shallowWrite = false, ReadWriteTrack writeTrack = null, PropertyInfoItem via = null)
         {
             bool statement = BeginStatement();
             try
             {
-                return CreateRow(type, item, shallowWrite, writeTrack);
+                return CreateRow(type, item, shallowWrite, writeTrack, via);
             }
             catch (Exception failure) when (statement)
             {
@@ -145,7 +146,7 @@ namespace Xod.Engines.Xml
             }
         }
 
-        private string CreateRow(Type type, object item, bool shallowWrite, ReadWriteTrack writeTrack)
+        private string CreateRow(Type type, object item, bool shallowWrite, ReadWriteTrack writeTrack, PropertyInfoItem via)
         {
             if (item == null)
                 exceptionService.Throw(new ArgumentNullException(nameof(item)));
@@ -182,7 +183,7 @@ namespace Xod.Engines.Xml
 
             // The key and unique checks run in AddToPage, once the row's write has set the key parts its relations
             // give (ValidateNewRow).
-            string refCode = AddToPage(type, item, autonumbers, shallowWrite, writeTrack);
+            string refCode = AddToPage(type, item, autonumbers, shallowWrite, writeTrack, via);
 
             if (trigger != null)
                 AfterAction?.Invoke(this, trigger);
@@ -202,7 +203,7 @@ namespace Xod.Engines.Xml
             WriteDiagnostics.End(ref WriteDiagnostics.UniqueTicks, tUnique);
         }
 
-        private string AddToPage(Type type, object item, Dictionary<string, dynamic> autonumbers = null, bool shallowWrite = false, ReadWriteTrack writeTrack = null)
+        private string AddToPage(Type type, object item, Dictionary<string, dynamic> autonumbers = null, bool shallowWrite = false, ReadWriteTrack writeTrack = null, PropertyInfoItem via = null)
         {
             string itemCode = null;
             string itemPath = null;
@@ -261,7 +262,8 @@ namespace Xod.Engines.Xml
                         Item = item,
                         Type = type,
                         Code = itemPath,
-                        Parent = writeTrack
+                        Parent = writeTrack,
+                        Via = via
                     };
 
                     long tWrite = WriteDiagnostics.Begin();
@@ -547,7 +549,7 @@ namespace Xod.Engines.Xml
         /// </summary>
         private HashSet<string> rowsThisUpdateWrote;
 
-        private bool UpdateItem(Type type, object item, object newItem, ReadWriteTrack track = null, UpdateFilter filter = null)
+        private bool UpdateItem(Type type, object item, object newItem, ReadWriteTrack track = null, UpdateFilter filter = null, PropertyInfoItem via = null)
         {
             HashSet<string> outerRecord = rowsThisUpdateWrote;
             if (track == null)
@@ -555,7 +557,7 @@ namespace Xod.Engines.Xml
             bool statement = BeginStatement();
             try
             {
-                return UpdateRows(type, item, newItem, track, filter);
+                return UpdateRows(type, item, newItem, track, filter, via);
             }
             catch (Exception failure) when (statement)
             {
@@ -570,7 +572,7 @@ namespace Xod.Engines.Xml
             }
         }
 
-        private bool UpdateRows(Type type, object item, object newItem, ReadWriteTrack track, UpdateFilter filter)
+        private bool UpdateRows(Type type, object item, object newItem, ReadWriteTrack track, UpdateFilter filter, PropertyInfoItem via)
         {
             propertyService.LoadType(type);
             EnsureIndexHydrated(type);
@@ -692,7 +694,8 @@ namespace Xod.Engines.Xml
                         Item = item,
                         Type = type,
                         Code = itemCode,
-                        Parent = track
+                        Parent = track,
+                        Via = via
                     };
 
                     // Recorded before the row's relations are written, so a path back to it stops (WrittenByThisUpdate).
@@ -734,45 +737,15 @@ namespace Xod.Engines.Xml
 
                             foreach (var propRefProp in propRefProps)
                             {
-                                object oldRefItem = propRefProp.Property.GetValue(item);
-                                object newRefItem = propRefProp.Property.GetValue(rowItem);
-
                                 if (propRefProp.ReferenceType == PropertyReferenceType.Parent)
                                 {
-                                    bool sameParent = true;
-                                    Dictionary<string, object> oldParentKeyValues = null;
-                                    Dictionary<string, object> newParentKeyValues = null;
-                                    string[] baseParentKeys = null;
-
-                                    if (oldRefItem != null)
-                                    {
-                                        oldParentKeyValues = GetPrimaryValues(propRefProp.PropertyType, oldRefItem);
-                                        baseParentKeys = oldParentKeyValues.Select(s => s.Key).ToArray();
-                                    }
-
-                                    if (newRefItem != null)
-                                    {
-                                        newParentKeyValues = GetPrimaryValues(propRefProp.PropertyType, newRefItem);
-                                        baseParentKeys ??= newParentKeyValues.Select(s => s.Key).ToArray();
-                                    }
-
-                                    if (baseParentKeys != null)
-                                    {
-                                        foreach (var parentKey in baseParentKeys)
-                                        {
-                                            var oldKeyValue = oldParentKeyValues != null && oldParentKeyValues.TryGetValue(parentKey, out var okv) ? okv : null;
-                                            var newKeyValue = newParentKeyValues != null && newParentKeyValues.TryGetValue(parentKey, out var nkv) ? nkv : null;
-                                            if (!Equals(oldKeyValue, newKeyValue))
-                                            {
-                                                sameParent = false;
-                                                break;
-                                            }
-                                        }
-                                    }
-
-                                    if (!sameParent)
-                                        RemoveFromParent(type, itemCode, propRefProp, oldRefItem);
-
+                                    // The old parent is the one the stored row belongs to (ISS-202), by the rule the delete's
+                                    // unlink takes (StoredParentCode): the object the update was given holds none when the
+                                    // child was read on its own, so the old parent was never found, kept the child listed,
+                                    // and deleted it with itself. The new row names the parent the write linked it to.
+                                    string oldParentCode = StoredParentCode(type, xOldRow, propRefProp);
+                                    if (oldParentCode != null && oldParentCode != StoredParentCode(type, xNewRow, propRefProp))
+                                        RemoveChildEntry(RowByItemCode(propRefProp.PropertyType, oldParentCode), propRefProp.PropertyType, type, itemCode);
                                     continue;
                                 }
 
@@ -849,7 +822,7 @@ namespace Xod.Engines.Xml
                     propertyService.LoadType(relatedType);
                     if (KeyPartsSet(relatedType, obj) != KeyParts.All)
                         continue;
-                    UpdateItem(relatedType, obj, obj, itemTrack);
+                    UpdateItem(relatedType, obj, obj, itemTrack, via: prop.ReferenceType == PropertyReferenceType.Children ? prop : null);
                 }
             }
         }
@@ -1469,55 +1442,67 @@ namespace Xod.Engines.Xml
             return rowCode == null ? null : $"{row.Page.GetFileCode()}.{rowCode}";
         }
 
+        /// <summary>
+        /// The parent a stored child row belongs to through <paramref name="parentProp"/>, as an item code
+        /// (<c>page.row</c>), or null: the parent its <c>refType="parent"</c> element names, else the one its stored
+        /// parent key values find (a row that names none: an older version's, or one written with no parent found).
+        /// The one rule for a row's parent, for the delete's unlink and the update's (ISS-202). <paramref name="row"/>
+        /// is the row element or its entity.
+        /// </summary>
+        private string StoredParentCode(Type type, XElement row, PropertyInfoItem parentProp)
+        {
+            XElement entity = row?.Element(type.Name) ?? row;
+            XElement named = entity?.Element(parentProp.PropertyName);
+            if (named != null && named.Attribute("refType")?.Value == "parent" && !string.IsNullOrEmpty(named.Value))
+                return named.Value;
+            XRow byKeys = ParentRowByStoredKeys(type, row, parentProp);
+            return byKeys?.Row == null ? null : $"{byKeys.Page.GetFileCode()}.{byKeys.Row.Attribute("code").Value}";
+        }
+
+        // The parent a stored row's parent key values find, or null.
+        private XRow ParentRowByStoredKeys(Type type, XElement rawRow, PropertyInfoItem parRefProp)
+        {
+            if (rawRow == null || parRefProp.ParentKeys == null)
+                return null;
+            var parentPrmVals = new Dictionary<string, object>();
+            foreach (var pk in parRefProp.ParentKeys)
+            {
+                var pkProp = propertyService.Properties(type.FullName)
+                    .FirstOrDefault(s => s.PropertyName == pk.LocalProperty);
+                if (pkProp != null)
+                {
+                    string valStr = rawRow.Element(type.Name)?.Element(pkProp.PropertyName)?.Value
+                        ?? rawRow.Element(pkProp.PropertyName)?.Value
+                        ?? rawRow.Element(type.Name)?.Attribute(pkProp.PropertyName)?.Value
+                        ?? rawRow.Attribute(pkProp.PropertyName)?.Value;
+                    if (!string.IsNullOrEmpty(valStr))
+                        parentPrmVals[pk.RemoteProperty] = ValueHelper.ParseScalar(pkProp.PropertyType, valStr);
+                }
+            }
+            if (parentPrmVals.Count == 0)
+                return null;
+            object parent = SelectItemsByExample(parRefProp.PropertyType, PopulateItemProperties(parRefProp.PropertyType, parentPrmVals), "*").FirstOrDefault();
+            return parent == null ? null : GetRow(parRefProp.PropertyType, parent);
+        }
+
         // A parent lists a child by its item code, "page.row" (XmlEngine.Relations, ParseChildren); the bare row code
         // matched no entry, so a delete through here left the child listed (ISS-088).
         /// <summary>
         /// Takes a deleted row out of the lists of the parents that hold it, for every delete path (by item code, by
-        /// a scan) and the statement undo: the one unlink. The parent is the one the row names (the
-        /// <c>refType="parent"</c> element a child row stores, whether or not the child has a key property: review of
-        /// TASK-063), else the one its parent keys find. A child with no parent property names none, so nothing finds
-        /// its parent here (ISS-095).
+        /// a scan) and the statement undo: the one unlink. The parent is the one the row belongs to
+        /// (<see cref="StoredParentCode"/>); when the parent the row names doesn't list it, the one its parent keys
+        /// find is tried too. A child with no parent property names none, so nothing finds its parent here (ISS-095).
         /// </summary>
         private void RemoveFromParentElements(Type type, XElement rawRow, string itemCode)
         {
-            var parRefProps = propertyService.Properties(type.FullName)
-                .Where(s => s.ReferenceType == PropertyReferenceType.Parent);
-            XElement entity = rawRow?.Element(type.Name) ?? rawRow?.Elements().FirstOrDefault();
-
-            foreach (var parRefProp in parRefProps)
+            foreach (var parRefProp in propertyService.Properties(type.FullName).Where(s => s.ReferenceType == PropertyReferenceType.Parent))
             {
-                XElement named = entity?.Element(parRefProp.PropertyName);
-                if (named != null && named.Attribute("refType")?.Value == "parent" &&
-                    RemoveChildEntry(RowByItemCode(parRefProp.PropertyType, named.Value), parRefProp.PropertyType, type, itemCode))
+                string parentCode = StoredParentCode(type, rawRow, parRefProp);
+                if (parentCode != null && RemoveChildEntry(RowByItemCode(parRefProp.PropertyType, parentCode), parRefProp.PropertyType, type, itemCode))
                     continue;
-
-                var parentPrmVals = new Dictionary<string, object>();
-                if (parRefProp.ParentKeys != null)
-                {
-                    foreach (var pk in parRefProp.ParentKeys)
-                    {
-                        var pkProp = propertyService.Properties(type.FullName)
-                            .FirstOrDefault(s => s.PropertyName == pk.LocalProperty);
-                        if (pkProp != null)
-                        {
-                            string valStr = rawRow.Element(type.Name)?.Element(pkProp.PropertyName)?.Value
-                                ?? rawRow.Element(pkProp.PropertyName)?.Value
-                                ?? rawRow.Element(type.Name)?.Attribute(pkProp.PropertyName)?.Value
-                                ?? rawRow.Attribute(pkProp.PropertyName)?.Value;
-                            if (!string.IsNullOrEmpty(valStr))
-                            {
-                                parentPrmVals[pk.RemoteProperty] = ValueHelper.ParseScalar(pkProp.PropertyType, valStr);
-                            }
-                        }
-                    }
-                }
-
-                if (parentPrmVals.Count > 0)
-                {
-                    object parent = SelectItemsByExample(parRefProp.PropertyType, PopulateItemProperties(parRefProp.PropertyType, parentPrmVals), "*").FirstOrDefault();
-                    if (parent != null)
-                        RemoveFromParent(type, itemCode, parRefProp, parent);
-                }
+                XRow byKeys = ParentRowByStoredKeys(type, rawRow, parRefProp);
+                if (byKeys != null)
+                    RemoveChildEntry(byKeys, parRefProp.PropertyType, type, itemCode);
             }
         }
     }
