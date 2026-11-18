@@ -25,22 +25,14 @@ namespace Xod.Services
 
             try
             {
+                // Deleted, whether its file is there or not (ISS-134). Every writer moves its .tmp over its file, which
+                // is never missing in between, so a .tmp left belongs to a write that hadn't finished, and nothing says
+                // how far it got: one put in place of a missing file was half a page or a table cut short, which every
+                // read of it failed on. A file never moved into place is as if its write hadn't started: its statement
+                // didn't finish, and a commit's journal (below) undoes the rest. A journal's own .tmp: its commit hadn't
+                // started.
                 foreach (var tmpFile in Directory.GetFiles(root, "*.tmp").Where(IsAtomicWriteLeft))
-                {
-                    string targetPath = tmpFile.Substring(0, tmpFile.Length - 4);
-                    var tmpInfo = new FileInfo(tmpFile);
-                    // A journal not yet renamed into place belongs to a commit that hadn't started: nothing of it
-                    // was written. Made the journal, it would write its before-images back over what is on disk.
-                    bool journal = targetPath.EndsWith(".xwal", StringComparison.OrdinalIgnoreCase);
-                    if (journal || File.Exists(targetPath) || tmpInfo.Length == 0)
-                    {
-                        File.Delete(tmpFile);
-                    }
-                    else
-                    {
-                        File.Move(tmpFile, targetPath, overwrite: true);
-                    }
-                }
+                    File.Delete(tmpFile);
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {
@@ -188,7 +180,7 @@ namespace Xod.Services
                     return item.File;
                 if (cachedRawPages.TryGetValue(normalizedName, out var rawPage) && rawPage?.Bytes != null)
                     return new XFile(storageSerializer.Deserialize(rawPage.ToExactArray()), typeof(TablePage), filePath, password);
-                return OnDiskHere(filePath) ? LoadUnlocked(typeof(TablePage), filePath, password) : null;
+                return OnDiskHere(filePath) ? LoadUnlocked(typeof(TablePage), filePath, fileKeys) : null;
             }
         }
 
@@ -551,8 +543,8 @@ namespace Xod.Services
         {
             RefuseWriteInsideTransaction(file.Path);
             byte[] serializedBytes = storageSerializer.Serialize(file.Document);
-            byte[] payloadBytes = !string.IsNullOrEmpty(password)
-                ? FileCryptoHelper.EncryptBytes(serializedBytes, password)
+            byte[] payloadBytes = fileKeys != null
+                ? fileKeys.Encrypt(serializedBytes)
                 : serializedBytes;
 
             file.LastSavedSize = payloadBytes.Length;
@@ -618,17 +610,18 @@ namespace Xod.Services
 
             lock (syncLock)
             {
-                return LoadUnlocked(type, filePath, pwd);
+                return LoadUnlocked(type, filePath, KeysFor(pwd));
             }
         }
 
-        private XFile LoadUnlocked(Type type, string filePath, string pwd)
+        private XFile LoadUnlocked(Type type, string filePath, FileKeys keys)
         {
             byte[] diskBytes = File.ReadAllBytes(filePath);
             byte[] rawBytes = diskBytes;
-            if (!string.IsNullOrEmpty(pwd))
+            string pwd = keys?.Password;
+            if (keys != null)
             {
-                rawBytes = FileCryptoHelper.DecryptBytes(rawBytes, pwd);
+                rawBytes = keys.Decrypt(rawBytes);
             }
             else if (IsEncryptedPayload(rawBytes))
             {

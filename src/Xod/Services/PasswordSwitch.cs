@@ -94,11 +94,14 @@ namespace Xod.Services
                     // needs none: it runs alone, after a flush, and replaces every file, the indexes among them, from
                     // that state, so pages and indexes change together; a switch cut short is finished or undone
                     // whole (FinishPendingSwitch, RecoverSwitch).
+                    // One key for the files' new password, and one per salt read under the old (ISS-152).
+                    var oldKeys = string.IsNullOrEmpty(this.Password) ? null : new Helpers.FileKeys(this.Password);
+                    var newKeys = string.IsNullOrEmpty(newPassword) ? null : new Helpers.FileKeys(newPassword);
                     foreach (string file in files)
                     {
                         byte[] content = File.ReadAllBytes(file);
-                        byte[] plain = this.Password == null ? content : Helpers.FileCryptoHelper.DecryptBytes(content, this.Password);
-                        byte[] output = newPassword == null ? plain : Helpers.FileCryptoHelper.EncryptBytes(plain, newPassword);
+                        byte[] plain = oldKeys == null ? content : oldKeys.Decrypt(content);
+                        byte[] output = newKeys == null ? plain : newKeys.Encrypt(plain);
                         staged.Add(file + StagedSuffix);
                         WriteDurably(file + StagedSuffix, output);
                         FaultInjection.Step("staged", staged.Count, System.IO.Path.GetFileName(file));

@@ -125,14 +125,14 @@ namespace Xod.Services
 
             string[] missingXFiles = missingSet.ToArray();
             var loadedFiles = new XFile[missingXFiles.Length];
-            string currentPwd = password;
+            FileKeys currentKeys = fileKeys;
 
             ParallelReads.For(missingXFiles.Length, i =>
             {
                 string filePath = Path.Combine(root, missingXFiles[i]);
                 if (OnDiskHere(filePath))
                 {
-                    XFile xf = LoadUnlocked(typeof(TablePage), filePath, currentPwd);
+                    XFile xf = LoadUnlocked(typeof(TablePage), filePath, currentKeys);
                     xf?.EnsureRowMapBuilt();
                     loadedFiles[i] = xf;
                 }
@@ -1472,22 +1472,11 @@ namespace Xod.Services
                 }
             }
 
-            // Not as last written: the file is written whole, so the rest of it is noted too.
+            // Not as last written, or a new page: the file is written whole, so the rest of it is noted too. A new page
+            // too goes through its .tmp (ISS-134): written straight to its name, a crash left half a page there.
             capture(fullPath, 0);
-            if (File.Exists(fullPath))
-            {
-                WriteRawBytesAtomic(fullPath, rawPage.Bytes, rawPage.Length);
-                changed?.Invoke(fullPath);
-            }
-            else
-            {
-                using (var fs = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.None))
-                {
-                    changed?.Invoke(fullPath);
-                    fs.Write(rawPage.Bytes, 0, rawPage.Length);
-                    fs.Flush(flushToDisk: false);
-                }
-            }
+            WriteRawBytesAtomic(fullPath, rawPage.Bytes, rawPage.Length);
+            changed?.Invoke(fullPath);
 
             rawPage.IsNewFile = false;
             rawPage.DiskSyncedLength = rawPage.Length;
@@ -1511,15 +1500,21 @@ namespace Xod.Services
             }
         }
 
-        /// <summary>Writes a whole file so that a crash leaves the old one or the new one: beside it as
-        /// <c>.tmp</c>, then moved over it (a <c>.tmp</c> left beside a file is deleted at the next open,
-        /// <see cref="RecoverInterruptedWrites"/>).</summary>
+        /// <summary>Writes a whole file so that a crash leaves the old one or the new one, or none for a new file:
+        /// beside it as <c>.tmp</c>, then moved over it. A <c>.tmp</c> left is deleted at the next open
+        /// (<see cref="RecoverInterruptedWrites"/>): nothing says it was written to its end. The one writer of a data
+        /// file written whole (pages, tables); the index snapshot and a transaction's journal and undo follow the same
+        /// order. The step between its halves is a crash's point for the tests (FaultInjection).</summary>
         internal static void WriteRawBytesAtomic(string fullPath, byte[] bytes, int length)
         {
             string tempPath = fullPath + ".tmp";
             using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.None))
             {
-                fs.Write(bytes, 0, length);
+                int half = length / 2;
+                fs.Write(bytes, 0, half);
+                fs.Flush(flushToDisk: false);
+                FaultInjection.Step("file-partly-written", file: System.IO.Path.GetFileName(fullPath));
+                fs.Write(bytes, half, length - half);
                 fs.Flush(flushToDisk: false);
             }
             File.Move(tempPath, fullPath, overwrite: true);

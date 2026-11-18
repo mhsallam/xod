@@ -12,7 +12,9 @@ namespace Xod.Services
     /// from a file briefly in use;</item>
     /// <item>XOD_PAUSE_AT_STEP: it prints "PAUSED &lt;step&gt;" and waits for a line on standard input.</item>
     /// </list>
-    /// A step is <c>name</c>, <c>name:count</c> (after that many files) or <c>name:file</c>. Password changes:
+    /// A step is <c>name</c>, <c>name:count</c> (after that many files), <c>name:file</c> or <c>name:*.ext</c> (a file
+    /// with that extension, for files named at random: pages). A file written whole: <c>file-partly-written</c>, part
+    /// of it on disk (beside its name, as <c>.tmp</c>). Password changes:
     /// <c>staged</c>, <c>committed</c>, <c>switching</c>, <c>switched</c>. Commits: <c>commit-written</c>
     /// (the batch's files written, not the indexes), <c>undo</c>. A failed statement's undo: <c>undo-file:n</c> (before
     /// it puts back the nth file it changed, outside a transaction), <c>undo-statement:n</c> (once it has taken back n of
@@ -63,7 +65,9 @@ namespace Xod.Services
 
             string at = count == 0 ? step : $"{step}:{count}";
             string atFile = file == null ? null : $"{step}:{file}";
-            bool Is(string wanted) => wanted != null && (wanted == at || wanted == atFile);
+            bool Is(string wanted) => wanted != null && (wanted == at || wanted == atFile ||
+                (file != null && wanted.StartsWith(step + ":*.", StringComparison.Ordinal) &&
+                 file.EndsWith(wanted.Substring(step.Length + 2), StringComparison.OrdinalIgnoreCase)));
 
             if (Is(CrashAtStep))
                 Environment.FailFast($"XOD_CRASH_AT_STEP={CrashAtStep} reached");

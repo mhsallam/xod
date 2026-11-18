@@ -9,17 +9,17 @@ namespace Xod.Helpers
     internal static class FileCryptoHelper
     {
         private static readonly byte[] MagicHeader = Encoding.ASCII.GetBytes("XODENC2\0");
-        private const int SaltSize = 16;
+        internal const int SaltSize = 16;
         private const int NonceSize = 12;
         private const int TagSize = 16;
 
-        internal static byte[] EncryptBytes(byte[] plainBytes, string key)
+        // Under the context's write salt and key (FileKeys.ForWrite), a new nonce per write.
+        internal static byte[] EncryptBytes(byte[] plainBytes, FileKeys keys)
         {
-            byte[] salt = RandomNumberGenerator.GetBytes(SaltSize);
+            var (salt, derivedKey) = keys.ForWrite();
             byte[] nonce = RandomNumberGenerator.GetBytes(NonceSize);
             byte[] tag = new byte[TagSize];
             byte[] cipherBytes = new byte[plainBytes.Length];
-            byte[] derivedKey = CryptoHelper.DeriveKey(key, salt);
 
             using (var aesGcm = new AesGcm(derivedKey, TagSize))
             {
@@ -35,8 +35,9 @@ namespace Xod.Helpers
             return ms.ToArray();
         }
 
-        internal static byte[] DecryptBytes(byte[] encryptedData, string key)
+        internal static byte[] DecryptBytes(byte[] encryptedData, FileKeys keys)
         {
+            string key = keys.Password;
             if (encryptedData == null || encryptedData.Length < MagicHeader.Length)
                 throw new SecurityException();
 
@@ -67,7 +68,7 @@ namespace Xod.Helpers
                 Buffer.BlockCopy(encryptedData, headerOffset + SaltSize + NonceSize, tag, 0, TagSize);
                 Buffer.BlockCopy(encryptedData, headerOffset + SaltSize + NonceSize + TagSize, cipherBytes, 0, cipherLen);
 
-                byte[] derivedKey = CryptoHelper.DeriveKey(key, salt);
+                byte[] derivedKey = keys.ForSalt(salt);
                 byte[] plainBytes = new byte[cipherLen];
 
                 try
@@ -137,13 +138,6 @@ namespace Xod.Helpers
             catch (FormatException) { return null; }
             string digits = string.Concat(hash.Select(b => b.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             return digits.Length >= 32 ? digits : null;
-        }
-
-        internal static string DecryptContent(string inputFile, string key)
-        {
-            byte[] encrypted = File.ReadAllBytes(inputFile);
-            byte[] plainBytes = DecryptBytes(encrypted, key);
-            return Encoding.UTF8.GetString(plainBytes);
         }
     }
 }

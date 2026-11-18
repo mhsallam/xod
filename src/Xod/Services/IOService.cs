@@ -96,6 +96,7 @@ namespace Xod.Services
             this.path = path;
             this.root = Path.GetDirectoryName(this.path);
             this.password = password;
+            this.fileKeys = KeysFor(password);
             this.propertyService = propertyService;
             this.storageSerializer = StorageSerializerFactory.Get(storageFormat);
             this.bufferedDurability = bufferedDurability;
@@ -118,8 +119,20 @@ namespace Xod.Services
         internal string Password
         {
             get => password;
-            set => password = value;
+            set
+            {
+                password = value;
+                fileKeys = KeysFor(value);
+            }
         }
+
+        // The keys of this context's files, under its password (ISS-152); null without one.
+        private Helpers.FileKeys fileKeys;
+
+        internal Helpers.FileKeys FileKeys => fileKeys;
+
+        private Helpers.FileKeys KeysFor(string pwd) =>
+            string.IsNullOrEmpty(pwd) ? null : pwd == password && fileKeys != null && fileKeys.Password == pwd ? fileKeys : new Helpers.FileKeys(pwd);
 
         internal IXodStorageSerializer StorageSerializer
         {

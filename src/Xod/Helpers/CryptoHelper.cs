@@ -191,7 +191,7 @@ namespace Xod.Helpers
             if (plainText.StartsWith(PropertyCipherPrefix, StringComparison.Ordinal))
                 return plainText;
 
-            byte[] key = DeriveKey(passphrase ?? LegacyPropertyPassphrase, LegacyPropertySalt);
+            byte[] key = LegacyPropertyKey(passphrase);
             byte[] nonce = RandomNumberGenerator.GetBytes(AesGcm.NonceByteSizes.MaxSize); // 12 bytes
             byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
             byte[] cipherBytes = new byte[plainBytes.Length];
@@ -236,7 +236,7 @@ namespace Xod.Helpers
             Buffer.BlockCopy(payload, nonceSize, tag, 0, tagSize);
             Buffer.BlockCopy(payload, nonceSize + tagSize, cipherBytes, 0, cipherBytes.Length);
 
-            byte[] key = DeriveKey(passphrase ?? LegacyPropertyPassphrase, LegacyPropertySalt);
+            byte[] key = LegacyPropertyKey(passphrase);
             byte[] plainBytes = new byte[cipherBytes.Length];
 
             try
@@ -251,18 +251,32 @@ namespace Xod.Helpers
             }
         }
 
-        internal static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> DerivedKeyCache = new();
+        /// <summary>The keys derived in this process, for a test of how many a context derives (ISS-152).</summary>
+        internal static long Derivations;
 
+        /// <summary>
+        /// A key derived from a password and a salt (PBKDF2, SHA-256). Not cached here: whoever needs a key again holds
+        /// it for as long as it needs it (FileKeys, PropertyKeyService). A process-wide cache kept every key, one more
+        /// at every file write, after its database was closed (ISS-152).
+        /// </summary>
         internal static byte[] DeriveKey(string password, byte[] salt, int iterations = 100_000)
         {
-            string cacheKey = $"{password ?? string.Empty}::{Convert.ToBase64String(salt)}::{iterations}";
-            return DerivedKeyCache.GetOrAdd(cacheKey, _ =>
-                Rfc2898DeriveBytes.Pbkdf2(
-                    Encoding.UTF8.GetBytes(password ?? string.Empty),
-                    salt,
-                    iterations,
-                    HashAlgorithmName.SHA256,
-                    32));
+            System.Threading.Interlocked.Increment(ref Derivations);
+            return Rfc2898DeriveBytes.Pbkdf2(
+                Encoding.UTF8.GetBytes(password ?? string.Empty),
+                salt,
+                iterations,
+                HashAlgorithmName.SHA256,
+                32);
         }
+
+        // The key of XOD 2.0's property format under the passphrase built into the library: no secret, made once.
+        private static readonly Lazy<byte[]> BuiltInPropertyKey =
+            new Lazy<byte[]>(() => DeriveKey(LegacyPropertyPassphrase, LegacyPropertySalt));
+
+        internal static byte[] LegacyPropertyKey(string passphrase) =>
+            passphrase == null || passphrase == LegacyPropertyPassphrase
+                ? BuiltInPropertyKey.Value
+                : DeriveKey(passphrase, LegacyPropertySalt);
     }
 }

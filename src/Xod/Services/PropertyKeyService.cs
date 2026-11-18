@@ -56,6 +56,20 @@ namespace Xod.Services
         private byte[] dataKey;
         private List<byte[]> legacyKeys;
 
+        // The 2.0 property key of the current password, derived once for it: the derivation's cache was process-wide and
+        // kept every key (ISS-152).
+        private (string Password, byte[] Key) legacyKeyOfPassword;
+
+        private byte[] LegacyKeyOf(string current)
+        {
+            lock (syncLock)
+            {
+                if (legacyKeyOfPassword.Key == null || legacyKeyOfPassword.Password != current)
+                    legacyKeyOfPassword = (current, CryptoHelper.LegacyPropertyKey(current));
+                return legacyKeyOfPassword.Key;
+            }
+        }
+
         /// <param name="ioService">The file owner: the database file is read and written through it.</param>
         /// <param name="databaseFileName">The database file, which holds the key's protections.</param>
         /// <param name="applicationKey"><c>DatabaseOptions.PropertyEncryptionKey</c>, or null.</param>
@@ -182,7 +196,7 @@ namespace Xod.Services
         {
             string current = password();
             if (!string.IsNullOrEmpty(current))
-                yield return CryptoHelper.DeriveKey(current, CryptoHelper.LegacyPropertySalt);
+                yield return LegacyKeyOf(current);
 
             List<byte[]> recorded;
             lock (syncLock)
@@ -479,7 +493,7 @@ namespace Xod.Services
         {
             string current = password();
             if (!string.IsNullOrEmpty(current))
-                yield return CryptoHelper.DeriveKey(current, CryptoHelper.LegacyPropertySalt);
+                yield return LegacyKeyOf(current);
 
             List<byte[]> recorded;
             lock (syncLock)
@@ -489,7 +503,7 @@ namespace Xod.Services
             foreach (byte[] key in recorded)
                 yield return key;
 
-            yield return CryptoHelper.DeriveKey(CryptoHelper.LegacyPropertyPassphrase, CryptoHelper.LegacyPropertySalt);
+            yield return CryptoHelper.LegacyPropertyKey(null);
         }
 
         private List<byte[]> LegacyKeysUnlocked(XFile file)

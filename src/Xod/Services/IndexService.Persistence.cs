@@ -119,9 +119,9 @@ namespace Xod.Services
                 string blockFilePath = null;
                 Stream source;
 
-                if (!string.IsNullOrEmpty(ioService.Password))
+                if (ioService.FileKeys != null)
                 {
-                    rawBytes = FileCryptoHelper.DecryptBytes(File.ReadAllBytes(indexFullPath), ioService.Password);
+                    rawBytes = ioService.FileKeys.Decrypt(File.ReadAllBytes(indexFullPath));
                     if (rawBytes.Length < Xidx2HeaderBytes.Length ||
                         !rawBytes.AsSpan(0, Xidx2HeaderBytes.Length).SequenceEqual(Xidx2HeaderBytes))
                     {
@@ -789,8 +789,9 @@ namespace Xod.Services
                 SerializePropBlock(0);
             }
 
-            bool useTempFile = (ioService.HasActiveTransaction != null && ioService.HasActiveTransaction()) || File.Exists(indexFilePath);
-            string writePath = useTempFile ? indexFilePath + ".tmp" : indexFilePath;
+            // Beside the file, then moved over it, as every file written whole (IOService.WriteRawBytesAtomic): a new
+            // index file too, which was written straight to its name, so a crash left it cut short (ISS-134).
+            string writePath = indexFilePath + ".tmp";
 
             long snapshotBytes;
             using (var fs = new FileStream(writePath, FileMode.Create, FileAccess.Write, FileShare.None, 65536))
@@ -801,6 +802,8 @@ namespace Xod.Services
                 writer.Write(NewGeneration());
                 writer.Write(ZoneStampFor(indexedProps));
                 writer.Write(indexedProps.Length);
+                writer.Flush();
+                FaultInjection.Step("file-partly-written", file: Path.GetFileName(indexFilePath));
 
                 for (int i = 0; i < indexedProps.Length; i++)
                 {
@@ -821,19 +824,15 @@ namespace Xod.Services
                 snapshotBytes = fs.Length;
             }
 
-            if (useTempFile)
+            try
             {
-                try
-                {
-                    File.Move(writePath, indexFilePath, overwrite: true);
-                }
-                catch
-                {
-                    // Not left beside the file: a .tmp with no file beside it is moved into place at the next open
-                    // (IOService.RecoverInterruptedWrites), and this one would miss whatever changes after it.
-                    try { File.Delete(writePath); } catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
-                    throw;
-                }
+                File.Move(writePath, indexFilePath, overwrite: true);
+            }
+            catch
+            {
+                // Not left beside the file for the next open to find (IOService.RecoverInterruptedWrites deletes it).
+                try { File.Delete(writePath); } catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
+                throw;
             }
 
             log.SnapshotWritten(snapshotBytes);

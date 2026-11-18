@@ -85,9 +85,10 @@ namespace Xod
                 IOService.RecoverInterruptedWrites(sourceDir);
 
                 var files = Directory.GetFiles(sourceDir).Where(DatabaseFiles.IsOfDatabase).ToList();
+                var keys = string.IsNullOrEmpty(hashedPassword) ? null : new FileKeys(hashedPassword);
                 return inPlace
-                    ? ConvertInPlace(files, targetFormat, hashedPassword)
-                    : ConvertInto(files, targetDir, targetFormat, hashedPassword);
+                    ? ConvertInPlace(files, targetFormat, keys)
+                    : ConvertInto(files, targetDir, targetFormat, keys);
             }
         }
 
@@ -96,12 +97,12 @@ namespace Xod
         // Neither this nor ConvertInto passes the mutation hook that marks the indexes behind (ISS-043), and neither
         // needs it: the migrator holds the source alone, after its recovery (which drops indexes a crash left behind),
         // and converts every file, the indexes among them, with its content unchanged.
-        private static int ConvertInPlace(List<string> files, StorageFormat targetFormat, string hashedPassword)
+        private static int ConvertInPlace(List<string> files, StorageFormat targetFormat, FileKeys keys)
         {
             int converted = 0;
             foreach (var file in files)
             {
-                byte[] bytes = ConvertFile(file, targetFormat, hashedPassword);
+                byte[] bytes = ConvertFile(file, targetFormat, keys);
                 IOService.WriteRawBytesAtomic(file, bytes, bytes.Length);
                 converted++;
                 FaultInjection.Step("convert-written", converted);
@@ -111,7 +112,7 @@ namespace Xod
 
         // The database written in a folder beside the target, on the same volume, then moved into place whole. A
         // failure deletes that folder, which only this call has written; a crash leaves it.
-        private static int ConvertInto(List<string> files, string targetDir, StorageFormat targetFormat, string hashedPassword)
+        private static int ConvertInto(List<string> files, string targetDir, StorageFormat targetFormat, FileKeys keys)
         {
             string parent = Path.GetDirectoryName(targetDir);
             Directory.CreateDirectory(parent);
@@ -122,7 +123,7 @@ namespace Xod
                 int converted = 0;
                 foreach (var file in files)
                 {
-                    File.WriteAllBytes(Path.Combine(staging, Path.GetFileName(file)), ConvertFile(file, targetFormat, hashedPassword));
+                    File.WriteAllBytes(Path.Combine(staging, Path.GetFileName(file)), ConvertFile(file, targetFormat, keys));
                     converted++;
                     FaultInjection.Step("convert-written", converted);
                 }
@@ -141,11 +142,12 @@ namespace Xod
             }
         }
 
-        private static byte[] ConvertFile(string file, StorageFormat targetFormat, string hashedPassword)
+        // keys: the conversion's, one for all its files (null without a password): one write key, one per salt read.
+        private static byte[] ConvertFile(string file, StorageFormat targetFormat, FileKeys keys)
         {
             byte[] rawBytes = File.ReadAllBytes(file);
-            if (!string.IsNullOrEmpty(hashedPassword))
-                rawBytes = FileCryptoHelper.DecryptBytes(rawBytes, hashedPassword);
+            if (keys != null)
+                rawBytes = keys.Decrypt(rawBytes);
 
             byte[] convertedBytes;
             if (file.EndsWith(".xidx", StringComparison.OrdinalIgnoreCase) &&
@@ -164,9 +166,7 @@ namespace Xod
                 convertedBytes = StorageSerializerFactory.Get(targetFormat).Serialize(doc);
             }
 
-            return string.IsNullOrEmpty(hashedPassword)
-                ? convertedBytes
-                : FileCryptoHelper.EncryptBytes(convertedBytes, hashedPassword);
+            return keys == null ? convertedBytes : keys.Encrypt(convertedBytes);
         }
 
         // Two full paths without trailing separators, compared as the platform's usual file system does (a folder
