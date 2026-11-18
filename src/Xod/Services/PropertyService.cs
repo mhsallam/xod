@@ -203,9 +203,10 @@ namespace Xod.Services
                                     }
                                     else
                                     {
+                                        // No implicit cascade (ISS-187): a row owns the keyless row such a property
+                                        // names by its type (XmlEngine.OwnedRows), and an object property may hold a
+                                        // keyed row other rows link, which an implicit Delete took with it.
                                         propInfoItem.ReferenceType = PropertyReferenceType.Complex;
-                                        if (propertyAtt == null || propertyAtt.Cascade == CascadeOptions.None)
-                                            propInfoItem.Cascade = CascadeOptions.Delete;
                                     }
                                 }
                                 else
@@ -524,12 +525,6 @@ namespace Xod.Services
 
             bool hasAttrs = readArr.Any(p => p.ValuePosition == ValuePosition.Attribute);
             bool hasDefaults = readArr.Any(p => p.DefaultValue != null && !p.DefaultValue.Equals(ValueHelper.DefaultOf(p.PropertyType)));
-            bool hasCascadeOrParent = activeProps.Any(s =>
-                s.ReferenceType == PropertyReferenceType.Parent ||
-                (s.ReferenceType != PropertyReferenceType.SelfForeign &&
-                 s.Cascade.HasFlag(CascadeOptions.Delete) &&
-                 s.TypeCategory != PropertyTypeCategory.None &&
-                 s.TypeCategory != PropertyTypeCategory.Dictionary));
 
             bool validPkTypes = true;
             foreach (var primaryProp in pkArr)
@@ -571,7 +566,6 @@ namespace Xod.Services
                 IsPureScalarStandalone = isPureScalarStandalone,
                 HasAttributeProperties = hasAttrs,
                 HasDefaultValueProperties = hasDefaults,
-                HasCascadeDeleteOrParentProperties = hasCascadeOrParent,
                 HasValidPrimaryKeyTypes = validPkTypes,
                 Utf8EntityOpenTag = System.Text.Encoding.UTF8.GetBytes($"<{type.Name}>"),
                 Utf8EntityCloseTag = System.Text.Encoding.UTF8.GetBytes($"</{type.Name}>")

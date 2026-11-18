@@ -20,7 +20,6 @@ namespace Xod
         public bool IsPureScalarStandalone { get; init; }
         public bool HasAttributeProperties { get; init; }
         public bool HasDefaultValueProperties { get; init; }
-        public bool HasCascadeDeleteOrParentProperties { get; init; }
         public bool HasValidPrimaryKeyTypes { get; init; }
         public byte[] Utf8EntityOpenTag { get; init; }
         public byte[] Utf8EntityCloseTag { get; init; }

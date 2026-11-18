@@ -682,38 +682,15 @@ namespace Xod.Engines.Xml
                         }
                         else
                         {
-                            var cascadeDelProps = props.Where(s => s.Cascade.HasFlag(CascadeOptions.Delete)).Select(s => s.PropertyName).ToHashSet();
-                            string[] delRefTypes = { "complex", "children" };
-
-                            var rowCollRefNodes = row.Element(type.Name).Elements().Where(s =>
+                            // The rows the old row owned and the new one doesn't are deleted, by the rule the
+                            // delete's cascade takes (OwnedRows, ISS-187), each by its code with its own trigger
+                            // (ISS-180, ISS-130). The update had a rule of its own, for lists alone: a single
+                            // keyless object kept the row it replaced, a cascading reference set to null kept its row.
+                            var keptCodes = OwnedRows(type, xNewRow).Select(s => s.Code).ToHashSet();
+                            foreach (var (droppedType, droppedCode) in OwnedRows(type, row.Element(type.Name)).ToList())
                             {
-                                XAttribute refTypeAtt = s.Attribute("refType");
-                                XAttribute collTypeAtt = s.Attribute("collType");
-                                return collTypeAtt != null && refTypeAtt != null &&
-                                    (delRefTypes.Contains(refTypeAtt.Value) ||
-                                    (refTypeAtt.Value == "reference" && cascadeDelProps.Contains(s.Name.LocalName)));
-                            }).SelectMany(s => s.Elements());
-
-                            var newCollRefNodes = xNewRow.Elements().Where(s =>
-                            {
-                                XAttribute refTypeAtt = s.Attribute("refType");
-                                XAttribute collTypeAtt = s.Attribute("collType");
-                                return collTypeAtt != null && refTypeAtt != null &&
-                                    (delRefTypes.Contains(refTypeAtt.Value) ||
-                                    (refTypeAtt.Value == "reference" && cascadeDelProps.Contains(s.Name.LocalName)));
-                            }).SelectMany(s => s.Elements());
-
-                            var newCollRefNodesString = newCollRefNodes.Select(s => s.ToString()).ToHashSet();
-                            var delRefNodes = rowCollRefNodes.Where(s => !newCollRefNodesString.Contains(s.ToString())).ToList();
-                            // Each dropped entry's row is deleted by the code the entry holds, with its own trigger
-                            // (ISS-180, ISS-130). It was read and deleted by example, which matched the copy of a
-                            // keyless child this update had just written, and any other parent's equal child.
-                            foreach (var code in delRefNodes)
-                            {
-                                Type delRefType = ioService.GetItemType(code.Value);
-                                if (delRefType == null) continue;
-
-                                DeleteByItemCode(delRefType, code.Value, isCascade: false, ownTrigger: true);
+                                if (!keptCodes.Contains(droppedCode))
+                                    DeleteByItemCode(droppedType, droppedCode, isCascade: false, ownTrigger: true);
                             }
 
                             indexService.ReplaceRowKeys(type, row, rowItem, itemCode);
@@ -1284,7 +1261,10 @@ namespace Xod.Engines.Xml
                 RecordRowRemoved(type, tableFile, pageFileName, rawRow, pageEmpty ? 0 : null);
             }
 
-            if (meta == null || meta.HasCascadeDeleteOrParentProperties)
+            // Every type with a relation: a row owns its keyless rows and its children whatever its properties'
+            // Cascade says (OwnedRows), and a child is taken out of its parent's list. The gate was a flag for a cascading or parent property, so a
+            // plain keyless list was never looked at (ISS-187).
+            if (meta == null || !meta.IsStandalone)
             {
                 if (cascadeChildren)
                     CascadeDelete(type, rawRow);
@@ -1298,32 +1278,55 @@ namespace Xod.Engines.Xml
         }
 
         /// <summary>
-        /// The one cascade (ISS-130): each row a deleted row's <c>[Property(Cascade = Delete)]</c> properties name is
-        /// deleted by its code, with its own trigger. A single reference stores its code in the property's element
-        /// (<c>&lt;Addr refType="reference"&gt;page.row&lt;/Addr&gt;</c>), a list one entry per row; a property stored
-        /// inside the row (no <c>refType</c>) has no row of its own. The delete by key looked only for list entries,
-        /// so a single reference was left, and fired no child trigger; the delete by a scan deleted each child by
-        /// example, with its trigger. An entry without a code is found by the key it carries.
+        /// The one cascade (ISS-130): each row a deleted row owns (<see cref="OwnedRows"/>) is deleted by its code, with
+        /// its own trigger.
         /// </summary>
         private void CascadeDelete(Type type, XElement rawRow)
         {
             XElement entity = rawRow?.Element(type.Name) ?? rawRow?.Elements().FirstOrDefault();
+            foreach (var (childType, code) in OwnedRows(type, entity).ToList())
+                DeleteByItemCode(childType, code, isCascade: true, ownTrigger: true);
+        }
+
+        /// <summary>
+        /// The rows a stored row owns (ISS-187): the one rule for the rows its delete takes with it
+        /// (<see cref="CascadeDelete"/>) and for those its update deletes when the new row no longer names them
+        /// (<see cref="UpdateRows"/>). Of the rows the row's relations name, it owns:
+        /// <list type="bullet">
+        /// <item>a row of a type without a key: its write created that row for it alone, and nothing can link it by
+        /// key;</item>
+        /// <item>a child (<c>refType="children"</c>): children always go with their parent, whatever the property's
+        /// <c>Cascade</c> says;</item>
+        /// <item>a row of a type with a key when the property declares <c>Cascade = Delete</c>.</item>
+        /// </list>
+        /// It decides by the type of the row named, not by the stored <c>refType="complex"</c>, which also marks a keyed
+        /// row another row may link: an item of a list of <c>object</c> (written by its declared type, ISS-190), and a
+        /// single object XOD 1.x wrote before its key was set. A single entry stores its code in the property's
+        /// element (<c>&lt;Addr refType="reference"&gt;page.row&lt;/Addr&gt;</c>), a list one entry per row; a property
+        /// stored inside the row (no <c>refType</c>) has no row of its own. The delete followed the <c>Cascade</c> flag
+        /// alone, which a plain keyless list doesn't set and a <c>[Children]</c> list given <c>Cascade = Update</c>
+        /// doesn't keep; the update read the stored kinds, for lists alone. Each row's type is the property's, or for an
+        /// <c>object</c> the one its page holds; an entry without a code is found by the key it carries.
+        /// </summary>
+        private IEnumerable<(Type Type, string Code)> OwnedRows(Type type, XElement entity)
+        {
             if (entity == null)
-                return;
+                yield break;
 
-            var cascadeProps = propertyService.Properties(type.FullName).Where(s =>
-                s.ReferenceType != PropertyReferenceType.Parent &&
-                s.ReferenceType != PropertyReferenceType.SelfForeign &&
-                s.Cascade.HasFlag(CascadeOptions.Delete) &&
-                (s.TypeCategory == PropertyTypeCategory.Class ||
-                 s.TypeCategory == PropertyTypeCategory.Array ||
-                 s.TypeCategory == PropertyTypeCategory.GenericCollection)).ToList();
-
-            foreach (var prop in cascadeProps)
+            foreach (var prop in propertyService.Properties(type.FullName))
             {
-                XElement xProp = entity.Element(prop.PropertyName);
-                if (xProp?.Attribute("refType") == null)
+                if (prop.ReferenceType == PropertyReferenceType.Parent ||
+                    prop.ReferenceType == PropertyReferenceType.SelfForeign ||
+                    (prop.TypeCategory != PropertyTypeCategory.Class &&
+                     prop.TypeCategory != PropertyTypeCategory.Array &&
+                     prop.TypeCategory != PropertyTypeCategory.GenericCollection))
                     continue;
+
+                XElement xProp = entity.Element(prop.PropertyName);
+                string refType = xProp?.Attribute("refType")?.Value;
+                if (refType != "complex" && refType != "reference" && refType != "children")
+                    continue;
+                bool ownsKeyedRows = refType == "children" || prop.Cascade.HasFlag(CascadeOptions.Delete);
 
                 Type declared = prop.TypeCategory switch
                 {
@@ -1344,10 +1347,13 @@ namespace Xod.Engines.Xml
                     Type childType = declared == typeof(object) ? ioService.GetItemType(code) : declared;
                     if (childType == null)
                         continue;
+                    propertyService.LoadType(childType);
+                    if (!ownsKeyedRows && propertyService.HasPrimaryKey(childType))
+                        continue;
                     if (string.IsNullOrEmpty(code) || !code.Contains('.'))
                         code = CodeByEntryKeys(childType, entry);
                     if (code != null)
-                        DeleteByItemCode(childType, code, isCascade: true, ownTrigger: true);
+                        yield return (childType, code);
                 }
             }
         }

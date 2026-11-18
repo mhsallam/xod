@@ -17,6 +17,7 @@ The project's memory. `xod2` is the active rework of XOD; `xod` and `xod.core` a
 - [PLAN-046](plans/PLAN-046-file-format-spec.md) - the XOD file format (accepted 2026-11-11): folder, encodings, encryption, pages and rows, scalar forms, the index, the journal; the schema manifest (E1-E3 decided); defects ISS-050 to ISS-055 (ISS-051 to ISS-055 fixed in PLAN-048)
 - [PLAN-047](plans/PLAN-047-conformance-set.md) - the XOD conformance set (built 2026-11-11): dataset and fixtures, 139 query cases, the C# runner, the independent file reader, known-defect markers; G1-G3 decided
 - [PLAN-048](plans/PLAN-048-format-defect-fixes.md) - fixes for the format defects (2026-11-11, not released): keys v2, one XML character policy, the autonumber mark, the row built before the table changes
+- [PLAN-077](plans/PLAN-077-one-rule-for-the-rows-a-row-owns.md) - one rule for the rows a row owns (2026-11-18, done): ISS-187 resolved; ISS-193 and ISS-194 filed
 - [PLAN-076](plans/PLAN-076-an-update-with-keyless-children-and-unwritten-tables.md) - an update of a parent with keyless children, and a table not written yet (2026-11-18, done): ISS-179 and ISS-192 resolved; ISS-189 to ISS-191 filed
 - [PLAN-075](plans/PLAN-075-a-keyless-update-or-delete-reaches-every-page.md) - an update or delete by example of a keyless type reaches every page (2026-11-18, done): ISS-136 resolved; ISS-188 filed
 - [PLAN-074](plans/PLAN-074-a-row-is-deleted-by-its-code.md) - a row is deleted by its code, with one cascade (2026-11-18, done): ISS-130, ISS-180, ISS-185, ISS-186 resolved; ISS-187 filed
