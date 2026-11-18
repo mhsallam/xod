@@ -91,7 +91,7 @@ namespace Xod.Engines.Xml
             {
                 for (int i = created.Count - 1; i >= 0; i--)
                 {
-                    DeleteByItemCode(created[i].Type, created[i].Code, isCascade: false, cascadeChildren: false);
+                    DeleteByItemCode(created[i].Type, created[i].Code, isCascade: false, ownTrigger: false, cascadeChildren: false);
                     FaultInjection.Step("undo-statement", created.Count - i);
                 }
                 for (int i = log.Linked.Count - 1; i >= 0; i--)
@@ -705,16 +705,15 @@ namespace Xod.Engines.Xml
 
                             var newCollRefNodesString = newCollRefNodes.Select(s => s.ToString()).ToHashSet();
                             var delRefNodes = rowCollRefNodes.Where(s => !newCollRefNodesString.Contains(s.ToString())).ToList();
+                            // Each dropped entry's row is deleted by the code the entry holds, with its own trigger
+                            // (ISS-180, ISS-130). It was read and deleted by example, which matched the copy of a
+                            // keyless child this update had just written, and any other parent's equal child.
                             foreach (var code in delRefNodes)
                             {
-                                XElement xDelRef = GetRawData(code.Value);
-                                if (xDelRef == null) continue;
-
                                 Type delRefType = ioService.GetItemType(code.Value);
                                 if (delRefType == null) continue;
 
-                                object delRef = Read(delRefType, xDelRef);
-                                Delete(delRefType, delRef);
+                                DeleteByItemCode(delRefType, code.Value, isCascade: false, ownTrigger: true);
                             }
 
                             indexService.ReplaceRowKeys(type, row, rowItem, itemCode);
@@ -1058,7 +1057,7 @@ namespace Xod.Engines.Xml
 
                         foreach (var itemCode in fastPkCodes)
                         {
-                            if (DeleteByItemCode(type, itemCode, isCascade))
+                            if (DeleteByItemCode(type, itemCode, isCascade, ownTrigger: false))
                                 deleted = true;
                         }
 
@@ -1069,75 +1068,20 @@ namespace Xod.Engines.Xml
                         }
                     }
 
-                XRowTree rowTree = GetTree(type, item);
-                if (rowTree != null && rowTree.Rows.Count > 0)
-                {
-                    string pageCode = rowTree.Page?.GetFileCode();
-
-                    foreach (var row in rowTree.Rows.ToList())
+                    // The rows the example matches, each deleted by its code as the rows a key finds are, with the
+                    // one cascade (ISS-130). Each was deleted on the page it was found on, and each cascaded child by
+                    // example, so a child equal to another parent's went too (ISS-185). The statement's trigger is
+                    // the caller's item, fired once.
+                    XRowTree rowTree = GetTree(type, item);
+                    string pageCode = rowTree?.Page?.GetFileCode();
+                    var itemCodes = rowTree == null || pageCode == null
+                        ? new List<string>()
+                        : rowTree.Rows.Select(r => r.Attribute("code")?.Value).Where(c => c != null).Select(c => $"{pageCode}.{c}").ToList();
+                    foreach (var itemCode in itemCodes)
                     {
-                        XAttribute rowCodeAtt = row.Attribute("code");
-                        string itemCode = rowCodeAtt != null && pageCode != null
-                            ? $"{pageCode}.{rowCodeAtt.Value}"
-                            : "";
-
-                        indexService.RemoveRowElement(type, row, itemCode);
-
-                        if (meta == null || meta.HasCascadeDeleteOrParentProperties)
-                        {
-                            // Ensure full entity graph is loaded for cascade delete if caller passed a shell object
-                            object fullEntity = Read(type, row, "*") ?? item;
-
-                            var propRefProps = propertyService.Properties(type.FullName).Where(s =>
-                                s.ReferenceType != PropertyReferenceType.Parent &&
-                                s.ReferenceType != PropertyReferenceType.SelfForeign &&
-                                s.Cascade.HasFlag(CascadeOptions.Delete) &&
-                                s.TypeCategory != PropertyTypeCategory.None &&
-                                s.TypeCategory != PropertyTypeCategory.Dictionary);
-
-                            foreach (var propRefProp in propRefProps)
-                            {
-                                object refItem = propRefProp.Property.GetValue(fullEntity) ?? propRefProp.Property.GetValue(item);
-                                if (refItem == null)
-                                    continue;
-
-                                if (propRefProp.TypeCategory == PropertyTypeCategory.Class)
-                                {
-                                    Delete(propRefProp.PropertyType, refItem, isCascade: true);
-                                }
-                                else
-                                {
-                                    Type childType = propRefProp.TypeCategory == PropertyTypeCategory.Array
-                                        ? propRefProp.PropertyType.GetElementType()
-                                        : propRefProp.PropertyType.GetGenericArguments().FirstOrDefault();
-
-                                    if (childType == null)
-                                        continue;
-
-                                    var children = (refItem as IEnumerable)?.Cast<object>().ToList();
-                                    if (children != null)
-                                    {
-                                        foreach (var child in children)
-                                            Delete(childType, child, isCascade: true);
-                                    }
-                                }
-                            }
-
-                            if (!isCascade)
-                                RemoveFromParentElements(type, row, itemCode);
-                        }
-
-                        rowTree.Page.RemoveRow(row);
-                        deleted = true;
-
-                        int remainingRows = rowTree.Page.Rows().Count();
-                        if (remainingRows == 0)
-                            ioService.Delete(rowTree.Page.Path);
-                        else
-                            ioService.Save(rowTree.Page);
-                        RecordRowRemoved(type, rowTree.Table, rowTree.Page.Path, row, remainingRows);
+                        if (DeleteByItemCode(type, itemCode, isCascade, ownTrigger: false))
+                            deleted = true;
                     }
-                }
 
                     if (deleted)
                     {
@@ -1151,8 +1095,9 @@ namespace Xod.Engines.Xml
 
         /// <summary>
         /// The rows of a type a predicate matches, deleted as one write statement (ISS-176): the matches are found under
-        /// the statement's lock, and each is deleted by <see cref="Delete(Type, object)"/>, nested in it, its trigger
-        /// included. In direct mode a delete refused part way (a trigger) leaves every match, the ones before it too
+        /// the statement's lock, and each is deleted by its code (<see cref="DeleteByItemCode"/>), its trigger given the
+        /// match. Each was deleted by example, so the first of several equal rows without a key took them all, and the
+        /// count and the triggers were short (ISS-186). In direct mode a delete refused part way (a trigger) leaves every match, the ones before it too
         /// (WriteStatement's savepoint); their changes wait in the statement's batch and are written once, at its end.
         /// It used to query outside a write, then delete each match as a statement of its own. So the predicate runs
         /// inside the write, as a trigger does: it may read, a write it makes is part of the statement, and it must not
@@ -1164,11 +1109,24 @@ namespace Xod.Engines.Xml
                 exceptionService.Throw(new ArgumentNullException(nameof(predicate)));
             return WriteStatement(type, () => InBatch(!ioService.IsBatchOrBuffered, () =>
             {
-                var matches = QueryItems(type, predicate, "*").ToList();
-                int deleted = 0;
-                foreach (var match in matches)
+                propertyService.LoadType(type);
+                XFile tableFile = ioService.OpenFileOrCreate($"{type.FullName}.xtab", type, openOnly: true);
+                if (tableFile == null)
+                    return 0;
+
+                var matches = new List<(string Code, object Item)>();
+                foreach (var (page, row) in StoredRows(tableFile))
                 {
-                    if (Delete(match.GetActualType(), match))
+                    object entity = Read(type, row, "*");
+                    string rowCode = row.Attribute("code")?.Value;
+                    if (entity != null && rowCode != null && predicate(entity))
+                        matches.Add(($"{page}.{rowCode}", entity));
+                }
+
+                int deleted = 0;
+                foreach (var (code, entity) in matches)
+                {
+                    if (DeleteByItemCode(type, code, isCascade: false, ownTrigger: true, triggerItem: entity))
                         deleted++;
                 }
                 return deleted;
@@ -1265,9 +1223,18 @@ namespace Xod.Engines.Xml
                 return false;
             }, recordSchemas: false);
         }
-        private bool DeleteByItemCode(Type type, string itemCode, bool isCascade, bool cascadeChildren = true)
+        /// <summary>
+        /// The one delete of a stored row (ISS-130), by its item code (<c>page.row</c>): the rows a key or a scan finds,
+        /// the rows a cascade reaches, an update's dropped entries, DeleteWhere's matches and the statement undo. It
+        /// removes the row and its index keys, cascades (<see cref="CascadeDelete"/>) and, unless the row goes with its
+        /// parent (<paramref name="isCascade"/>), takes it out of its parent's list. <paramref name="ownTrigger"/>: the
+        /// row fires its own BeforeAction (which may keep it) and AfterAction, given <paramref name="triggerItem"/> or
+        /// the object read from the row; without it the caller fires one for its statement (Delete), or none (the undo).
+        /// False when the row is not there, as when an earlier cascade of the same statement took it.
+        /// </summary>
+        private bool DeleteByItemCode(Type type, string itemCode, bool isCascade, bool ownTrigger, object triggerItem = null, bool cascadeChildren = true)
         {
-            int dot = itemCode.IndexOf('.');
+            int dot = itemCode?.IndexOf('.') ?? -1;
             if (dot <= 0 || dot >= itemCode.Length - 1)
                 return false;
 
@@ -1275,97 +1242,128 @@ namespace Xod.Engines.Xml
             string pageFileName = pageCode + ".xpag";
             string rowCode = itemCode.Substring(dot + 1);
 
-            if (ioService.TryDeleteRow(pageFileName, rowCode, out XElement rawRow, out bool pageEmpty))
+            propertyService.LoadType(type);
+            TriggerEventArgs trigger = null;
+            if (ownTrigger && (BeforeAction != null || AfterAction != null))
             {
-                var meta = propertyService.GetMetadata(type);
-                indexService.RemoveRowElement(type, rawRow, itemCode);
+                XElement stored = GetRawData(itemCode);
+                if (stored == null)
+                    return false;
 
-                string docFileName = $"{type.FullName}.xtab";
-                XFile tableFile = ioService.OpenFileOrCreate(docFileName, type, openOnly: true);
-                if (tableFile != null)
+                trigger = new TriggerEventArgs
                 {
-                    if (pageEmpty)
-                        ioService.Delete(pageFileName);
-                    RecordRowRemoved(type, tableFile, pageFileName, rawRow, pageEmpty ? 0 : null);
-                }
-
-                if (meta == null || meta.HasCascadeDeleteOrParentProperties)
-                {
-                    if (cascadeChildren)
-                        CascadeDeleteChildElements(type, rawRow, itemCode, isCascade);
-                    else if (!isCascade)
-                        RemoveFromParentElements(type, rawRow, itemCode);
-                }
-
-                return true;
+                    Item = triggerItem ?? Read(type, stored),
+                    Type = type,
+                    Action = DatabaseActions.Delete
+                };
+                BeforeAction?.Invoke(this, trigger);
+                if (trigger.Cancel)
+                    return false;
             }
 
-            return false;
+            if (!ioService.TryDeleteRow(pageFileName, rowCode, out XElement rawRow, out bool pageEmpty))
+                return false;
+
+            var meta = propertyService.GetMetadata(type);
+            indexService.RemoveRowElement(type, rawRow, itemCode);
+
+            string docFileName = $"{type.FullName}.xtab";
+            XFile tableFile = ioService.OpenFileOrCreate(docFileName, type, openOnly: true);
+            if (tableFile != null)
+            {
+                if (pageEmpty)
+                    ioService.Delete(pageFileName);
+                RecordRowRemoved(type, tableFile, pageFileName, rawRow, pageEmpty ? 0 : null);
+            }
+
+            if (meta == null || meta.HasCascadeDeleteOrParentProperties)
+            {
+                if (cascadeChildren)
+                    CascadeDelete(type, rawRow);
+                if (!isCascade)
+                    RemoveFromParentElements(type, rawRow, itemCode);
+            }
+
+            if (trigger != null)
+                AfterAction?.Invoke(this, trigger);
+            return true;
         }
 
-        private void CascadeDeleteChildElements(Type type, XElement rawRow, string itemCode, bool isCascade)
+        /// <summary>
+        /// The one cascade (ISS-130): each row a deleted row's <c>[Property(Cascade = Delete)]</c> properties name is
+        /// deleted by its code, with its own trigger. A single reference stores its code in the property's element
+        /// (<c>&lt;Addr refType="reference"&gt;page.row&lt;/Addr&gt;</c>), a list one entry per row; a property stored
+        /// inside the row (no <c>refType</c>) has no row of its own. The delete by key looked only for list entries,
+        /// so a single reference was left, and fired no child trigger; the delete by a scan deleted each child by
+        /// example, with its trigger. An entry without a code is found by the key it carries.
+        /// </summary>
+        private void CascadeDelete(Type type, XElement rawRow)
         {
-            if (rawRow == null) return;
+            XElement entity = rawRow?.Element(type.Name) ?? rawRow?.Elements().FirstOrDefault();
+            if (entity == null)
+                return;
 
-            var propRefProps = propertyService.Properties(type.FullName).Where(s =>
+            var cascadeProps = propertyService.Properties(type.FullName).Where(s =>
                 s.ReferenceType != PropertyReferenceType.Parent &&
                 s.ReferenceType != PropertyReferenceType.SelfForeign &&
                 s.Cascade.HasFlag(CascadeOptions.Delete) &&
-                s.TypeCategory != PropertyTypeCategory.None &&
-                s.TypeCategory != PropertyTypeCategory.Dictionary);
+                (s.TypeCategory == PropertyTypeCategory.Class ||
+                 s.TypeCategory == PropertyTypeCategory.Array ||
+                 s.TypeCategory == PropertyTypeCategory.GenericCollection)).ToList();
 
-            foreach (var prop in propRefProps)
+            foreach (var prop in cascadeProps)
             {
-                Type childType = prop.TypeCategory == PropertyTypeCategory.Array
-                    ? prop.PropertyType.GetElementType()
-                    : prop.PropertyType.GetGenericArguments().FirstOrDefault() ?? prop.PropertyType;
+                XElement xProp = entity.Element(prop.PropertyName);
+                if (xProp?.Attribute("refType") == null)
+                    continue;
 
-                if (childType == null) continue;
-
-                var childContainer = rawRow.Element(type.Name)?.Element(prop.PropertyName) ?? rawRow.Element(prop.PropertyName);
-                if (childContainer != null)
+                Type declared = prop.TypeCategory switch
                 {
-                    propertyService.LoadType(childType);
-                    var childPkProps = propertyService.Properties(childType.FullName).Where(p => p.IsPrimaryKey).ToList();
-                    foreach (var childElm in childContainer.Elements(childType.Name))
-                    {
-                        string childItemCode = childElm.Value;
-                        if (!string.IsNullOrEmpty(childItemCode) && childItemCode.Contains('.'))
-                        {
-                            DeleteByItemCode(childType, childItemCode, isCascade: true);
-                        }
-                        else if (childPkProps.Count > 0)
-                        {
-                            object childShell = ValueHelper.CreateInstance(childType);
-                            bool allPkFound = true;
-                            foreach (var pkProp in childPkProps)
-                            {
-                                string attrVal = childElm.Attribute(pkProp.PropertyName)?.Value;
-                                if (!string.IsNullOrEmpty(attrVal))
-                                {
-                                    object converted = ValueHelper.ParseScalar(pkProp.PropertyType, attrVal);
-                                    pkProp.SetValue(childShell, converted);
-                                }
-                                else
-                                {
-                                    allPkFound = false;
-                                    break;
-                                }
-                            }
+                    PropertyTypeCategory.Array => prop.PropertyType.GetElementType(),
+                    PropertyTypeCategory.GenericCollection => prop.PropertyType.GetGenericArguments().FirstOrDefault(),
+                    _ => prop.PropertyType,
+                };
+                if (declared == null)
+                    continue;
 
-                            if (allPkFound)
-                            {
-                                Delete(childType, childShell, isCascade: true);
-                            }
-                        }
-                    }
+                var entries = xProp.Attribute("collType") != null ? xProp.Elements().ToList() : new List<XElement> { xProp };
+                foreach (var entry in entries)
+                {
+                    string code = entry.Value;
+                    // The row of an object property, or of a list or array of object, is of the type its page holds
+                    // (as Read takes it): deleted as System.Object, which has no table, it kept its index keys and
+                    // its table kept an emptied page (review of TASK-089).
+                    Type childType = declared == typeof(object) ? ioService.GetItemType(code) : declared;
+                    if (childType == null)
+                        continue;
+                    if (string.IsNullOrEmpty(code) || !code.Contains('.'))
+                        code = CodeByEntryKeys(childType, entry);
+                    if (code != null)
+                        DeleteByItemCode(childType, code, isCascade: true, ownTrigger: true);
                 }
             }
+        }
 
-            if (!isCascade)
+        // The code of the row an entry names by its key attributes alone, or null.
+        private string CodeByEntryKeys(Type childType, XElement entry)
+        {
+            propertyService.LoadType(childType);
+            var pkProps = propertyService.Properties(childType.FullName).Where(p => p.IsPrimaryKey).ToList();
+            if (pkProps.Count == 0)
+                return null;
+
+            object shell = ValueHelper.CreateInstance(childType);
+            foreach (var pkProp in pkProps)
             {
-                RemoveFromParentElements(type, rawRow, itemCode);
+                string attrVal = entry.Attribute(pkProp.PropertyName)?.Value;
+                if (string.IsNullOrEmpty(attrVal))
+                    return null;
+                pkProp.SetValue(shell, ValueHelper.ParseScalar(pkProp.PropertyType, attrVal));
             }
+
+            XRow row = GetRow(childType, shell);
+            string rowCode = row?.Row?.Attribute("code")?.Value;
+            return rowCode == null ? null : $"{row.Page.GetFileCode()}.{rowCode}";
         }
 
         // A parent lists a child by its item code, "page.row" (XmlEngine.Relations, ParseChildren); the bare row code
