@@ -60,7 +60,7 @@ namespace Xod.Tests
         {
             public int Id { get; set; }
             public string Name { get; set; }
-            public List<UcPart> Parts { get; set; }
+            [Property(Cascade = CascadeOptions.Update)] public List<UcPart> Parts { get; set; }
         }
 
         private string NewPath(string name, bool indexing)
@@ -156,8 +156,8 @@ namespace Xod.Tests
             Assert.Equal(new[] { "b1" }, db.Find<UcRig>(r => r.Id == 2, include: "*").Parts.Select(p => p.Label));
         }
 
-        // A child with a key keeps its row: the update links the stored row and writes the child's new values into it,
-        // and a new child gets a row of its own.
+        // A keyed item of a list that cascades updates keeps its row: the update links the stored row and writes the
+        // item's new values into it, and a new item gets a row of its own. A plain list only links (ISS-189).
         [Theory]
         [InlineData(true)]
         [InlineData(false)]

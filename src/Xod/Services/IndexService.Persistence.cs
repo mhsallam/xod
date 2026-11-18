@@ -65,9 +65,11 @@ namespace Xod.Services
                     {
                         tableText = File.ReadAllText(tableFullPath);
                     }
-                    catch
+                    catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
                     {
-                        tableText = null;
+                        // A table file it can't read can't show the index is current: rebuilt from the pages (ISS-144).
+                        // It was taken as no newer page, and the index trusted.
+                        return false;
                     }
 
                     if (tableText != null)
@@ -534,7 +536,7 @@ namespace Xod.Services
             }
 
             var deserialized = new Dictionary<string, object>[keysToHydrate.Count];
-            System.Threading.Tasks.Parallel.For(0, keysToHydrate.Count, i =>
+            ParallelReads.For(keysToHydrate.Count, i =>
             {
                 deserialized[i] = DeserializePropertyBlock(blocks[i], extraCaps[i]);
             });

@@ -180,16 +180,26 @@ namespace Xod.Engines.Xml
             // Set auto number values
             Dictionary<string, dynamic> autonumbers = autonumberService.Autonumber(type, item);
 
-            // Enforce PrimaryKey and UniqueKey constraints
-            long tUnique = WriteDiagnostics.Begin();
-            ValidateUniqueAndPrimaryConstraints(type, item, existingCodeToIgnore: null);
-            WriteDiagnostics.End(ref WriteDiagnostics.UniqueTicks, tUnique);
-
+            // The key and unique checks run in AddToPage, once the row's write has set the key parts its relations
+            // give (ValidateNewRow).
             string refCode = AddToPage(type, item, autonumbers, shallowWrite, writeTrack);
 
             if (trigger != null)
                 AfterAction?.Invoke(this, trigger);
             return refCode;
+        }
+
+        /// <summary>
+        /// A new row's key and unique checks, run once every part of its key is set: by an autonumber, by the caller, or
+        /// by its write from a relation ([ParentKey], [ForeignKey]). They ran before the write, so a key part a relation
+        /// gives was still at its default: such a row was never checked for uniqueness, and with ISS-188's rule it was
+        /// refused.
+        /// </summary>
+        private void ValidateNewRow(Type type, object item)
+        {
+            long tUnique = WriteDiagnostics.Begin();
+            ValidateUniqueAndPrimaryConstraints(type, item, existingCodeToIgnore: null);
+            WriteDiagnostics.End(ref WriteDiagnostics.UniqueTicks, tUnique);
         }
 
         private string AddToPage(Type type, object item, Dictionary<string, dynamic> autonumbers = null, bool shallowWrite = false, ReadWriteTrack writeTrack = null)
@@ -211,6 +221,7 @@ namespace Xod.Engines.Xml
                 var meta = propertyService.GetMetadata(type);
                 if (meta != null && meta.IsPureScalarStandalone && !shallowWrite && writeTrack == null)
                 {
+                    ValidateNewRow(type, item); // a type of scalars alone: no relation sets a part of its key
                     long tRaw = WriteDiagnostics.Begin();
                     bool rawOk = ioService.TryAppendRawRowToPage(tableFile, item, meta, exceptionService, pageSize, out itemPath, out XElement rawPageElement, out bool rawTableModified);
                     WriteDiagnostics.End(ref WriteDiagnostics.RawTicks, tRaw);
@@ -261,6 +272,10 @@ namespace Xod.Engines.Xml
                     bool tableModified = false;
                     if (xItem != null)
                     {
+                        // The write set the key parts the row's relations give ([ParentKey], [ForeignKey]); what it
+                        // wrote for the row's relations is taken back by the statement's undo if the check refuses.
+                        ValidateNewRow(type, item);
+
                         long tOpenPage = WriteDiagnostics.Begin();
                         if (tablePageElement == null)
                         {
@@ -526,8 +541,17 @@ namespace Xod.Engines.Xml
             return propertyElement;
         }
 
+        /// <summary>
+        /// The rows the update under way has written, each by its type and key (<see cref="RowKey"/>). An update begun
+        /// with no track (by the caller, or by a trigger inside another update) has a record of its own.
+        /// </summary>
+        private HashSet<string> rowsThisUpdateWrote;
+
         private bool UpdateItem(Type type, object item, object newItem, ReadWriteTrack track = null, UpdateFilter filter = null)
         {
+            HashSet<string> outerRecord = rowsThisUpdateWrote;
+            if (track == null)
+                rowsThisUpdateWrote = new HashSet<string>(StringComparer.Ordinal);
             bool statement = BeginStatement();
             try
             {
@@ -541,6 +565,8 @@ namespace Xod.Engines.Xml
             finally
             {
                 EndStatement(statement);
+                if (track == null)
+                    rowsThisUpdateWrote = outerRecord;
             }
         }
 
@@ -551,8 +577,9 @@ namespace Xod.Engines.Xml
 
             if (item == null || newItem == null)
                 exceptionService.Throw(new ArgumentNullException());
+            RefusePartKey(type, item);
 
-            if (track?.Parent != null && RecursionError(track, track.Parent))
+            if (WrittenByThisUpdate(type, item))
                 return false;
 
             var trigger = new TriggerEventArgs
@@ -572,10 +599,7 @@ namespace Xod.Engines.Xml
             if (meta != null &&
                 meta.IsStandalone &&
                 track == null &&
-                options.EnableIndexing &&
-                meta.PrimaryKeyProperties.Length > 0 &&
-                TryLookupCodesByProperties(type, item, meta.PrimaryKeyProperties, out var fastPkCodes, out bool fastPkCovered) &&
-                fastPkCovered)
+                TryLookupByKey(type, item, out var fastPkCodes))
             {
                 if (fastPkCodes.Count == 0)
                     return false;
@@ -602,6 +626,9 @@ namespace Xod.Engines.Xml
                             Code = itemCode,
                             Parent = null
                         };
+
+                        // Recorded before the row's relations are written, so a path back to it stops (WrittenByThisUpdate).
+                        NoteWritten(type, item, rowItem);
 
                         XElement xOldRow = rawRow.Element(type.Name);
                         RecordAutonumberChanges(type, rawRow, rowItem);
@@ -667,6 +694,9 @@ namespace Xod.Engines.Xml
                         Code = itemCode,
                         Parent = track
                     };
+
+                    // Recorded before the row's relations are written, so a path back to it stops (WrittenByThisUpdate).
+                    NoteWritten(type, item, rowItem);
 
                     XElement xOldRow = row.Element(type.Name);
                     RecordAutonumberChanges(type, row, rowItem);
@@ -746,50 +776,14 @@ namespace Xod.Engines.Xml
                                     continue;
                                 }
 
-                                if (newRefItem == null)
-                                    continue;
-
-                                if (ReferenceEquals(oldRefItem, newRefItem) || (oldRefItem != null && oldRefItem.Equals(newRefItem)))
-                                    continue;
-
-                                if (oldRefItem != null &&
-                                    (propRefProp.TypeCategory == PropertyTypeCategory.ValueTypeArray ||
-                                     propRefProp.TypeCategory == PropertyTypeCategory.ValueTypeCollection))
-                                {
-                                    var oldRefItems = ((IEnumerable)oldRefItem).Cast<object>().ToList();
-                                    var newRefItems = ((IEnumerable)newRefItem).Cast<object>().ToList();
-                                    if (TypeExtentions.ListsEqual(oldRefItems, newRefItems))
-                                        continue;
-                                }
-
-                                if (propRefProp.TypeCategory == PropertyTypeCategory.Class)
-                                {
-                                    if (oldRefItem != null)
-                                        UpdateItem(propRefProp.PropertyType, oldRefItem, newRefItem, itemTrack);
-                                }
-                                else if (propRefProp.TypeCategory == PropertyTypeCategory.Array ||
-                                         propRefProp.TypeCategory == PropertyTypeCategory.GenericCollection)
-                                {
-                                    Type childType = propRefProp.TypeCategory == PropertyTypeCategory.Array
-                                        ? propRefProp.PropertyType.GetElementType()
-                                        : propRefProp.PropertyType.GetGenericArguments().FirstOrDefault();
-
-                                    // A child without a key: the write above wrote it as a new row holding its
-                                    // values, and it can't be updated by key; every update of a parent whose list
-                                    // held one threw (ISS-179). A child with a key is updated by key after the write,
-                                    // whether the write linked its stored row or created it.
-                                    var children = ListLinksStoredRows(childType)
-                                        ? (newRefItem as IEnumerable)?.Cast<object>().ToList()
-                                        : null;
-                                    if (children != null && children.Count > 0)
-                                    {
-                                        foreach (var child in children)
-                                            Update(childType, child);
-                                    }
-                                }
+                                // The other relations: their rows are written after the row, changed or not
+                                // (UpdateRelatedRows).
                             }
                         }
                     }
+
+                    if (meta == null || !meta.IsStandalone)
+                        UpdateRelatedRows(type, rowItem, itemTrack, props);
 
                     ioService.Save(match.Page);
                     updated = true;
@@ -802,6 +796,102 @@ namespace Xod.Engines.Xml
             }
 
             return updated;
+        }
+
+        /// <summary>
+        /// The rows a parent's update writes besides its own (ISS-189, ISS-181), by what each relation declares: a parent
+        /// owns its children, so each child it lists is updated with its values; a relation that declares
+        /// <c>Cascade = Update</c> (or <c>All</c>) writes its rows' values too. Any other reference, single or a list,
+        /// only links or repoints to its rows, which the parent's write did, and never writes their values: a copy the
+        /// parent holds may be older than the row. A row of a type without a key was written by the parent's write
+        /// (ISS-179). It ran only when the parent's own row changed, so an edit to the related object alone wasn't
+        /// written (ISS-189); it updated a plain keyed list's items whatever the relation said; and it took a changed
+        /// single reference as an edit of the row it had pointed at, rewriting that row as the new object, which threw
+        /// when the new object was another row (ISS-181). A row is written once per update
+        /// (<see cref="WrittenByThisUpdate"/>), so a cycle of relations ends.
+        /// </summary>
+        private void UpdateRelatedRows(Type type, object rowItem, ReadWriteTrack itemTrack, IEnumerable<PropertyInfoItem> props)
+        {
+            foreach (var prop in props)
+            {
+                if (prop.TypeCategory != PropertyTypeCategory.Class &&
+                    prop.TypeCategory != PropertyTypeCategory.Array &&
+                    prop.TypeCategory != PropertyTypeCategory.GenericCollection)
+                    continue;
+                if (prop.ReferenceType == PropertyReferenceType.Parent ||
+                    prop.ReferenceType == PropertyReferenceType.SelfForeign ||
+                    prop.ReferenceType == PropertyReferenceType.Complex)
+                    continue;
+                if (prop.ReferenceType != PropertyReferenceType.Children && !prop.Cascade.HasFlag(CascadeOptions.Update))
+                    continue;
+
+                object value = prop.Property.GetValue(rowItem);
+                if (value == null)
+                    continue;
+
+                Type declared = prop.TypeCategory switch
+                {
+                    PropertyTypeCategory.Array => prop.PropertyType.GetElementType(),
+                    PropertyTypeCategory.GenericCollection => prop.PropertyType.GetGenericArguments().FirstOrDefault(),
+                    _ => prop.PropertyType,
+                };
+                if (declared == null)
+                    continue;
+
+                var related = prop.TypeCategory == PropertyTypeCategory.Class
+                    ? new List<object> { value }
+                    : (value as IEnumerable)?.Cast<object>().ToList() ?? new List<object>();
+                foreach (var obj in related)
+                {
+                    if (obj == null)
+                        continue;
+                    Type relatedType = declared == typeof(object) ? obj.GetType() : declared;
+                    propertyService.LoadType(relatedType);
+                    if (KeyPartsSet(relatedType, obj) != KeyParts.All)
+                        continue;
+                    UpdateItem(relatedType, obj, obj, itemTrack);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether the update under way already wrote the row <paramref name="item"/> names: a row its relations reach
+        /// again, through a cycle, by two paths or as two copies in one list, is written once, from the first copy
+        /// reached. A later copy may be older: it was read before the first was written, and writing it undid the
+        /// first write. The check walked the track's ancestors, which a cycle alone passes through again, and stopped
+        /// even a cycle only after the row had been written twice.
+        /// </summary>
+        private bool WrittenByThisUpdate(Type type, object item)
+        {
+            string key = rowsThisUpdateWrote != null ? RowKey(type, item) : null;
+            return key != null && rowsThisUpdateWrote.Contains(key);
+        }
+
+        // The row an update writes, by its key before and after (an update may change it).
+        private void NoteWritten(Type type, object item, object rowItem)
+        {
+            if (rowsThisUpdateWrote == null)
+                return;
+            string before = RowKey(type, item);
+            if (before != null)
+                rowsThisUpdateWrote.Add(before);
+            string after = RowKey(type, rowItem);
+            if (after != null)
+                rowsThisUpdateWrote.Add(after);
+        }
+
+        // A row of a type with a key, named by its type and every key part; null for a type without a key, or an object
+        // that doesn't set its key.
+        private string RowKey(Type type, object item)
+        {
+            var keys = GetPrimaryValues(type, item);
+            if (keys == null || keys.Count == 0)
+                return null;
+            var text = new System.Text.StringBuilder(type.FullName);
+            foreach (var key in keys.OrderBy(k => k.Key, StringComparer.Ordinal))
+                text.Append('\u0001').Append(key.Key).Append('=')
+                    .Append(Convert.ToString(key.Value, System.Globalization.CultureInfo.InvariantCulture));
+            return text.ToString();
         }
 
         /// <summary>
@@ -946,6 +1036,9 @@ namespace Xod.Engines.Xml
             return WriteStatement<object>(type, () =>
             {
                 propertyService.LoadType(type);
+                // No key part set: inserted (an autonumber given its value). Every part: updated or inserted. Some: refused
+                // (ISS-188); it was looked up by the parts it set, and could update another row.
+                RefusePartKey(type, item);
                 var primValues = GetPrimaryValues(type, item);
 
                 object reference = null;
@@ -977,22 +1070,20 @@ namespace Xod.Engines.Xml
                 if (item == null)
                     exceptionService.Throw(new ArgumentNullException(nameof(item)));
 
+                // An update by key needs every key part (ISS-188): a part at its default was looked up literally by the
+                // index and left out of the example without it, so it named another row, or every row its other parts
+                // matched.
+                if (KeyPartsSet(type, item) != KeyParts.All)
+                    exceptionService.Throw(new MissingPrimaryKeyValueException());
+
                 var meta = propertyService.GetMetadata(type);
                 if (meta != null && meta.IsStandalone)
-                {
-                    if (meta.PrimaryKeyProperties.Length == 0)
-                        exceptionService.Throw(new MissingPrimaryKeyValueException());
-
                     return UpdateItem(type, item, item, null, filter);
-                }
 
                 var primProps = propertyService.Properties(type.FullName)
                     .Where(s => s.IsPrimaryKey)
                     .Select(s => s.PropertyName)
                     .ToList();
-
-                if (primProps.Count == 0)
-                    exceptionService.Throw(new MissingPrimaryKeyValueException());
 
                 object old = SelectItemsByExample(type, FilterItemProperties(type, item, primProps), "*").FirstOrDefault();
                 if (old != null)
@@ -1011,6 +1102,7 @@ namespace Xod.Engines.Xml
                 propertyService.LoadType(type);
                 if (item == null)
                     exceptionService.Throw(new ArgumentNullException(nameof(item)));
+                RefusePartKey(type, item);
 
                 var trigger = new TriggerEventArgs
                 {
@@ -1030,10 +1122,7 @@ namespace Xod.Engines.Xml
                     var meta = propertyService.GetMetadata(type);
 
                     if (meta != null &&
-                        options.EnableIndexing &&
-                        meta.PrimaryKeyProperties.Length > 0 &&
-                        TryLookupCodesByProperties(type, item, meta.PrimaryKeyProperties, out var fastPkCodes, out bool fastPkCovered) &&
-                        fastPkCovered)
+                        TryLookupByKey(type, item, out var fastPkCodes))
                     {
                         if (fastPkCodes.Count == 0)
                             return false;

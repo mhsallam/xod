@@ -212,7 +212,7 @@ namespace Xod.Engines.Xml
                     {
                         var codeArray = candidateCodes as string[] ?? candidateCodes.ToArray();
                         var hydrated = new T[codeArray.Length];
-                        System.Threading.Tasks.Parallel.For(0, codeArray.Length, i =>
+                        Xod.Services.ParallelReads.For(codeArray.Length, i =>
                         {
                             if (useFastReader && TryReadEntityByCode(codeArray[i], meta, out object fastObj) && fastObj != null)
                             {
@@ -773,6 +773,24 @@ namespace Xod.Engines.Xml
             return ValueHelper.ParseScalar(targetType, stringValue);
         }
 
+        /// <summary>
+        /// The rows a key names, by the index: the one lookup by key. It answers only for an example that sets every key
+        /// part (ISS-188): a part at its default is no value, and the index looks a value up literally, so an example
+        /// without a key matched a row stored with a key part at its default, with indexing on and not off. False when
+        /// the index can't answer; the caller then reads the rows.
+        /// </summary>
+        private bool TryLookupByKey(Type type, object example, out IReadOnlyCollection<string> codes)
+        {
+            codes = null;
+            if (!options.EnableIndexing || example == null || KeyPartsSet(type, example) != KeyParts.All)
+                return false;
+            var meta = propertyService.GetMetadata(type);
+            IReadOnlyList<PropertyInfoItem> pkProps = meta != null
+                ? meta.PrimaryKeyProperties
+                : propertyService.Properties(type.FullName).Where(s => s.IsPrimaryKey).ToList();
+            return TryLookupCodesByProperties(type, example, pkProps, out codes, out bool covered) && covered;
+        }
+
         private bool TryLookupCodesByProperties(
             Type type,
             object item,
@@ -919,10 +937,7 @@ namespace Xod.Engines.Xml
 
             propertyService.LoadType(type);
             var pkProps = propertyService.Properties(type.FullName).Where(s => s.IsPrimaryKey).ToList();
-            if (options.EnableIndexing && pkProps.Count > 0 &&
-                pkProps.All(p => SetsProperty(p, example)) &&
-                TryLookupCodesByProperties(type, example, pkProps, out var pkCodes, out bool pkCovered) &&
-                pkCovered)
+            if (TryLookupByKey(type, example, out var pkCodes))
             {
                 if (pkCodes.Count == 0)
                     return null;
@@ -1040,10 +1055,7 @@ namespace Xod.Engines.Xml
             if (tableFile != null)
             {
                 var pkProps = propertyService.Properties(type.FullName).Where(s => s.IsPrimaryKey).ToList();
-                if (options.EnableIndexing && pkProps.Count > 0 &&
-                    pkProps.All(p => SetsProperty(p, example)) &&
-                    TryLookupCodesByProperties(type, example, pkProps, out var pkCodes, out bool pkCovered) &&
-                    pkCovered)
+                if (TryLookupByKey(type, example, out var pkCodes))
                 {
                     if (pkCodes.Count == 0)
                         return null;
@@ -1074,10 +1086,8 @@ namespace Xod.Engines.Xml
 
                 // A type without a key: every page's matches, each with its page. The walk stopped at the first page
                 // that had one, so an Update or a Delete by example left the rows on the other pages (ISS-136).
-                // A type with a key keeps that stop, as a mitigation: an example that sets every key matches one row
-                // at most, but one with a key part at its default matches by its other parts here and literally in the
-                // index, so walking every page made an Update with indexing off rewrite every row sharing them
-                // (ISS-188, which decides what such a key names).
+                // A type with a key is found by every part of its key (ISS-188: an example that sets only some is
+                // refused), which names one row: the walk stops at the first page that has it.
                 bool firstPageOnly = pkProps.Count > 0;
                 var result = new XRowTree
                 {
@@ -1128,23 +1138,17 @@ namespace Xod.Engines.Xml
             return ioService.TryReadEntityFromRawPage(pageFileName, rowCode, meta, out entity);
         }
 
+        // A row by its code; a page that can't be read throws (DatabaseFileException). Any failure read as "no row"
+        // here (ISS-144).
         private XElement GetRawData(string code)
         {
             if (string.IsNullOrEmpty(code)) return null;
-            try
-            {
-                int dot = code.IndexOf('.');
-                if (dot <= 0 || dot >= code.Length - 1) return null;
+            int dot = code.IndexOf('.');
+            if (dot <= 0 || dot >= code.Length - 1) return null;
 
-                string pageFileName = string.Concat(code.AsSpan(0, dot), ".xpag");
-                string rowCode = code.Substring(dot + 1);
-                return ioService.ReadRowColdOrCached(pageFileName, rowCode);
-            }
-            catch
-            {
-            }
-
-            return null;
+            string pageFileName = string.Concat(code.AsSpan(0, dot), ".xpag");
+            string rowCode = code.Substring(dot + 1);
+            return ioService.ReadRowColdOrCached(pageFileName, rowCode);
         }
 
         private object FilterItemProperties(Type type, object item, IEnumerable<string> filter)

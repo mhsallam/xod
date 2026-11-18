@@ -131,11 +131,9 @@ namespace Xod.Services
                     cachedRawPages.Remove(normalizedName);
                     byte[] exact = rawPage.ToExactArray();
                     XDocument doc = storageSerializer.Deserialize(exact);
-                    // Its bytes are the file's when nothing of it waits to be written.
+                    // Its bytes are the file's when nothing of it waits to be written. The page keeps them: another
+                    // reader may hold it (RawPageBuffer.ReleasePooledBuffer).
                     bool asOnDisk = !rawPage.IsNewFile && rawPage.DirtyStartOffset >= rawPage.DiskSyncedLength && rawPage.Length == rawPage.DiskSyncedLength;
-                    if (asOnDisk && ReferenceEquals(exact, rawPage.Bytes))
-                        exact = (byte[])exact.Clone(); // the page's own array goes back to the pool below
-                    rawPage.ReleasePooledBuffer();
                     file = new XFile(doc, type, filePath, password) { DiskBytes = asOnDisk ? exact : null };
                     if (dirtyBatchRawPages.Remove(normalizedName))
                     {
@@ -512,11 +510,7 @@ namespace Xod.Services
         private void CacheSavedUnlocked(XFile file)
         {
             string normalizedName = Path.GetFileName(file.Path);
-            if (cachedRawPages.TryGetValue(normalizedName, out var oldRawPage))
-            {
-                cachedRawPages.Remove(normalizedName);
-                oldRawPage?.ReleasePooledBuffer();
-            }
+            cachedRawPages.Remove(normalizedName); // its bytes stay with it (RawPageBuffer.ReleasePooledBuffer)
             if (!cachedFiles.TryGetValue(normalizedName, out var item))
             {
                 CacheFile(normalizedName, file, file.Path, FileCacheStatus.Shared);
@@ -769,11 +763,7 @@ namespace Xod.Services
             dirtyBufferedRawPages.Remove(normalizedName);
             saved.Remove(normalizedName);
             cachedFiles.Remove(normalizedName);
-            if (cachedRawPages.TryGetValue(normalizedName, out var oldRawPage))
-            {
-                cachedRawPages.Remove(normalizedName);
-                oldRawPage?.ReleasePooledBuffer();
-            }
+            cachedRawPages.Remove(normalizedName); // its bytes stay with it (RawPageBuffer.ReleasePooledBuffer)
             if (onDisk && File.Exists(fullPath))
             {
                 // ISS-166: inside a transaction a data file (never an index file: Delete refuses one) is deleted by its commit, as its other files are written

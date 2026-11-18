@@ -8,6 +8,8 @@ namespace Xod.Services
     {
         public byte[] Bytes;
         public int Length;
+        /// <summary>The page's file name, for the error a damaged page raises.</summary>
+        public string Name;
         public int DiskSyncedLength;
         public int DirtyStartOffset = int.MaxValue;
         public bool IsNewFile;
@@ -23,6 +25,16 @@ namespace Xod.Services
 
         public ReadOnlySpan<byte> Span => Bytes.AsSpan(0, Length);
 
+        /// <summary>
+        /// Gives the page's array back to the pool: only for a buffer no reader can hold, one never put in the cache
+        /// (IOService.PreloadPagesForCodes). A page that leaves the cache keeps its bytes, which the GC takes once the
+        /// last reader drops the buffer: a reader takes a page from the cache and reads it outside the cache's lock,
+        /// beside another reader whose load or document read drops that page, so a dropped page's array given back
+        /// went to the next page loaded while the first reader still read it (ISS-143). Its bytes were set to null,
+        /// so that reader threw, or, holding the span, read the other page's bytes at this page's offsets. A writer
+        /// that moves a page to a larger array gives the old one back under the engine-wide write lock, which no
+        /// reader holds beside it.
+        /// </summary>
         public void ReleasePooledBuffer()
         {
             if (IsPooled && Bytes != null)
@@ -43,9 +55,8 @@ namespace Xod.Services
             return copy;
         }
 
-        // The writers of the row map. The page's writer calls them under the table's write lock, which keeps out the
-        // readers of that table, not a reader of another type that loads this type's rows (ISS-108): that reader
-        // can meet the map, as it can the bytes, while the writer changes them.
+        // The writers of the row map. The page's writer calls them under the engine-wide write lock, which no reader
+        // holds beside it, so no reader meets the map or the bytes while they change.
 
         /// <summary>The row was deleted: its bytes blanked in place.</summary>
         public void RowRemoved(string rowCode)
@@ -135,6 +146,10 @@ namespace Xod.Services
             AccessCount = 0;
         }
 
+        /// <summary>
+        /// Builds the row map from the bytes, by <see cref="PageRows"/>: the one place a page's rows are found. A page
+        /// it can't follow throws <see cref="DatabaseFileException"/>.
+        /// </summary>
         public void EnsureRowIndex()
         {
             if (RowIndex != null || Bytes == null || Length <= 0)
@@ -142,27 +157,17 @@ namespace Xod.Services
 
             var map = new Dictionary<string, (int Offset, int Length)>(256, StringComparer.Ordinal);
             ReadOnlySpan<byte> span = Bytes.AsSpan(0, Length);
-            int cursor = 0;
-            while (cursor < span.Length)
+            int cursor = PageRows.RowsStart(span, Name);
+            while (PageRows.TryNext(span, ref cursor, Name, out int start, out int length, out ReadOnlySpan<byte> code))
             {
-                int relStart = span.Slice(cursor).IndexOf("<Row code=\""u8);
-                if (relStart < 0)
-                    break;
-
-                int absStart = cursor + relStart;
-                int codeStart = absStart + 11;
-                int quoteEnd = span.Slice(codeStart).IndexOf((byte)'"');
-                if (quoteEnd <= 0)
-                    break;
-
-                string code = System.Text.Encoding.UTF8.GetString(span.Slice(codeStart, quoteEnd));
-                int relEnd = span.Slice(absStart).IndexOf("</Row>"u8);
-                if (relEnd < 0)
-                    break;
-
-                int rowLen = relEnd + 6;
-                map[code] = (absStart, rowLen);
-                cursor = absStart + rowLen;
+                // Two rows with one code (XOD 1.x drew a row's code at random, so a page of its can hold two, ISS-197):
+                // both are rows of the page, as the document read has them, and the code names the later one, as the
+                // document read's lookup does. The earlier one keeps its place under a key no code takes (a code has
+                // no '#'). The map kept the later one alone, and a read of the page's rows dropped the earlier.
+                string rowCode = System.Text.Encoding.UTF8.GetString(code);
+                if (map.TryGetValue(rowCode, out var earlier))
+                    map[rowCode + "#" + earlier.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture)] = earlier;
+                map[rowCode] = (start, length);
             }
 
             RowIndex = map;
@@ -170,13 +175,9 @@ namespace Xod.Services
                 RowCount = map.Count;
         }
 
-        public bool TryFindRow(string rowCode, out int startOffset, out int byteLength)
+        // The row map, built here when no reader has yet.
+        private Dictionary<string, (int Offset, int Length)> Map()
         {
-            startOffset = -1;
-            byteLength = 0;
-            if (Bytes == null || Length <= 0 || string.IsNullOrEmpty(rowCode))
-                return false;
-
             var idxMap = RowIndex;
             if (idxMap == null)
             {
@@ -186,56 +187,66 @@ namespace Xod.Services
                     idxMap = RowIndex;
                 }
             }
+            return idxMap;
+        }
 
+        /// <summary>How many rows the page holds, by its row map.</summary>
+        public int RowsMapped() => Map()?.Count ?? 0;
+
+        /// <summary>The row's place in the page, from the row map (built here when no reader has yet).</summary>
+        public bool TryFindRow(string rowCode, out int startOffset, out int byteLength)
+        {
+            startOffset = -1;
+            byteLength = 0;
+            if (Bytes == null || Length <= 0 || string.IsNullOrEmpty(rowCode))
+                return false;
+
+            var idxMap = Map();
+
+            if (idxMap != null && idxMap.TryGetValue(rowCode, out var loc))
+            {
+                startOffset = loc.Offset;
+                byteLength = loc.Length;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>The page's last row, its code, offset and length: false when it has none.</summary>
+        public bool TryLastRow(out string rowCode, out int startOffset, out int byteLength)
+        {
+            rowCode = null;
+            startOffset = -1;
+            byteLength = 0;
+            var idxMap = Map();
+            if (idxMap == null)
+                return false;
+
+            foreach (var entry in idxMap)
+            {
+                if (entry.Value.Offset > startOffset)
+                {
+                    rowCode = entry.Key;
+                    startOffset = entry.Value.Offset;
+                    byteLength = entry.Value.Length;
+                }
+            }
+            return rowCode != null;
+        }
+
+        /// <summary>The rows in page order, each its offset and length.</summary>
+        public List<(int Offset, int Length)> RowsInOrder()
+        {
+            var idxMap = Map();
+
+            var rows = new List<(int Offset, int Length)>(idxMap?.Count ?? 0);
             if (idxMap != null)
             {
-                if (idxMap.TryGetValue(rowCode, out var loc))
-                {
-                    startOffset = loc.Offset;
-                    byteLength = loc.Length;
-                    return true;
-                }
-                return false;
+                foreach (var loc in idxMap.Values)
+                    rows.Add(loc);
+                rows.Sort((a, b) => a.Offset.CompareTo(b.Offset));
             }
-
-            ReadOnlySpan<byte> span = Bytes.AsSpan(0, Length);
-            if (rowCode.Length <= 48)
-            {
-                Span<byte> patternBuf = stackalloc byte[64];
-                "<Row code=\""u8.CopyTo(patternBuf);
-                int codeLen = System.Text.Encoding.UTF8.GetBytes(rowCode.AsSpan(), patternBuf.Slice(11));
-                patternBuf[11 + codeLen] = (byte)'"';
-                patternBuf[12 + codeLen] = (byte)'>';
-                ReadOnlySpan<byte> pattern = patternBuf.Slice(0, 13 + codeLen);
-                int idx = span.IndexOf(pattern);
-                if (idx >= 0)
-                {
-                    int endIdx = span.Slice(idx).IndexOf("</Row>"u8);
-                    if (endIdx >= 0)
-                    {
-                        startOffset = idx;
-                        byteLength = endIdx + 6;
-                        return true;
-                    }
-                }
-                return false;
-            }
-            else
-            {
-                byte[] startPattern = System.Text.Encoding.UTF8.GetBytes($"<Row code=\"{rowCode}\">");
-                int idx = span.IndexOf(startPattern);
-                if (idx >= 0)
-                {
-                    int endIdx = span.Slice(idx).IndexOf("</Row>"u8);
-                    if (endIdx >= 0)
-                    {
-                        startOffset = idx;
-                        byteLength = endIdx + 6;
-                        return true;
-                    }
-                }
-                return false;
-            }
+            return rows;
         }
     }
 }

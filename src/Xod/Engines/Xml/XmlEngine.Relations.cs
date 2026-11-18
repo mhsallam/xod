@@ -192,7 +192,7 @@ namespace Xod.Engines.Xml
                 if (options.EnableIndexing && pkProps.Count > 0 && pkProps.Count == itemPrimarySets.Count)
                 {
                     object example = PopulateItemProperties(type, itemPrimarySets);
-                    if (TryLookupCodesByProperties(type, example, pkProps, out var pkCodes, out bool pkCovered) && pkCovered)
+                    if (TryLookupByKey(type, example, out var pkCodes))
                     {
                         if (pkCodes.Count > 0)
                         {

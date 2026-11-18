@@ -63,6 +63,41 @@ namespace Xod.Engines.Xml
                 || (value is DateOnly d && d == default);
         }
 
+        /// <summary>How much of its type's key an object sets.</summary>
+        private enum KeyParts { NoKey, None, Some, All }
+
+        /// <summary>
+        /// ISS-188: a key part at its type's default is no value, by the rule every example takes
+        /// (<see cref="SetsProperty"/>). The index looked a part at its default up literally, a <c>0</c> included, while
+        /// the example matcher and the primary-key check took it as unset, so such a key named different rows with and
+        /// without indexing, and a row stored with one was never kept unique. A row is written only with every part set
+        /// (<see cref="ValidateUniqueAndPrimaryConstraints"/>, after an autonumber is given its value); a lookup by key
+        /// needs every part; an example that sets some parts and not others is refused.
+        /// </summary>
+        private KeyParts KeyPartsSet(Type type, object item)
+        {
+            propertyService.LoadType(type);
+            var meta = propertyService.GetMetadata(type);
+            var primaryProps = meta != null
+                ? meta.PrimaryKeyProperties
+                : propertyService.Properties(type.FullName).Where(s => s.IsPrimaryKey).ToArray();
+            if (primaryProps.Length == 0)
+                return KeyParts.NoKey;
+
+            int set = 0;
+            foreach (var prop in primaryProps)
+                if (SetsProperty(prop, item))
+                    set++;
+            return set == 0 ? KeyParts.None : set == primaryProps.Length ? KeyParts.All : KeyParts.Some;
+        }
+
+        /// <summary>An example that sets some of its type's key parts and not others names no row: refused (ISS-188).</summary>
+        private void RefusePartKey(Type type, object example)
+        {
+            if (example != null && KeyPartsSet(type, example) == KeyParts.Some)
+                exceptionService.Throw(new MissingPrimaryKeyValueException());
+        }
+
         private void ValidateUniqueAndPrimaryConstraints(Type type, object item, string existingCodeToIgnore)
         {
             var meta = propertyService.GetMetadata(type);
@@ -72,6 +107,11 @@ namespace Xod.Engines.Xml
             var uniqueProps = meta != null
                 ? meta.UniqueProperties
                 : propertyService.Properties(type.FullName).Where(s => s.IsUnique).ToArray();
+
+            // 0. A row is written with every key part set (ISS-188): one with a part at its default was stored, and the
+            // checks below, which skip such a key, never kept it unique.
+            if (primaryProps.Length > 0 && KeyPartsSet(type, item) != KeyParts.All)
+                exceptionService.Throw(new MissingPrimaryKeyValueException());
 
             // 1. Check Primary Key (supports single or composite primary key)
             if (primaryProps.Length > 0)

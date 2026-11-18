@@ -477,8 +477,7 @@ namespace Xod.Services
                 {
                     if (dirtyBatchRawPages.Contains(name) || dirtyBufferedRawPages.Contains(name))
                         continue;
-                    cachedRawPages[name]?.ReleasePooledBuffer();
-                    cachedRawPages.Remove(name);
+                    cachedRawPages.Remove(name); // its bytes stay with it (RawPageBuffer.ReleasePooledBuffer)
                 }
                 foreach (string name in cachedFiles.Keys.ToList())
                 {

@@ -58,7 +58,7 @@ namespace Xod.Services
                     var distinctPages = unindexedCachedPages.Distinct().ToArray();
                     if (distinctPages.Length >= 4)
                     {
-                        System.Threading.Tasks.Parallel.For(0, distinctPages.Length, i =>
+                        ParallelReads.For(distinctPages.Length, i =>
                         {
                             lock (distinctPages[i])
                             {
@@ -83,7 +83,7 @@ namespace Xod.Services
 
                 string[] missingPages = missingSet.ToArray();
                 var loadedBuffers = new RawPageBuffer[missingPages.Length];
-                System.Threading.Tasks.Parallel.For(0, missingPages.Length, i =>
+                ParallelReads.For(missingPages.Length, i =>
                 {
                     string filePath = Path.Combine(root, missingPages[i]);
                     var buf = ReadRawPageBufferFromDisk(filePath);
@@ -113,7 +113,7 @@ namespace Xod.Services
                         }
                         else
                         {
-                            buf.ReleasePooledBuffer();
+                            buf.ReleasePooledBuffer(); // never cached: no reader holds it
                         }
                     }
                 }
@@ -127,7 +127,7 @@ namespace Xod.Services
             var loadedFiles = new XFile[missingXFiles.Length];
             string currentPwd = password;
 
-            System.Threading.Tasks.Parallel.For(0, missingXFiles.Length, i =>
+            ParallelReads.For(missingXFiles.Length, i =>
             {
                 string filePath = Path.Combine(root, missingXFiles[i]);
                 if (OnDiskHere(filePath))
@@ -198,15 +198,21 @@ namespace Xod.Services
                     Bytes = rented,
                     Length = totalRead,
                     DiskSyncedLength = totalRead,
-                    IsPooled = true
+                    IsPooled = true,
+                    Name = Path.GetFileName(filePath)
                 };
                 buf.EnsureRowIndex();
                 return buf;
             }
-            catch
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is DatabaseFileException)
             {
                 if (rented != null)
                     PageBufferPool.Return(rented);
+                // A file it can't read is read as a document instead (OpenFileOrCreate), which names it when it can't
+                // either. A page whose rows it can't follow (PageRows) is damaged: read whole, it hid a fault of the
+                // scanner as a slower read (ISS-143).
+                if (e is DatabaseFileException)
+                    throw;
                 return null;
             }
         }
@@ -259,21 +265,42 @@ namespace Xod.Services
 
             if (rawPage != null)
             {
-                try
-                {
-                    if (rawPage.TryFindRow(rowCode, out int startIdx, out int rowLen))
-                    {
-                        string rowXml = System.Text.Encoding.UTF8.GetString(rawPage.Span.Slice(startIdx, rowLen));
-                        return XmlText.Parse(rowXml);
-                    }
-                }
-                catch
-                {
-                }
+                // A row the map doesn't hold isn't on the page (the map is the page's whole list of rows); the
+                // document read below gave the same answer, read again. A row found that doesn't parse used to read
+                // as absent (ISS-144).
+                if (rawPage.TryFindRow(rowCode, out int startIdx, out int rowLen))
+                    return ParseRow(rawPage, startIdx, rowLen, rowCode);
             }
 
             XFile fullFile = OpenFileOrCreate(normalizedName, typeof(TablePage), openOnly: true);
             return fullFile?.GetRowByCode(rowCode);
+        }
+
+        /// <summary>A row's XML from the page's bytes; a row that doesn't parse is a damaged page (ISS-144).</summary>
+        private static XElement ParseRow(RawPageBuffer rawPage, int start, int length, string rowCode)
+        {
+            string rowXml = System.Text.Encoding.UTF8.GetString(rawPage.Span.Slice(start, length));
+            try
+            {
+                return XmlText.Parse(rowXml);
+            }
+            catch (System.Xml.XmlException ex)
+            {
+                throw PageRows.Damaged(rawPage.Name, (rowCode != null ? $"its row '{rowCode}'" : $"its row at offset {start}") +
+                    $" doesn't parse ({ex.Message})");
+            }
+        }
+
+        // The page's raw bytes for a read of its rows, loaded when no cache holds it; null when the page is held as a
+        // document, or isn't read from its bytes (a password, another format).
+        private RawPageBuffer RawPageForRead(string pageFileName)
+        {
+            if (!string.IsNullOrEmpty(password) || storageSerializer.Format != StorageFormat.Xml)
+                return null;
+            lock (syncLock)
+            {
+                return GetOrLoadRawPageUnlocked(pageFileName, out _);
+            }
         }
 
         internal bool TryReadEntityFromRawPage(string pageFileName, string rowCode, TypeMetadata meta, out object entity)
@@ -312,7 +339,6 @@ namespace Xod.Services
                 return null;
 
             string normalizedName = Path.GetFileName(pageFileName);
-            RawPageBuffer rawPage = null;
             lock (syncLock)
             {
                 if (cachedFiles.TryGetValue(normalizedName, out var cached))
@@ -320,68 +346,16 @@ namespace Xod.Services
                     cached.LastCheckout = DateTime.UtcNow;
                     return cached.File.Rows().LastOrDefault();
                 }
-
-                cachedRawPages.TryGetValue(normalizedName, out rawPage);
             }
 
-            if (rawPage?.Bytes != null)
+            // The last row by the page's row map. It was the last "<Row code=" in the page's bytes, or in the last
+            // 64 KB of its file, which a value could hold (ISS-143).
+            RawPageBuffer rawPage = RawPageForRead(pageFileName);
+            if (rawPage != null)
             {
-                try
-                {
-                    ReadOnlySpan<byte> span = rawPage.Span;
-                    int startIdx = span.LastIndexOf("<Row code=\""u8);
-                    if (startIdx >= 0)
-                    {
-                        ReadOnlySpan<byte> tail = span.Slice(startIdx);
-                        int endIdx = tail.IndexOf("</Row>"u8);
-                        if (endIdx >= 0)
-                        {
-                            string rowXml = System.Text.Encoding.UTF8.GetString(tail.Slice(0, endIdx + 6));
-                            return XmlText.Parse(rowXml);
-                        }
-                    }
-                }
-                catch
-                {
-                }
-            }
-
-            if (string.IsNullOrEmpty(password) && storageSerializer.Format == StorageFormat.Xml)
-            {
-                string filePath = Path.IsPathRooted(pageFileName) ? pageFileName : Path.Combine(root, normalizedName);
-                if (OnDiskHere(filePath))
-                {
-                    try
-                    {
-                        using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096);
-                        long len = fs.Length;
-                        if (len > 16)
-                        {
-                            int readLen = (int)Math.Min(len, 65536L);
-                            fs.Seek(len - readLen, SeekOrigin.Begin);
-                            byte[] buf = new byte[readLen];
-                            int actual = fs.Read(buf, 0, readLen);
-                            ReadOnlySpan<byte> span = buf.AsSpan(0, actual);
-                            if (!IsEncryptedPayload(buf))
-                            {
-                                int startIdx = span.LastIndexOf("<Row code=\""u8);
-                                if (startIdx >= 0)
-                                {
-                                    ReadOnlySpan<byte> tail = span.Slice(startIdx);
-                                    int endIdx = tail.IndexOf("</Row>"u8);
-                                    if (endIdx >= 0)
-                                    {
-                                        string rowXml = System.Text.Encoding.UTF8.GetString(tail.Slice(0, endIdx + 6));
-                                        return XmlText.Parse(rowXml);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch
-                    {
-                    }
-                }
+                if (!rawPage.TryLastRow(out string lastCode, out int lastStart, out int lastLength))
+                    return null;
+                return ParseRow(rawPage, lastStart, lastLength, lastCode);
             }
 
             XFile fullFile = OpenFileOrCreate(normalizedName, typeof(TablePage), openOnly: true);
@@ -391,76 +365,23 @@ namespace Xod.Services
         internal bool TryReadLastEntityFromRawPage(string pageFileName, TypeMetadata meta, out object entity)
         {
             entity = null;
-            if (string.IsNullOrEmpty(pageFileName) ||
-                meta == null ||
-                !meta.IsPureScalarStandalone ||
-                !string.IsNullOrEmpty(password) ||
-                storageSerializer.Format != StorageFormat.Xml)
-            {
+            if (string.IsNullOrEmpty(pageFileName) || meta == null || !meta.IsPureScalarStandalone)
                 return false;
-            }
 
-            string normalizedName = Path.GetFileName(pageFileName);
-            RawPageBuffer rawPage = null;
             lock (syncLock)
             {
-                if (cachedFiles.ContainsKey(normalizedName))
+                if (cachedFiles.ContainsKey(Path.GetFileName(pageFileName)))
                     return false;
-
-                cachedRawPages.TryGetValue(normalizedName, out rawPage);
             }
 
-            if (rawPage?.Bytes != null)
-            {
-                ReadOnlySpan<byte> span = rawPage.Span;
-                int startIdx = span.LastIndexOf("<Row code=\""u8);
-                if (startIdx >= 0)
-                {
-                    ReadOnlySpan<byte> tail = span.Slice(startIdx);
-                    int endIdx = tail.IndexOf("</Row>"u8);
-                    if (endIdx >= 0)
-                    {
-                        return TryParseEntityFromUtf8Row(tail.Slice(0, endIdx + 6), meta, out entity);
-                    }
-                }
+            RawPageBuffer rawPage = RawPageForRead(pageFileName);
+            if (rawPage == null)
                 return false;
-            }
 
-            string filePath = Path.IsPathRooted(pageFileName) ? pageFileName : Path.Combine(root, normalizedName);
-            if (OnDiskHere(filePath))
-            {
-                try
-                {
-                    using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096);
-                    long len = fs.Length;
-                    if (len > 16)
-                    {
-                        int readLen = (int)Math.Min(len, 65536L);
-                        fs.Seek(len - readLen, SeekOrigin.Begin);
-                        byte[] buf = new byte[readLen];
-                        int actual = fs.Read(buf, 0, readLen);
-                        ReadOnlySpan<byte> span = buf.AsSpan(0, actual);
-                        if (!IsEncryptedPayload(buf))
-                        {
-                            int startIdx = span.LastIndexOf("<Row code=\""u8);
-                            if (startIdx >= 0)
-                            {
-                                ReadOnlySpan<byte> tail = span.Slice(startIdx);
-                                int endIdx = tail.IndexOf("</Row>"u8);
-                                if (endIdx >= 0)
-                                {
-                                    return TryParseEntityFromUtf8Row(tail.Slice(0, endIdx + 6), meta, out entity);
-                                }
-                            }
-                        }
-                    }
-                }
-                catch
-                {
-                }
-            }
-
-            return false;
+            if (!rawPage.TryLastRow(out _, out int lastStart, out int lastLength))
+                return false;
+            // False when the fast parse can't take the row: its caller reads it as XML (ReadLastRowColdOrCached).
+            return TryParseEntityFromUtf8Row(rawPage.Span.Slice(lastStart, lastLength), meta, out entity);
         }
 
         internal bool TryGetRowFromRawPage(string pageFileName, string rowCode, out XElement rowElement, out int startOffset, out int byteLength)
@@ -481,19 +402,12 @@ namespace Xod.Services
             if (rawPage == null)
                 return false;
 
-            try
+            if (rawPage.TryFindRow(rowCode, out int startIdx, out int len))
             {
-                if (rawPage.TryFindRow(rowCode, out int startIdx, out int len))
-                {
-                    string rowXml = System.Text.Encoding.UTF8.GetString(rawPage.Span.Slice(startIdx, len));
-                    rowElement = XmlText.Parse(rowXml);
-                    startOffset = startIdx;
-                    byteLength = len;
-                    return true;
-                }
-            }
-            catch
-            {
+                rowElement = ParseRow(rawPage, startIdx, len, rowCode);
+                startOffset = startIdx;
+                byteLength = len;
+                return true;
             }
 
             return false;
@@ -617,7 +531,7 @@ namespace Xod.Services
                     if (rawPage.RowCount > 0)
                         rawPage.RowCount--;
 
-                    hasRemainingRows = rawPage.RowCount > 0 || (rawPage.RowIndex != null ? rawPage.RowIndex.Count > 0 : rawPage.Span.IndexOf("<Row code=\""u8) >= 0);
+                    hasRemainingRows = rawPage.RowCount > 0 || rawPage.RowsMapped() > 0;
                 }
                 else if (replacementBytes.Length <= oldByteLength)
                 {
@@ -735,7 +649,8 @@ namespace Xod.Services
                         DirtyStartOffset = 0,
                         IsNewFile = true,
                         IsPooled = true,
-                        RowCount = 0
+                        RowCount = 0,
+                        Name = pageFileName
                     };
 
                     if (cachedRawPages.Count >= CACHE_SIZE)
@@ -769,7 +684,8 @@ namespace Xod.Services
                                 IsNewFile = true,
                                 IsPooled = true,
                                 RowCount = 0,
-                                RowIndex = new Dictionary<string, (int, int)>(256, StringComparer.Ordinal)
+                                RowIndex = new Dictionary<string, (int, int)>(256, StringComparer.Ordinal),
+                                Name = pageFileName
                             };
                             cachedRawPages[pageFileName] = rawPage;
                         }
@@ -1169,12 +1085,26 @@ namespace Xod.Services
             return pos;
         }
 
+        /// <summary>
+        /// The object a row of a type of scalars holds, parsed from its bytes: the fast path of a read. It reads the rows
+        /// XOD writes: elements, attributes and escaped text. Any other row it leaves to its caller, which reads it as XML
+        /// and reads it or names the damage (ISS-144): a row holding CDATA, a comment or a processing instruction, a
+        /// value it doesn't parse, a close tag that doesn't name its element, or a row that ends before its element. It
+        /// left such a value at its default, read <c>&lt;![CDATA[</c> as text, ended a tag at a '>' inside a quoted
+        /// attribute value, and returned the object read so far. On a row written by hand the XML read is stricter in
+        /// three places, filed as ISS-195: <c>nil</c> found by its text (a single-quoted one is missed), a number in
+        /// exponent form read as a decimal, and a character reference written <c>&amp;#X</c>.
+        /// </summary>
         private static bool TryParseEntityFromUtf8Row(ReadOnlySpan<byte> rowSpan, TypeMetadata meta, out object entity)
         {
             entity = null;
             try
             {
-                int rowOpenEnd = rowSpan.IndexOf((byte)'>');
+                // Markup it doesn't follow: CDATA, comments, processing instructions.
+                if (rowSpan.IndexOf("<!"u8) >= 0 || rowSpan.IndexOf("<?"u8) >= 0)
+                    return false;
+
+                int rowOpenEnd = PageRows.TagEnd(rowSpan, 0) - 1;
                 if (rowOpenEnd < 0)
                     return false;
 
@@ -1183,7 +1113,7 @@ namespace Xod.Services
                     return false;
 
                 int cursor = rowOpenEnd + 1 + entityOpenStart;
-                int entityOpenEnd = rowSpan.Slice(cursor).IndexOf((byte)'>');
+                int entityOpenEnd = PageRows.TagEnd(rowSpan, cursor) - 1 - cursor;
                 if (entityOpenEnd < 0)
                     return false;
 
@@ -1203,15 +1133,20 @@ namespace Xod.Services
                 {
                     int nextLt = rowSpan.Slice(cursor).IndexOf((byte)'<');
                     if (nextLt < 0)
-                        break;
+                        return false;
 
                     cursor += nextLt;
-                    if (cursor + 1 >= rowSpan.Length || rowSpan[cursor + 1] == (byte)'/')
-                        break;
+                    if (cursor + 1 >= rowSpan.Length)
+                        return false;
+                    if (rowSpan[cursor + 1] == (byte)'/')
+                        break; // the entity's close tag: the row is read
 
-                    int tagEndRel = rowSpan.Slice(cursor + 1).IndexOf((byte)'>');
+                    int tagEnd = PageRows.TagEnd(rowSpan, cursor);
+                    if (tagEnd < 0)
+                        return false;
+                    int tagEndRel = tagEnd - 1 - (cursor + 1);
                     if (tagEndRel <= 0)
-                        break;
+                        return false;
 
                     bool isSelfClosing = rowSpan[cursor + tagEndRel] == (byte)'/';
                     int nameLen = isSelfClosing ? tagEndRel - 1 : tagEndRel;
@@ -1248,14 +1183,20 @@ namespace Xod.Services
 
                     int valEndRel = rowSpan.Slice(cursor).IndexOf("</"u8);
                     if (valEndRel < 0)
-                        break;
+                        return false;
 
                     ReadOnlySpan<byte> valSpan = rowSpan.Slice(cursor, valEndRel);
                     cursor += valEndRel + 2;
-                    int closeGt = rowSpan.Slice(cursor).IndexOf((byte)'>');
-                    if (closeGt < 0)
-                        break;
-                    cursor += closeGt + 1;
+                    // The close tag names the element it closes, as the XML reader requires.
+                    if (!rowSpan.Slice(cursor).StartsWith(propNameSpan))
+                        return false;
+                    cursor += propNameSpan.Length;
+                    while (cursor < rowSpan.Length && (rowSpan[cursor] == (byte)' ' || rowSpan[cursor] == (byte)'\t' ||
+                                                       rowSpan[cursor] == (byte)'\r' || rowSpan[cursor] == (byte)'\n'))
+                        cursor++;
+                    if (cursor >= rowSpan.Length || rowSpan[cursor] != (byte)'>')
+                        return false;
+                    cursor++;
 
                     if (matchedProp == null)
                         continue;
@@ -1276,14 +1217,20 @@ namespace Xod.Services
                         case ScalarPropertyKind.Int32:
                             if (System.Buffers.Text.Utf8Parser.TryParse(valSpan, out int iv, out int ic) && ic == valSpan.Length)
                                 matchedProp.IntSetter(item, iv);
+                            else
+                                return false;
                             break;
                         case ScalarPropertyKind.Int64:
                             if (System.Buffers.Text.Utf8Parser.TryParse(valSpan, out long lv, out int lc) && lc == valSpan.Length)
                                 matchedProp.LongSetter(item, lv);
+                            else
+                                return false;
                             break;
                         case ScalarPropertyKind.Decimal:
                             if (System.Buffers.Text.Utf8Parser.TryParse(valSpan, out decimal decv, out int decc) && decc == valSpan.Length)
                                 matchedProp.DecimalSetter(item, decv);
+                            else
+                                return false;
                             break;
                         case ScalarPropertyKind.Double:
                             if (System.Buffers.Text.Utf8Parser.TryParse(valSpan, out double dv, out int dc) && dc == valSpan.Length)
@@ -1293,15 +1240,21 @@ namespace Xod.Services
                                 string dStr = UnescapeXmlUtf8(valSpan);
                                 if (double.TryParse(dStr, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands, System.Globalization.CultureInfo.InvariantCulture, out double dv2))
                                     matchedProp.DoubleSetter(item, dv2);
+                                else
+                                    return false;
                             }
                             break;
                         case ScalarPropertyKind.Boolean:
                             if (System.Buffers.Text.Utf8Parser.TryParse(valSpan, out bool bv, out int bc) && bc == valSpan.Length)
                                 matchedProp.BoolSetter(item, bv);
+                            else
+                                return false;
                             break;
                         case ScalarPropertyKind.Guid:
                             if (System.Buffers.Text.Utf8Parser.TryParse(valSpan, out Guid gv, out int gc) && gc == valSpan.Length)
                                 matchedProp.GuidSetter(item, gv);
+                            else
+                                return false;
                             break;
                         case ScalarPropertyKind.String:
                             matchedProp.StringSetter(item, UnescapeXmlUtf8(valSpan));
@@ -1338,106 +1291,56 @@ namespace Xod.Services
 
         internal bool TryReadEntitySliceFromRawPage(string pageFileName, TypeMetadata meta, ref int remainingSkip, int maxTake, System.Collections.IList outEntities)
         {
-            if (!string.IsNullOrEmpty(password) ||
-                storageSerializer.Format != StorageFormat.Xml ||
-                meta == null ||
-                !meta.IsPureScalarStandalone)
-            {
+            if (meta == null || !meta.IsPureScalarStandalone)
                 return false;
-            }
 
-            RawPageBuffer rawPage;
-            lock (syncLock)
-            {
-                rawPage = GetOrLoadRawPageUnlocked(pageFileName, out _);
-            }
-
+            RawPageBuffer rawPage = RawPageForRead(pageFileName);
             if (rawPage == null)
                 return false;
 
+            // All or nothing: a row the fast parse can't take sends the whole page to its caller's XML read
+            // (TryReadRowSliceFromRawPage), which reads every row or names the damaged one. It was left out (ISS-144).
             ReadOnlySpan<byte> span = rawPage.Span;
-            int cursor = 0;
-            int added = 0;
-
-            while (cursor < span.Length && added < maxTake)
+            int skip = remainingSkip;
+            var taken = new List<object>();
+            foreach (var row in rawPage.RowsInOrder())
             {
-                int relStart = span.Slice(cursor).IndexOf("<Row code=\""u8);
-                if (relStart < 0)
+                if (taken.Count >= maxTake)
                     break;
-
-                int absStart = cursor + relStart;
-                int relEnd = span.Slice(absStart).IndexOf("</Row>"u8);
-                if (relEnd < 0)
-                    break;
-
-                int rowLen = relEnd + 6;
-                if (remainingSkip > 0)
+                if (skip > 0)
                 {
-                    remainingSkip--;
+                    skip--;
+                    continue;
                 }
-                else
-                {
-                    if (TryParseEntityFromUtf8Row(span.Slice(absStart, rowLen), meta, out object entity))
-                    {
-                        outEntities.Add(entity);
-                        added++;
-                    }
-                }
-
-                cursor = absStart + rowLen;
+                if (!TryParseEntityFromUtf8Row(span.Slice(row.Offset, row.Length), meta, out object entity))
+                    return false;
+                taken.Add(entity);
             }
 
+            remainingSkip = skip;
+            foreach (var entity in taken)
+                outEntities.Add(entity);
             return true;
         }
 
         internal bool TryReadRowSliceFromRawPage(string pageFileName, ref int remainingSkip, int maxTake, List<XElement> outRows)
         {
-            if (!string.IsNullOrEmpty(password) || storageSerializer.Format != StorageFormat.Xml)
-                return false;
-
-            RawPageBuffer rawPage;
-            lock (syncLock)
-            {
-                rawPage = GetOrLoadRawPageUnlocked(pageFileName, out _);
-            }
-
+            RawPageBuffer rawPage = RawPageForRead(pageFileName);
             if (rawPage == null)
                 return false;
 
-            ReadOnlySpan<byte> span = rawPage.Span;
-            int cursor = 0;
             int added = 0;
-
-            while (cursor < span.Length && added < maxTake)
+            foreach (var row in rawPage.RowsInOrder())
             {
-                int relStart = span.Slice(cursor).IndexOf("<Row code=\""u8);
-                if (relStart < 0)
+                if (added >= maxTake)
                     break;
-
-                int absStart = cursor + relStart;
-                int relEnd = span.Slice(absStart).IndexOf("</Row>"u8);
-                if (relEnd < 0)
-                    break;
-
-                int rowLen = relEnd + 6;
                 if (remainingSkip > 0)
                 {
                     remainingSkip--;
+                    continue;
                 }
-                else
-                {
-                    try
-                    {
-                        string rowXml = System.Text.Encoding.UTF8.GetString(span.Slice(absStart, rowLen));
-                        outRows.Add(XmlText.Parse(rowXml));
-                        added++;
-                    }
-                    catch
-                    {
-                    }
-                }
-
-                cursor = absStart + rowLen;
+                outRows.Add(ParseRow(rawPage, row.Offset, row.Length, null));
+                added++;
             }
 
             return true;
@@ -1446,15 +1349,7 @@ namespace Xod.Services
         internal bool TryCountRowsInRawPage(string pageFileName, out int rowCount)
         {
             rowCount = 0;
-            if (!string.IsNullOrEmpty(password) || storageSerializer.Format != StorageFormat.Xml)
-                return false;
-
-            RawPageBuffer rawPage;
-            lock (syncLock)
-            {
-                rawPage = GetOrLoadRawPageUnlocked(pageFileName, out _);
-            }
-
+            RawPageBuffer rawPage = RawPageForRead(pageFileName);
             if (rawPage == null)
                 return false;
 
@@ -1464,23 +1359,7 @@ namespace Xod.Services
                 return true;
             }
 
-            if (rawPage.RowIndex != null)
-            {
-                rowCount = rawPage.RowIndex.Count;
-                rawPage.RowCount = rowCount;
-                return true;
-            }
-
-            ReadOnlySpan<byte> span = rawPage.Span;
-            int cursor = 0;
-            while (cursor < span.Length)
-            {
-                int relStart = span.Slice(cursor).IndexOf("<Row code=\""u8);
-                if (relStart < 0)
-                    break;
-                rowCount++;
-                cursor += relStart + 11;
-            }
+            rowCount = rawPage.RowsMapped();
             rawPage.RowCount = rowCount;
             return true;
         }
@@ -1497,15 +1376,9 @@ namespace Xod.Services
                         break;
                 }
             }
+            // An evicted page keeps its bytes: a reader beside this one may hold it (RawPageBuffer.ReleasePooledBuffer).
             for (int i = 0; i < keysToRemove.Count; i++)
-            {
-                string key = keysToRemove[i];
-                if (cachedRawPages.TryGetValue(key, out var rawPage))
-                {
-                    cachedRawPages.Remove(key);
-                    rawPage?.ReleasePooledBuffer();
-                }
-            }
+                cachedRawPages.Remove(keysToRemove[i]);
         }
 
         /// <summary>
