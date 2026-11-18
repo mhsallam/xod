@@ -23,6 +23,7 @@ The project's memory. `xod2` is the active rework of XOD; `xod` and `xod.core` a
 - [PLAN-074](plans/PLAN-074-a-row-is-deleted-by-its-code.md) - a row is deleted by its code, with one cascade (2026-11-18, done): ISS-130, ISS-180, ISS-185, ISS-186 resolved; ISS-187 filed
 - [PLAN-073](plans/PLAN-073-a-value-xod-cant-store-is-refused.md) - a value XOD can't store is refused, not lost (2026-11-18, done): ISS-142 resolved; ISS-184 filed
 - [PLAN-072](plans/PLAN-072-a-char-reads-back-as-written.md) - a char reads back as written (2026-11-18, done): ISS-140 resolved; ISS-183 filed
+- [RELEASE-TRIAGE-2026-11-18](RELEASE-TRIAGE-2026-11-18.md) - what blocks the next stable release, in order, and what waits; the decisions on ISS-188 and ISS-191
 - [VERIFY-2026-11-18](VERIFY-2026-11-18-open-issues.md) - every open issue checked against the code with probes (2026-11-18): 2 closed, 4 filed (ISS-179 to ISS-182), texts corrected
 - [PLAN-071](plans/PLAN-071-the-gate-runs-itself.md) - the gate in the repository, and warnings that fail the build (2026-11-18, done): ISS-158 resolved in part
 - [PLAN-070](plans/PLAN-070-delete-where-and-drop-all-are-one-write.md) - DeleteWhere and DropAll are one write (2026-11-17, done): ISS-176 resolved in direct mode
