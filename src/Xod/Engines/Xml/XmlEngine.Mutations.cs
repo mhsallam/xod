@@ -648,10 +648,10 @@ namespace Xod.Engines.Xml
                         .OrderByDescending(s => s.PropertyType != null && ValueHelper.IsScalarType(s.PropertyType)).ToList();
                 }
 
-                string pageCode = rowTree.Page?.GetFileCode();
-
-                foreach (var row in rowTree.Rows)
+                foreach (var match in rowTree.Rows)
                 {
+                    XElement row = match.Row;
+                    string pageCode = match.Page?.GetFileCode();
                     XAttribute rowCodeAtt = row.Attribute("code");
                     string itemCode = rowCodeAtt != null && pageCode != null
                         ? $"{pageCode}.{rowCodeAtt.Value}"
@@ -808,7 +808,7 @@ namespace Xod.Engines.Xml
                         }
                     }
 
-                    ioService.Save(rowTree.Page);
+                    ioService.Save(match.Page);
                     updated = true;
                 }
             }
@@ -1073,10 +1073,12 @@ namespace Xod.Engines.Xml
                     // example, so a child equal to another parent's went too (ISS-185). The statement's trigger is
                     // the caller's item, fired once.
                     XRowTree rowTree = GetTree(type, item);
-                    string pageCode = rowTree?.Page?.GetFileCode();
-                    var itemCodes = rowTree == null || pageCode == null
+                    var itemCodes = rowTree == null
                         ? new List<string>()
-                        : rowTree.Rows.Select(r => r.Attribute("code")?.Value).Where(c => c != null).Select(c => $"{pageCode}.{c}").ToList();
+                        : rowTree.Rows
+                            .Where(m => m.Page != null && m.Row.Attribute("code") != null)
+                            .Select(m => $"{m.Page.GetFileCode()}.{m.Row.Attribute("code").Value}")
+                            .ToList();
                     foreach (var itemCode in itemCodes)
                     {
                         if (DeleteByItemCode(type, itemCode, isCascade, ownTrigger: false))

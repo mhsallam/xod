@@ -229,5 +229,78 @@ namespace Xod.Tests
             Assert.True(db.Delete(new ExNote { Weight = 12.5m }));
             Assert.Equal("Bob", Assert.Single(db.Select<ExNote>()).Text);
         }
+
+        public class ExKeyless
+        {
+            public string Group { get; set; }
+            public string Payload { get; set; }
+        }
+
+        // ISS-136: an Update or Delete by example of a type without a key touches every matching row, on every page, and
+        // no other row: it stopped at the first page that had a match, and returned true. Small pages, so the rows of each
+        // group are spread over several, with the two groups' rows interleaved.
+        private XodContext OpenPaged(string name, bool indexing, out string path)
+        {
+            string dir = Path.Combine(tempRoot, name + "-" + indexing);
+            Directory.CreateDirectory(dir);
+            path = Path.Combine(dir, "ex.xod");
+            return new XodContext(path, null, new DatabaseOptions { EnableIndexing = indexing, PageSize = 2048 });
+        }
+
+        private static void SeedSpread(XodContext db)
+        {
+            for (int i = 0; i < 60; i++)
+                db.Insert(new ExKeyless { Group = i % 3 == 0 ? "other" : "g", Payload = new string('x', 80) + i });
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void An_update_by_example_without_a_key_changes_every_page(bool indexing)
+        {
+            string path;
+            using (var db = OpenPaged("update-pages", indexing, out path))
+            {
+                SeedSpread(db);
+                Assert.True(Directory.GetFiles(Path.GetDirectoryName(path)!, "*.xpag").Length > 2);
+
+                Assert.True(db.Update(new ExKeyless { Group = "g" }, new ExKeyless { Group = "h" }));
+
+                Assert.Equal(40, db.Select<ExKeyless>().Count(r => r.Group == "h"));
+                Assert.Equal(20, db.Select<ExKeyless>().Count(r => r.Group == "other"));
+            }
+            using (var db = new XodContext(path, null, new DatabaseOptions { EnableIndexing = indexing, PageSize = 2048 }))
+            {
+                Assert.Equal(40, db.Select<ExKeyless>().Count(r => r.Group == "h"));
+                Assert.Equal(20, db.Select<ExKeyless>().Count(r => r.Group == "other"));
+                // The rows the example doesn't match keep their own values.
+                Assert.Equal(20, db.Select<ExKeyless>().Where(r => r.Group == "other").Select(r => r.Payload).Distinct().Count());
+            }
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void A_delete_by_example_without_a_key_removes_every_page(bool indexing)
+        {
+            string path;
+            using (var db = OpenPaged("delete-pages", indexing, out path))
+            {
+                SeedSpread(db);
+
+                Assert.True(db.Delete(new ExKeyless { Group = "g" }));
+
+                Assert.Equal(20, db.Count<ExKeyless>());
+                Assert.All(db.Select<ExKeyless>(), r => Assert.Equal("other", r.Group));
+                Assert.False(db.Delete(new ExKeyless { Group = "g" }));
+            }
+            using (var db = new XodContext(path, null, new DatabaseOptions { EnableIndexing = indexing, PageSize = 2048 }))
+            {
+                Assert.Equal(20, db.Count<ExKeyless>());
+                Assert.All(db.Select<ExKeyless>(), r => Assert.Equal("other", r.Group));
+                db.Insert(new ExKeyless { Group = "g", Payload = "after" });
+                Assert.Equal(21, db.Count<ExKeyless>());
+            }
+        }
     }
 }

@@ -287,6 +287,43 @@ namespace Xod.Tests
             }
         }
 
+        // With every page walked (ISS-136), an update or a cascade delete of one parent touches its own keyless children
+        // only, though 30 parents' equal children are spread over many pages: the first-page stop was what bounded the
+        // deletes by example these used to make (ISS-180, ISS-185).
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void Over_many_pages_one_parent_s_update_or_delete_touches_only_its_rows(bool indexing)
+        {
+            string path = NewPath("pages", indexing);
+            var options = new DatabaseOptions { EnableIndexing = indexing, PageSize = 2048 };
+            string pad = new string('k', 60);
+            using (var db = new XodContext(path, null, options))
+            {
+                for (int i = 1; i <= 30; i++)
+                {
+                    db.Insert(new CdParent { Id = i, Name = "P" + i, Kids = new List<CdKid> { new CdKid { Tag = "same", Pad = pad }, new CdKid { Tag = "own" + i, Pad = pad } } });
+                    db.Insert(new CdOrder { Id = i, Name = "O" + i, Lines = new List<CdLine> { new CdLine { Tag = "same", Pad = pad }, new CdLine { Tag = "own" + i, Pad = pad } } });
+                }
+                Assert.True(Directory.GetFiles(Path.GetDirectoryName(path)!, "*.xpag").Length > 6);
+
+                var p1 = db.Find<CdParent>(p => p.Id == 1, include: "*");
+                Assert.True(db.Update(p1, p1));
+                Assert.True(db.Delete(db.Find<CdOrder>(o => o.Id == 1, include: "*")));
+
+                Assert.Equal(60, db.Count<CdKid>());
+                Assert.Equal(60, db.Select<CdParent>(include: "*").Sum(p => p.Kids.Count));
+                Assert.Equal(58, db.Count<CdLine>());
+                Assert.Equal(29, db.Select<CdLine>().Count(l => l.Tag == "same"));
+            }
+            using (var db = new XodContext(path, null, options))
+            {
+                Assert.Equal(60, db.Count<CdKid>());
+                Assert.Equal(58, db.Count<CdLine>());
+                Assert.All(db.Select<CdOrder>(include: "*"), o => Assert.Equal(new[] { "own" + o.Id, "same" }, o.Lines.Select(l => l.Tag).OrderBy(t => t, StringComparer.Ordinal)));
+            }
+        }
+
         // ISS-186: DeleteWhere deletes each match by its code: equal rows without a key are each counted, and each
         // fires its triggers.
         [Theory]

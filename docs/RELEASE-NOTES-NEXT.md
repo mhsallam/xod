@@ -39,6 +39,7 @@ records it. The last release: [2.0.3](RELEASE-NOTES-2.0.3.md).
 
 ## Fixed
 
+- **An `Update` or `Delete` by example of a type without a key reaches every matching row.** It changed or deleted only the matches on the first page that had one, and returned true. ([`PLAN-075`](plans/PLAN-075-a-keyless-update-or-delete-reaches-every-page.md))
 - **A delete or an update no longer takes rows that only look the same.** Updating a parent wrote its children without a key again and then deleted them, with every other parent's equal children; deleting a parent with indexing off deleted other parents' equal children; `DeleteWhere` over equal rows returned too few. A delete by key left a single cascade reference behind, and two rows whose cascades named each other overflowed the stack. Each row is now deleted by its own identity. ([`PLAN-074`](plans/PLAN-074-a-row-is-deleted-by-its-code.md))
 - **A `char` that is a space, a tab or another whitespace character reads back as written.** It read back `'\0'` (a `char?` as null), and a query by it found the row only until the index was rebuilt. ([`PLAN-072`](plans/PLAN-072-a-char-reads-back-as-written.md))
 - **A write that fails leaves nothing behind.** Outside a transaction, with the default durability, an `Insert`, `InsertRange`, `InsertOrUpdate`,

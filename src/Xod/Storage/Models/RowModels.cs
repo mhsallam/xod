@@ -3,11 +3,11 @@ using System.Xml.Linq;
 
 namespace Xod
 {
+    // The rows an example matches (XmlEngine.GetTree), each with the page it is on: they may be on several (ISS-136).
     internal class XRowTree
     {
         public XFile Table { get; set; }
-        public XFile Page { get; set; }
-        public List<XElement> Rows { get; set; }
+        public List<XRow> Rows { get; set; }
     }
 
     internal class XRow

@@ -1060,8 +1060,7 @@ namespace Xod.Engines.Xml
                                 return new XRowTree
                                 {
                                     Table = tableFile,
-                                    Page = pageFile,
-                                    Rows = new List<XElement> { row }
+                                    Rows = new List<XRow> { new XRow { Table = tableFile, Page = pageFile, Row = row } }
                                 };
                             }
                         }
@@ -1073,9 +1072,16 @@ namespace Xod.Engines.Xml
                     ? FilterItemPrimaryProperties(type, example)
                     : FilterItemBaseProperties(type, example);
 
+                // A type without a key: every page's matches, each with its page. The walk stopped at the first page
+                // that had one, so an Update or a Delete by example left the rows on the other pages (ISS-136).
+                // A type with a key keeps that stop, as a mitigation: an example that sets every key matches one row
+                // at most, but one with a key part at its default matches by its other parts here and literally in the
+                // index, so walking every page made an Update with indexing off rewrite every row sharing them
+                // (ISS-188, which decides what such a key names).
+                bool firstPageOnly = pkProps.Count > 0;
                 var result = new XRowTree
                 {
-                    Rows = new List<XElement>()
+                    Rows = new List<XRow>()
                 };
 
                 var test = ExampleTestFor(type, item);
@@ -1092,10 +1098,10 @@ namespace Xod.Engines.Xml
 
                         if (matchedRows.Count > 0)
                         {
-                            result.Rows.AddRange(matchedRows);
+                            result.Rows.AddRange(matchedRows.Select(r => new XRow { Table = tableFile, Page = pageFile, Row = r }));
                             result.Table = tableFile;
-                            result.Page = pageFile;
-                            break;
+                            if (firstPageOnly)
+                                break;
                         }
                     }
                 }
