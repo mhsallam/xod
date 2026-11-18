@@ -17,6 +17,8 @@ The project's memory. `xod2` is the active rework of XOD; `xod` and `xod.core` a
 - [PLAN-046](plans/PLAN-046-file-format-spec.md) - the XOD file format (accepted 2026-11-11): folder, encodings, encryption, pages and rows, scalar forms, the index, the journal; the schema manifest (E1-E3 decided); defects ISS-050 to ISS-055 (ISS-051 to ISS-055 fixed in PLAN-048)
 - [PLAN-047](plans/PLAN-047-conformance-set.md) - the XOD conformance set (built 2026-11-11): dataset and fixtures, 139 query cases, the C# runner, the independent file reader, known-defect markers; G1-G3 decided
 - [PLAN-048](plans/PLAN-048-format-defect-fixes.md) - fixes for the format defects (2026-11-11, not released): keys v2, one XML character policy, the autonumber mark, the row built before the table changes
+- [PLAN-082](plans/PLAN-082-a-collection-xod-cant-read-back-is-refused.md) - a collection XOD can't read back is refused (2026-11-18, done): ISS-184 resolved; ISS-201 filed
+- [PLAN-081](plans/PLAN-081-a-child-s-entry-is-found-by-its-row.md) - a child's entry in its parent's list is found by its row (2026-11-18, done): ISS-135 resolved; ISS-202 to ISS-204 filed
 - [PLAN-080](plans/PLAN-080-what-a-parent-s-update-writes-into-related-rows.md) - what a parent's update writes into the rows it names (2026-11-18, done): ISS-189 and ISS-181 resolved; ISS-200 filed
 - [PLAN-079](plans/PLAN-079-a-key-part-at-its-default-is-no-value.md) - a key part at its default is no value (2026-11-18, done): ISS-188 resolved; ISS-199 filed
 - [PLAN-078](plans/PLAN-078-a-page-s-rows-found-by-one-reader.md) - a page's rows found by one reader, and a row that can't be read is an error (2026-11-18, done): ISS-143 and ISS-144 resolved; ISS-195 to ISS-198 filed

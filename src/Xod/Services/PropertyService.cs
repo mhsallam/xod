@@ -51,6 +51,12 @@ namespace Xod.Services
                                 throw new XodException($"Property '{prop.Name}' of {type.Name} holds {unstorable.Name}, which XOD " +
                                     "can't store: a property holds a number, bool, char, string, enum, Guid, DateTime, DateTimeOffset, " +
                                     "DateOnly, TimeOnly or TimeSpan, a class, or a collection of these. Mark it [NotMapped] to leave it out.");
+                            // A collection a read can't give back, refused the same way (ISS-184).
+                            if (prop.CanWrite && ValueHelper.UnreadableCollection(prop.PropertyType) is Type unreadable)
+                                throw new XodException($"Property '{prop.Name}' of {type.Name} is a {unreadable.Name}, which XOD can't " +
+                                    "read back: a collection property is an array, a map, a List<T>, or an interface a List<T> implements " +
+                                    "(IList<T>, ICollection<T>, IEnumerable<T>, IReadOnlyList<T>, IReadOnlyCollection<T>). Mark it " +
+                                    "[NotMapped] to leave it out.");
 
                             PropertyTypeCategory propTypeCategory = GetPropertyTypeCategory(prop.PropertyType);
                             var propInfoItem = new PropertyInfoItem

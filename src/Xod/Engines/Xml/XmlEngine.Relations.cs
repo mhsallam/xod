@@ -360,16 +360,38 @@ namespace Xod.Engines.Xml
                                 xParent.Add(childrenElement);
                             }
 
-                            var xChild = childrenElement.Elements().FirstOrDefault(s =>
+                            // The parent's entry for this row is the one that names its code (ISS-135). It was found by
+                            // the child's key values, so a child type without a key matched the first entry and took its
+                            // place, and a keyed child whose key is taken took the listed child's entry before the key
+                            // check refused it.
+                            var xChild = childrenElement.Elements().FirstOrDefault(s => s.Value == writeTrack.Code);
+                            if (xChild == null && childPrimProps != null && childPrimProps.Count > 0)
                             {
-                                foreach (var childPrimProp in childPrimProps)
+                                var byKey = childrenElement.Elements().FirstOrDefault(s =>
                                 {
-                                    var xAtt = s.Attribute(childPrimProp.Key);
-                                    if (xAtt == null || xAtt.Value != childPrimProp.Value.ToString())
-                                        return false;
+                                    foreach (var childPrimProp in childPrimProps)
+                                    {
+                                        var xAtt = s.Attribute(childPrimProp.Key);
+                                        if (xAtt == null || xAtt.Value != childPrimProp.Value.ToString())
+                                            return false;
+                                    }
+                                    return true;
+                                });
+                                // An entry with this child's key that names no row: a child deleted before its unlink
+                                // took it out of the list (2.0 and earlier left such entries). A key names one row, so
+                                // the entry is this child's now; left as it was, it hid the child from its parent
+                                // (review of TASK-063). An entry that names a row is left alone, and this row gets an
+                                // entry of its own: whether its key is taken is the key check's to decide, after the
+                                // write (its undo takes the entry out), not the entry's, whose key attributes an update
+                                // of the child alone doesn't write.
+                                if (byKey != null && RowByItemCode(type, byKey.Value)?.Row == null)
+                                {
+                                    byKey.Value = writeTrack.Code;
+                                    statementLog?.Linked.Add((effectivePropType, writeTrack.Parent.Code, type, writeTrack.Code));
+                                    parentChanged = true;
+                                    xChild = byKey;
                                 }
-                                return true;
-                            });
+                            }
 
                             if (xChild == null)
                             {
@@ -378,15 +400,6 @@ namespace Xod.Engines.Xml
                                     xChild.Add(new XAttribute(childPrimProp.Key, childPrimProp.Value));
                                 childrenElement.Add(xChild);
                                 statementLog?.Linked.Add((effectivePropType, writeTrack.Parent.Code, type, writeTrack.Code));
-                                parentChanged = true;
-                            }
-                            else if (xChild.Value != writeTrack.Code)
-                            {
-                                // An entry with this child's key names another row: a child deleted before its unlink
-                                // took it out of the list (2.0 and earlier left such entries). A key names one row, so
-                                // the entry is this child's now; left as it was, it hid the child from its parent
-                                // (review of TASK-063).
-                                xChild.Value = writeTrack.Code;
                                 parentChanged = true;
                             }
 

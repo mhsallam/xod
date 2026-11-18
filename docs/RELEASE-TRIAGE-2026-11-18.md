@@ -16,6 +16,7 @@ small API defects wait; they stay open in [KNOWN-ISSUES](KNOWN-ISSUES.md).
 | 6 | `ISS-184` | A collection class that isn't generic itself (`class PointList : List<Point>`) loses its items |
 | 7 | `ISS-152` | With a password, memory grows at every write and is never freed |
 | 8 | `ISS-134` | A crash between a page's two write steps leaves a 0-byte page that makes the database unreadable |
+| 9 | `ISS-202` | A child moved to another parent by its own update stays listed by the old one, and deleting the old parent deletes it (found during the work, 2026-11-18) |
 
 ## Decisions
 
@@ -35,4 +36,5 @@ small API defects wait; they stay open in [KNOWN-ISSUES](KNOWN-ISSUES.md).
 - Small API defects and limitations: `ISS-092`, `ISS-094`, `ISS-095`, `ISS-106`, `ISS-111`, `ISS-114`, `ISS-118`,
   `ISS-121`, `ISS-122`, `ISS-123`, `ISS-127`, `ISS-128`, `ISS-145`, `ISS-146`, `ISS-156`, `ISS-161`, `ISS-162`,
   `ISS-168`, `ISS-183`, `ISS-190`, `ISS-193`, `ISS-194`, and `ISS-191` beyond its documentation.
+- Found during the work, rare or by reading: `ISS-195` to `ISS-201`, `ISS-203`, `ISS-204`.
 - Public text (`ISS-157`): checked when the release is prepared.

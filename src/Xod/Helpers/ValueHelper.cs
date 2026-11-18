@@ -132,6 +132,30 @@ namespace Xod.Helpers
             return null;
         }
 
+        /// <summary>
+        /// The collection in a property of <paramref name="type"/> that a read can't give back (ISS-184); null when there
+        /// is none. A read makes a <c>List&lt;T&gt;</c>, or an array for an array property, so a collection is an array,
+        /// a map, or a type a <c>List&lt;T&gt;</c> can be assigned to (<c>List&lt;T&gt;</c>, <c>IList&lt;T&gt;</c>,
+        /// <c>ICollection&lt;T&gt;</c>, <c>IEnumerable&lt;T&gt;</c>, <c>IReadOnlyList&lt;T&gt;</c>,
+        /// <c>IReadOnlyCollection&lt;T&gt;</c>), and so are its items. A collection class that isn't generic itself was
+        /// stored as a class and read back empty; any other was stored, and its read threw.
+        /// </summary>
+        internal static Type UnreadableCollection(Type type)
+        {
+            if (type == null || type == typeof(string) || IsScalarType(type) || type == typeof(object))
+                return null;
+            if (type.IsArray)
+                return UnreadableCollection(type.GetElementType());
+            if (IsMapType(type) || !typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
+                return null;
+            if (!type.IsGenericType || type.GetGenericArguments().Length != 1)
+                return type;
+            Type item = type.GetGenericArguments()[0];
+            if (!type.IsAssignableFrom(typeof(List<>).MakeGenericType(item)))
+                return type;
+            return UnreadableCollection(item);
+        }
+
         /// <summary>A map, which the writer stores as entries (PropertyTypeCategory.Dictionary): the one test.</summary>
         internal static bool IsMapType(Type type) =>
             typeof(System.Collections.IDictionary).IsAssignableFrom(type) ||
