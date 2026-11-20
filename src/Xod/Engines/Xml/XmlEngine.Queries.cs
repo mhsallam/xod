@@ -702,18 +702,14 @@ namespace Xod.Engines.Xml
 
         private static IDictionary ReadStoredMap(PropertyInfoItem prop, XElement e)
         {
-            // The key and value types its IDictionary<K, V> names (strings for a Hashtable); the property's own type
-            // where it can be made, a Dictionary<K, V> otherwise. A Dictionary<,> was set on every map property, which
-            // a SortedDictionary or a Hashtable can't hold: once an empty map was stored, reading one threw (review of
-            // TASK-071; a map with entries always did).
-            Type mapType = prop.PropertyType;
-            Type generic = mapType.IsGenericType && mapType.GetGenericTypeDefinition() == typeof(IDictionary<,>)
-                ? mapType
-                : mapType.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>));
-            Type keyType = generic?.GetGenericArguments()[0] ?? typeof(string);
-            Type valType = generic?.GetGenericArguments()[1] ?? typeof(string);
-            bool ownType = !mapType.IsAbstract && !mapType.IsInterface && mapType.GetConstructor(Type.EmptyTypes) != null;
-            var map = (IDictionary)ValueHelper.CreateInstance(ownType ? mapType : typeof(Dictionary<,>).MakeGenericType(keyType, valType));
+            // The key and value types its IDictionary<K, V> or IReadOnlyDictionary<K, V> names (strings for a
+            // Hashtable); the property's own type where it can be made, a Dictionary<K, V> otherwise (ValueHelper.MapToRead).
+            // A Dictionary<,> was set on every map property, which a SortedDictionary or a Hashtable can't hold: once an
+            // empty map was stored, reading one threw (review of TASK-071; a map with entries always did).
+            Type[] types = ValueHelper.MapArguments(prop.PropertyType);
+            Type keyType = types?[0] ?? typeof(string);
+            Type valType = types?[1] ?? typeof(string);
+            var map = (IDictionary)ValueHelper.CreateInstance(ValueHelper.MapToRead(prop.PropertyType));
             foreach (var entry in e.Elements("Entry"))
             {
                 string key = entry.Attribute("key")?.Value;

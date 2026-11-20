@@ -166,11 +166,9 @@ namespace Xod.Sql
 
             if (p.TypeCategory == PropertyTypeCategory.Dictionary)
             {
-                Type generic = t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IDictionary<,>)
-                    ? t
-                    : t.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>));
-                Type keyType = generic?.GetGenericArguments()[0] ?? typeof(string);
-                Type valType = generic?.GetGenericArguments()[1] ?? typeof(string);
+                Type[] types = ValueHelper.MapArguments(t);
+                Type keyType = types?[0] ?? typeof(string);
+                Type valType = types?[1] ?? typeof(string);
                 c.Add(new XAttribute("type", "map"),
                     new XAttribute("keyType", SqlTypes.StoredTypeOf(keyType)),
                     new XAttribute("valueType", SqlTypes.StoredTypeOf(valType)));

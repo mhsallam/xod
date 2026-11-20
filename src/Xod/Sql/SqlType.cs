@@ -198,10 +198,10 @@ namespace Xod.Sql
                 case TimeOnly ton: return ton;
                 case TimeSpan ts: return ts;
                 case Enum e: return e.ToString();
-                case System.Collections.IDictionary map:
+                case System.Collections.IEnumerable map when Helpers.ValueHelper.IsMapType(map.GetType()):
                 {
                     var result = new Dictionary<string, object>(StringComparer.Ordinal);
-                    foreach (System.Collections.DictionaryEntry kv in map)
+                    foreach (var kv in Helpers.ValueHelper.MapEntries(map))
                         result[Helpers.ValueHelper.FormatScalar(kv.Key) ?? ""] = FromClr(kv.Value);
                     return new SqlMap(result);
                 }
@@ -230,7 +230,7 @@ namespace Xod.Sql
                 DateOnly => SqlType.Date,
                 TimeOnly => SqlType.Time,
                 TimeSpan => SqlType.Interval,
-                System.Collections.IDictionary => SqlType.Map,
+                System.Collections.IEnumerable when Helpers.ValueHelper.IsMapType(v.GetType()) => SqlType.Map,
                 System.Collections.IEnumerable => SqlType.Array,
                 _ => (SqlType)255,
             };
@@ -330,13 +330,12 @@ namespace Xod.Sql
         private static bool TryMap(SqlMap map, Type u, out object result)
         {
             result = null;
-            Type generic = u.IsGenericType && (u.GetGenericTypeDefinition() == typeof(IDictionary<,>) || u.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>))
-                ? u
-                : u.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>));
-            if (generic == null) return false;
-            Type keyType = generic.GetGenericArguments()[0], valueType = generic.GetGenericArguments()[1];
-            Type made = !u.IsAbstract && !u.IsInterface ? u : typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
-            if (!u.IsAssignableFrom(made)) return false;
+            Type[] types = Helpers.ValueHelper.MapArguments(u);
+            if (types == null) return false;
+            Type keyType = types[0], valueType = types[1];
+            // The type a read of the row makes too (ValueHelper.MapToRead); none where it can't be made (XQ005).
+            Type made = Helpers.ValueHelper.MapToRead(u);
+            if (made == null) return false;
             var dict = (System.Collections.IDictionary)Activator.CreateInstance(made);
             foreach (var kv in map)
             {

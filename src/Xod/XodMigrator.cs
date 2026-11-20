@@ -82,9 +82,9 @@ namespace Xod
                 // The folder checked again under the hold, before anything is recovered or converted: a database file
                 // added since the check above would be converted with the database (review of TASK-071).
                 DatabaseFiles.Recheck(sourceDirectoryOrFile, databaseFile);
-                IOService.RecoverInterruptedWrites(sourceDir);
+                IOService.RecoverInterruptedWrites(databaseFile);
 
-                var files = Directory.GetFiles(sourceDir).Where(DatabaseFiles.IsOfDatabase).ToList();
+                var files = Directory.GetFiles(sourceDir).Where(f => DatabaseFiles.IsOfDatabase(f, databaseFile)).ToList();
                 var keys = string.IsNullOrEmpty(hashedPassword) ? null : new FileKeys(hashedPassword);
                 return inPlace
                     ? ConvertInPlace(files, targetFormat, keys)

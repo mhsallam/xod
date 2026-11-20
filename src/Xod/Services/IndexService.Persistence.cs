@@ -719,6 +719,10 @@ namespace Xod.Services
             return generation;
         }
 
+        /// <summary>The step a full snapshot passes as it serializes each indexed property's block, in memory, before
+        /// anything is written (file: the property's name).</summary>
+        internal const string IndexBlockStep = "index-block";
+
         private void WriteFullSnapshotToDisk(Type type, PropertyInfoItem[] indexedProps, string indexFilePath, DeltaLog log)
         {
             EnsureAllPropertiesHydratedUnlocked(type);
@@ -735,6 +739,7 @@ namespace Xod.Services
 
             void SerializePropBlock(int idx)
             {
+                FaultInjection.Step(IndexBlockStep, file: indexedProps[idx].PropertyName);
                 var tree = trees[idx];
                 if (tree == null || tree.Count == 0)
                 {
@@ -780,14 +785,8 @@ namespace Xod.Services
                 }
             }
 
-            if (indexedProps.Length > 1)
-            {
-                System.Threading.Tasks.Parallel.For(0, indexedProps.Length, SerializePropBlock);
-            }
-            else if (indexedProps.Length == 1)
-            {
-                SerializePropBlock(0);
-            }
+            // Side by side, a failure thrown as itself, as one property's is (ISS-198).
+            ParallelReads.For(indexedProps.Length, SerializePropBlock);
 
             // Beside the file, then moved over it, as every file written whole (IOService.WriteRawBytesAtomic): a new
             // index file too, which was written straight to its name, so a crash left it cut short (ISS-134).

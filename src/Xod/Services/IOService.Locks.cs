@@ -46,7 +46,7 @@ namespace Xod.Services
             }
             catch (UnauthorizedAccessException e)
             {
-                if (WritesPending(root))
+                if (WritesPending(this.path))
                     throw new XodException("'" + root + "' holds what a write left, cut short by a crash. Recovering it needs a hold on " +
                         "the database, but this context can't open or create the database's lock file (" + e.Message + "). Open the " +
                         "database as a user who can, where its folder can be written.", e);
@@ -58,7 +58,7 @@ namespace Xod.Services
             try
             {
                 checkFolder?.Invoke();
-                RecoverInterruptedWrites(root);
+                RecoverInterruptedWrites(this.path);
             }
             catch
             {
@@ -67,39 +67,28 @@ namespace Xod.Services
             }
         }
 
-        private static bool WritesPending(string root) => WriteLeft(root) != null;
+        private static bool WritesPending(string databaseFile) => WriteLeft(databaseFile) != null;
 
         /// <summary>
-        /// What a write cut short leaves for the next open alone to recover (<see cref="RecoverInterruptedWrites"/>): a
-        /// transaction journal, a password change's record or staged file, an atomic write of a database file or a
-        /// journal (<see cref="IsAtomicWriteLeft"/>), a file a transaction set aside (<see cref="IsSetAsideLeft"/>,
-        /// ISS-107). The first such file, or null. Read by the open, to know whether to recover, and by a password
-        /// change, which is refused over any of them (ISS-149). The recovery picks the atomic writes and set-asides by
-        /// the same predicates, so the two agree on those; the journal and the password change's files are matched by
-        /// their suffix in both. (The indexes' markers are no write left: each index load honours them, ISS-043.)
+        /// What a write cut short leaves for the next open alone to recover (<see cref="RecoverInterruptedWrites"/>) in
+        /// the folder of the database whose file is <paramref name="databaseFile"/>: the transaction journal, a password
+        /// change's record or staged file, an atomic write of a file of the database or of the journal, a file a
+        /// transaction set aside (ISS-107). The first such file, or null. Read by the open, to know whether to recover,
+        /// and by a password change, which is refused over any of them (ISS-149). The recovery picks each by the same
+        /// predicates (DatabaseFiles, each by its name, ISS-182), so the two agree. (The indexes' markers are no write
+        /// left: each index load honours them, ISS-043.)
         /// </summary>
-        internal static string WriteLeft(string root) =>
-            Directory.EnumerateFiles(root).FirstOrDefault(f =>
-                f.EndsWith(".xwal", StringComparison.OrdinalIgnoreCase) ||
-                IsAtomicWriteLeft(f) ||
-                IsSetAsideLeft(f) ||
-                f.EndsWith(PasswordSwitch.JournalSuffix, StringComparison.OrdinalIgnoreCase) ||
-                f.EndsWith(PasswordSwitch.StagedSuffix, StringComparison.OrdinalIgnoreCase));
-
-        // An atomic write cut short: "<file>.tmp" of a database file or of the transaction journal. Another program's
-        // ".tmp" in the folder is none of the database's, and the recovery leaves it alone.
-        private static bool IsAtomicWriteLeft(string file)
+        internal static string WriteLeft(string databaseFile)
         {
-            if (!file.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
-                return false;
-            string target = file.Substring(0, file.Length - 4);
-            return target.EndsWith(".xwal", StringComparison.OrdinalIgnoreCase) || Helpers.DatabaseFiles.IsOfDatabase(target);
+            Helpers.DatabaseFiles.RequireDatabaseFile(databaseFile);
+            // Each by its name (DatabaseFiles, ISS-182): a stray naming another database file is none of this one's.
+            return Directory.EnumerateFiles(Path.GetDirectoryName(databaseFile)).FirstOrDefault(f =>
+                Helpers.DatabaseFiles.IsJournal(f) ||
+                Helpers.DatabaseFiles.IsAtomicWrite(f, databaseFile) ||
+                Helpers.DatabaseFiles.IsSetAside(f, databaseFile) ||
+                Helpers.DatabaseFiles.IsPasswordRecord(f, databaseFile) ||
+                Helpers.DatabaseFiles.IsStaged(f, databaseFile));
         }
-
-        // A database file a transaction set aside ("<file>.xdel").
-        private static bool IsSetAsideLeft(string file) =>
-            file.EndsWith(SetAsideSuffix, StringComparison.OrdinalIgnoreCase) &&
-            Helpers.DatabaseFiles.IsOfDatabase(file.Substring(0, file.Length - SetAsideSuffix.Length));
 
         /// <summary>
         /// Lets go of the database. The lock file stays, whoever held it: on Unix a context that opened it just

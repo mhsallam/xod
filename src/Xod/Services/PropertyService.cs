@@ -55,8 +55,9 @@ namespace Xod.Services
                             if (prop.CanWrite && ValueHelper.UnreadableCollection(prop.PropertyType) is Type unreadable)
                                 throw new XodException($"Property '{prop.Name}' of {type.Name} is a {unreadable.Name}, which XOD can't " +
                                     "read back: a collection property is an array, a map, a List<T>, or an interface a List<T> implements " +
-                                    "(IList<T>, ICollection<T>, IEnumerable<T>, IReadOnlyList<T>, IReadOnlyCollection<T>). Mark it " +
-                                    "[NotMapped] to leave it out.");
+                                    "(IList<T>, ICollection<T>, IEnumerable<T>, IReadOnlyList<T>, IReadOnlyCollection<T>); a map is a " +
+                                    "Dictionary<K, V>, an IDictionary<K, V> or IReadOnlyDictionary<K, V>, or a class with a public " +
+                                    "parameterless constructor that is an IDictionary. Mark it [NotMapped] to leave it out.");
 
                             PropertyTypeCategory propTypeCategory = GetPropertyTypeCategory(prop.PropertyType);
                             var propInfoItem = new PropertyInfoItem
@@ -242,7 +243,7 @@ namespace Xod.Services
                             {
                                 primaryKeyProperty.IsPrimaryKey = true;
                                 primaryKeyProperty.IsIndexed = true;
-                                if (ValueHelper.IsNumeric(primaryKeyProperty.PropertyType) || primaryKeyProperty.PropertyType == typeof(Guid))
+                                if (ValueHelper.IsAutonumberType(primaryKeyProperty.PropertyType))
                                 {
                                     primaryKeyProperty.IsAutonumber = true;
                                 }
@@ -312,7 +313,7 @@ namespace Xod.Services
         private static void ReadIdentitySettings(Type type, PropertyInfoItem p)
         {
             Type t = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
-            if (t == typeof(Guid))
+            if (ValueHelper.IsGuid(t))
             {
                 if (p.SeedSetting != null || p.IncrementSetting != null)
                     throw new AutonumberSeedException(type.Name, p.PropertyName, "a Guid autonumber is a new Guid each time: it takes no IdentitySeed or IdentityIncrement.");

@@ -71,13 +71,76 @@ namespace Xod.Helpers
                     $"created by another context while this one was opening '{path}'. Open it again.");
         }
 
-        /// <summary>Every file of the database: the database file, table files, pages and indexes. Not what a
-        /// write or a password change leaves beside them (<c>.tmp</c>, <c>.xwal</c>, <c>.xpwnew</c>,
-        /// <c>.xpwlog</c>) nor the lock file.</summary>
-        internal static bool IsOfDatabase(string file) =>
-            IsDatabaseFile(file) ||
-            file.EndsWith(".xtab", StringComparison.OrdinalIgnoreCase) ||
-            file.EndsWith(".xpag", StringComparison.OrdinalIgnoreCase) ||
-            file.EndsWith(".xidx", StringComparison.OrdinalIgnoreCase);
+        /// <summary>The transaction journal's name, in the database's folder (the same since 2.0.0).</summary>
+        internal const string JournalName = "transaction.xwal";
+
+        // ISS-182. What a crash leaves is the database's only if it is of the database's own files: the open recovers it
+        // (deletes, undoes, puts back or finishes), and a password change is refused over it. Each was matched by its
+        // extension alone, so a stray beside the database that names another database file was taken for this one's: the
+        // open deleted other.xod.tmp and other.xod.xpwnew, put other.xod.xdel back as other.xod (a second database file
+        // every later open refused), replayed a stray committed other.xod.xpwlog into other.xod, and read or deleted any
+        // *.xwal. These predicates are the one test, for the recovery, for the check of what is left (IOService.WriteLeft),
+        // and for the files a password change or a conversion takes.
+
+        /// <summary>
+        /// Every file of the database whose file is <paramref name="databaseFile"/>: that file, table files, pages and
+        /// indexes. Not what a write or a password change leaves beside them nor the lock file.
+        /// <para>
+        /// A database file is this database's when it is there, or when it is the path itself. The file system decides,
+        /// not a comparison of names: a folder holds one database file (<see cref="Resolve"/>, checked again under the
+        /// hold, <see cref="Recheck"/>), so the one there is this one, however the path spells it (a case the volume
+        /// ignores, a Unicode form it folds, a short name). A name compared by a rule guessed from the platform missed
+        /// it wherever the volume's rule differed, and a password change or a conversion then left the database file
+        /// out (the review of TASK-106). One that isn't there is another database's, unless it is the path itself: the
+        /// first write of a new database's file, cut short before the file was there.
+        /// </para>
+        /// </summary>
+        internal static bool IsOfDatabase(string file, string databaseFile) =>
+            IsDatabaseFile(file)
+                ? File.Exists(file) || string.Equals(Path.GetFullPath(file), Path.GetFullPath(databaseFile), StringComparison.Ordinal)
+                : file.EndsWith(".xtab", StringComparison.OrdinalIgnoreCase) ||
+                  file.EndsWith(".xpag", StringComparison.OrdinalIgnoreCase) ||
+                  file.EndsWith(".xidx", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>The transaction journal (<see cref="JournalName"/>, as a commit names it).</summary>
+        internal static bool IsJournal(string file) => string.Equals(Path.GetFileName(file), JournalName, StringComparison.Ordinal);
+
+        /// <summary>An atomic write cut short: "&lt;file&gt;.tmp" of a file of the database or of the journal.</summary>
+        internal static bool IsAtomicWrite(string file, string databaseFile)
+        {
+            if (!file.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
+                return false;
+            string target = file.Substring(0, file.Length - 4);
+            return IsJournal(target) || IsOfDatabase(target, databaseFile);
+        }
+
+        /// <summary>A file of the database an older version's transaction set aside ("&lt;file&gt;.xdel").</summary>
+        internal static bool IsSetAside(string file, string databaseFile) =>
+            file.EndsWith(Services.IOService.SetAsideSuffix, StringComparison.OrdinalIgnoreCase) &&
+            IsOfDatabase(file.Substring(0, file.Length - Services.IOService.SetAsideSuffix.Length), databaseFile);
+
+        /// <summary>A password change's commit record: "&lt;database file&gt;.xpwlog", the one a switch writes.</summary>
+        internal static bool IsPasswordRecord(string file, string databaseFile)
+        {
+            if (!file.EndsWith(Services.PasswordSwitch.JournalSuffix, StringComparison.OrdinalIgnoreCase))
+                return false;
+            string target = file.Substring(0, file.Length - Services.PasswordSwitch.JournalSuffix.Length);
+            return IsDatabaseFile(target) && IsOfDatabase(target, databaseFile);
+        }
+
+        /// <summary>A file of the database a password change staged ("&lt;file&gt;.xpwnew").</summary>
+        internal static bool IsStaged(string file, string databaseFile) =>
+            file.EndsWith(Services.PasswordSwitch.StagedSuffix, StringComparison.OrdinalIgnoreCase) &&
+            IsOfDatabase(file.Substring(0, file.Length - Services.PasswordSwitch.StagedSuffix.Length), databaseFile);
+
+        /// <summary>
+        /// Refuses a path that doesn't name a database file, where one is the parameter: the recovery and the check of
+        /// what is left take the database's file, not its folder, whose parent they would read.
+        /// </summary>
+        internal static void RequireDatabaseFile(string databaseFile)
+        {
+            if (string.IsNullOrEmpty(databaseFile) || !IsDatabaseFile(databaseFile))
+                throw new ArgumentException("A database file (.xod, .xodj or .xodb) is needed here, not '" + databaseFile + "'.", nameof(databaseFile));
+        }
     }
 }

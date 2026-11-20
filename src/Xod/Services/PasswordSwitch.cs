@@ -75,7 +75,7 @@ namespace Xod.Services
 
             CheckCanSwitch();
 
-            string[] files = Directory.GetFiles(root).Where(Helpers.DatabaseFiles.IsOfDatabase).OrderBy(f => f, StringComparer.Ordinal).ToArray();
+            string[] files = Directory.GetFiles(root).Where(f => Helpers.DatabaseFiles.IsOfDatabase(f, this.Path)).OrderBy(f => f, StringComparer.Ordinal).ToArray();
             string journal = this.Path + JournalSuffix;
 
             // The record is created first and held with no sharing until the switch ends. CreateNew: a record already
@@ -174,7 +174,7 @@ namespace Xod.Services
             string root = System.IO.Path.GetDirectoryName(this.Path);
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
                 return;
-            string unfinished = IOService.WriteLeft(root);
+            string unfinished = IOService.WriteLeft(this.Path);
             if (unfinished != null)
                 throw new XodException("A write that didn't finish (" + System.IO.Path.GetFileName(unfinished) +
                     ") is recovered when the database is next opened. Reopen the database before changing its password.");
@@ -238,7 +238,7 @@ namespace Xod.Services
             {
                 if (!switchPending)
                     return;
-                RecoverSwitch(System.IO.Path.GetDirectoryName(this.Path));
+                RecoverSwitch(this.Path);
                 switchPending = false;
             }
         }
@@ -251,12 +251,15 @@ namespace Xod.Services
         /// or its record can't be read (another program holds it): the database would otherwise open with files
         /// under two passwords.
         /// </summary>
-        internal static void RecoverSwitch(string root)
+        internal static void RecoverSwitch(string databaseFile)
         {
+            string root = System.IO.Path.GetDirectoryName(databaseFile);
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
                 return;
 
-            foreach (string journal in Directory.GetFiles(root, "*" + JournalSuffix))
+            // This database's record and staged files only, each by its name (ISS-182): a stray committed record naming
+            // another database file was replayed into it, beside this one.
+            foreach (string journal in Directory.GetFiles(root).Where(f => Helpers.DatabaseFiles.IsPasswordRecord(f, databaseFile)))
             {
                 string[] committed = CommittedFiles(journal);
                 if (committed != null)
@@ -275,7 +278,7 @@ namespace Xod.Services
             }
 
             // Staged files no commit record names: a change that never committed.
-            foreach (string staged in Directory.GetFiles(root, "*" + StagedSuffix))
+            foreach (string staged in Directory.GetFiles(root).Where(f => Helpers.DatabaseFiles.IsStaged(f, databaseFile)))
                 File.Delete(staged);
         }
 

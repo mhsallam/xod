@@ -10,9 +10,16 @@ records it. The last release: [2.1.0](RELEASE-NOTES-2.1.0.md).
 
 ## Behaviour changes
 
+- **A `Guid? Id` gets a new `Guid` when it is inserted null**, as an `int? Id` gets a number: by convention it is an autonumber now. Before, every row inserted with a null `Id` kept a null key. Rows already stored keep theirs. ([`PLAN-090`](plans/PLAN-090-four-small-fixes-stray-files-interface-maps-snapshot-failures-guid-ids.md))
+- **A map property of a type XOD can't make is refused when its class is first used**: `ReadOnlyDictionary<K, V>`, `ImmutableDictionary<K, V>`, `FrozenDictionary<K, V>`. Before, it was accepted, read back null when it was null, and threw when it held a value. Declare it as `IReadOnlyDictionary<K, V>` or `Dictionary<K, V>`. ([`PLAN-090`](plans/PLAN-090-four-small-fixes-stray-files-interface-maps-snapshot-failures-guid-ids.md))
+
 - **A page file a table names that isn't there, or an index entry whose row isn't on its page, is an error.** A read throws `DatabaseFileException` naming the page, or the index file to delete (it is built again from the pages). Before, the rows were left out with no error, so a query could return fewer rows than `Count` said. ([`PLAN-087`](plans/PLAN-087-a-page-is-on-disk-while-a-table-names-it.md))
 
 ## Fixed
+
+- **A file beside the database that names another database file is left alone.** The open deleted a stray `other.xod.tmp`, or turned other leftovers into a second database file that every later open refused, and a password change was refused over them. Only what this database's own crash left is recovered now. ([`PLAN-090`](plans/PLAN-090-four-small-fixes-stray-files-interface-maps-snapshot-failures-guid-ids.md))
+- **A property declared as `IDictionary<K, V>` or `IReadOnlyDictionary<K, V>` is stored as a map.** It was refused, and in 2.0.x stored as text it couldn't read back. ([`PLAN-090`](plans/PLAN-090-four-small-fixes-stray-files-interface-maps-snapshot-failures-guid-ids.md))
+- **A failure while saving an index is thrown as itself**, whatever the number of indexed properties, not wrapped in an `AggregateException`. ([`PLAN-090`](plans/PLAN-090-four-small-fixes-stray-files-interface-maps-snapshot-failures-guid-ids.md))
 
 - **A page a crash left behind is removed.** A crash between writing a page and writing the table that names it could leave a page file nothing used. The next open now deletes it. Only pages the crashed process was writing are touched, so a table file that is missing for another reason never costs its pages. ([`PLAN-088`](plans/PLAN-088-a-page-no-table-names-is-deleted-at-the-open.md))
 - **A reference of type `object` to a row that was deleted reads as null.** It threw, saying the type isn't registered, and the row holding it couldn't be read. ([`PLAN-088`](plans/PLAN-088-a-page-no-table-names-is-deleted-at-the-open.md))

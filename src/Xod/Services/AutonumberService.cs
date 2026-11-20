@@ -159,13 +159,13 @@ namespace Xod.Services
         private void AutonumberAnyType(Type type, object item, PropertyInfoItem prop)
         {
             Type underlying = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
-            if (!ValueHelper.IsNumeric(underlying) && underlying != typeof(Guid))
+            if (!ValueHelper.IsAutonumberType(underlying))
                 exceptionService.Throw(new AutonumberDataTypeException());
 
             object currentVal = prop.GetValue(item);
             bool unset = IsUnset(prop, currentVal);
 
-            if (underlying == typeof(Guid))
+            if (ValueHelper.IsGuid(underlying))
             {
                 if (unset)
                     prop.SetValue(item, Guid.NewGuid());

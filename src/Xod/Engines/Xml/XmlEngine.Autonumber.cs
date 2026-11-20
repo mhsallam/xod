@@ -25,8 +25,7 @@ namespace Xod.Engines.Xml
 
         private static bool IsNumericAutonumber(PropertyInfoItem prop)
         {
-            Type t = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
-            return t != typeof(Guid) && Helpers.ValueHelper.IsNumeric(t);
+            return !Helpers.ValueHelper.IsGuid(prop.PropertyType) && Helpers.ValueHelper.IsNumeric(prop.PropertyType);
         }
 
         /// <summary>The highest value the property has held in the table: the larger of the mark and the

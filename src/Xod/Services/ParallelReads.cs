@@ -7,8 +7,8 @@ namespace Xod.Services
     /// Reads side by side (Parallel.For) that fail as the same reads one after another do: every read runs, and the
     /// failure of the lowest index, the one a loop meets first, is thrown as itself. Parallel.For threw an
     /// AggregateException, so a damaged page read with three others came out as a DatabaseFileException, and read with
-    /// four or more as an AggregateException around it (ISS-144). <see cref="IOService"/>'s ParallelWrites holds the
-    /// rule for writes.
+    /// four or more as an AggregateException around it (ISS-144). Work in memory before a write takes it too (an index
+    /// snapshot's blocks, ISS-198). <see cref="IOService"/>'s ParallelWrites holds the rule for writes.
     /// </summary>
     internal static class ParallelReads
     {

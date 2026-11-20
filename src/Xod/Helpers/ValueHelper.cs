@@ -107,7 +107,8 @@ namespace Xod.Helpers
         /// The value type in a property of <paramref name="type"/> that the writer would store as nothing, or as text no
         /// reader gives back (ISS-142); null when there is none. It follows the writer's branches (XmlEngine.WriteProperty):
         /// a struct outside <see cref="IsScalarType"/>, a collection struct too (an ImmutableArray); an array's elements; a
-        /// map's keys and values, written as text (by the IDictionary&lt;K, V&gt; it implements, a subclass too); a generic
+        /// map's keys and values, written as text (by the IDictionary&lt;K, V&gt; or IReadOnlyDictionary&lt;K, V&gt; it is or
+        /// implements, <see cref="MapArguments"/>); a generic
         /// collection's first type argument, its items. A class is no value: its own properties are checked when it loads.
         /// </summary>
         internal static Type UnstorableValueType(Type type)
@@ -121,12 +122,7 @@ namespace Xod.Helpers
             if (underlying.IsArray)
                 return UnstorableValueType(underlying.GetElementType());
             if (IsMapType(underlying))
-            {
-                Type map = underlying.IsGenericType && underlying.GetGenericTypeDefinition() == typeof(IDictionary<,>)
-                    ? underlying
-                    : underlying.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>));
-                return map?.GetGenericArguments().Select(UnstorableValueType).FirstOrDefault(t => t != null);
-            }
+                return MapArguments(underlying)?.Select(UnstorableValueType).FirstOrDefault(t => t != null);
             if (underlying.IsGenericType && typeof(System.Collections.IEnumerable).IsAssignableFrom(underlying))
                 return UnstorableValueType(underlying.GetGenericArguments().FirstOrDefault());
             return null;
@@ -146,7 +142,9 @@ namespace Xod.Helpers
                 return null;
             if (type.IsArray)
                 return UnreadableCollection(type.GetElementType());
-            if (IsMapType(type) || !typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
+            if (IsMapType(type))
+                return MapToRead(type) == null ? type : null;
+            if (!typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
                 return null;
             if (!type.IsGenericType || type.GetGenericArguments().Length != 1)
                 return type;
@@ -156,10 +154,79 @@ namespace Xod.Helpers
             return UnreadableCollection(item);
         }
 
-        /// <summary>A map, which the writer stores as entries (PropertyTypeCategory.Dictionary): the one test.</summary>
+        /// <summary>
+        /// A map, which the writer stores as entries (PropertyTypeCategory.Dictionary): the one test. The non-generic
+        /// <c>IDictionary</c> (a <c>Hashtable</c>, every <c>Dictionary&lt;,&gt;</c>), or a type that is or implements
+        /// <c>IDictionary&lt;K, V&gt;</c> or <c>IReadOnlyDictionary&lt;K, V&gt;</c> (ISS-128: a property declared as either
+        /// interface counted as a list of its first type argument, stored each pair as text and threw on reading it).
+        /// </summary>
         internal static bool IsMapType(Type type) =>
-            typeof(System.Collections.IDictionary).IsAssignableFrom(type) ||
-            (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>));
+            typeof(System.Collections.IDictionary).IsAssignableFrom(type) || MapArguments(type) != null;
+
+        /// <summary>
+        /// The key and value types a map names, by the <c>IDictionary&lt;K, V&gt;</c> or
+        /// <c>IReadOnlyDictionary&lt;K, V&gt;</c> it is or implements; null for one that names none (a <c>Hashtable</c>,
+        /// whose keys and values are read as strings). Every reader and writer of a map's types asks here.
+        /// </summary>
+        internal static Type[] MapArguments(Type type) => MapArgumentsByType.GetValue(type, static t =>
+        {
+            static bool IsMapInterface(Type i) =>
+                i.IsGenericType && (i.GetGenericTypeDefinition() == typeof(IDictionary<,>) || i.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>));
+            Type map = IsMapInterface(t) ? t : t.GetInterfaces().FirstOrDefault(IsMapInterface);
+            return new System.Runtime.CompilerServices.StrongBox<Type[]>(map?.GetGenericArguments());
+        }).Value;
+
+        // Asked for each collection value SQL converts (GetInterfaces makes an array at each call). Weak, so a type of
+        // an assembly that unloads isn't held.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Type, System.Runtime.CompilerServices.StrongBox<Type[]>> MapArgumentsByType = new();
+
+        /// <summary>
+        /// The type a read of a map property makes: the property's own, where it can be made and filled as an
+        /// <c>IDictionary</c>; otherwise a <c>Dictionary&lt;K, V&gt;</c> of its types, where the property can hold one (an
+        /// interface); null where neither (refused at registration, <see cref="UnreadableCollection"/>).
+        /// </summary>
+        internal static Type MapToRead(Type type)
+        {
+            if (!type.IsAbstract && !type.IsInterface && type.GetConstructor(Type.EmptyTypes) != null &&
+                typeof(System.Collections.IDictionary).IsAssignableFrom(type))
+                return type;
+            Type[] args = MapArguments(type) ?? new[] { typeof(string), typeof(string) };
+            Type made = typeof(Dictionary<,>).MakeGenericType(args);
+            return type.IsAssignableFrom(made) ? made : null;
+        }
+
+        /// <summary>
+        /// A map's entries, read through the non-generic <c>IDictionary</c> where it is one, otherwise as the
+        /// <c>KeyValuePair&lt;K, V&gt;</c> items its generic interface enumerates (a dictionary that is only an
+        /// <c>IReadOnlyDictionary&lt;K, V&gt;</c>).
+        /// </summary>
+        internal static IEnumerable<KeyValuePair<object, object>> MapEntries(object map)
+        {
+            if (map is System.Collections.IDictionary dictionary)
+            {
+                foreach (System.Collections.DictionaryEntry entry in dictionary)
+                    yield return new KeyValuePair<object, object>(entry.Key, entry.Value);
+                yield break;
+            }
+            Type[] types = map == null ? null : MapArguments(map.GetType());
+            if (types == null)
+                yield break;
+            var reader = TypedMapEntriesByType.GetValue(map.GetType(), _ => typeof(ValueHelper)
+                .GetMethod(nameof(TypedMapEntries), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                .MakeGenericMethod(types));
+            var typed = (IEnumerable<KeyValuePair<object, object>>)reader.Invoke(null, new[] { map });
+            foreach (var entry in typed)
+                yield return entry;
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Type, System.Reflection.MethodInfo> TypedMapEntriesByType = new();
+
+        // Both IDictionary<K, V> and IReadOnlyDictionary<K, V> enumerate their pairs as IEnumerable<KeyValuePair<K, V>>.
+        private static IEnumerable<KeyValuePair<object, object>> TypedMapEntries<TKey, TValue>(object map)
+        {
+            foreach (var pair in (IEnumerable<KeyValuePair<TKey, TValue>>)map)
+                yield return new KeyValuePair<object, object>(pair.Key, pair.Value);
+        }
 
         public static string FormatScalar(object value)
         {
@@ -231,6 +298,15 @@ namespace Xod.Helpers
             if (value == null) return false;
             return IsNumeric(value.GetType()) || double.TryParse(value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out _);
         }
+
+        /// <summary>A Guid, or a nullable one.</summary>
+        internal static bool IsGuid(Type type) => (Nullable.GetUnderlyingType(type) ?? type) == typeof(Guid);
+
+        /// <summary>
+        /// A key type that can be an autonumber: a number or a Guid, nullable or not (ISS-123: the Id convention compared
+        /// the declared type with Guid, so a Guid? Id wasn't one). The one test, for the convention and the autonumbering.
+        /// </summary>
+        internal static bool IsAutonumberType(Type type) => IsNumeric(type) || IsGuid(type);
 
         public static bool IsNumeric(Type type)
         {

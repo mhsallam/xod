@@ -59,7 +59,7 @@ namespace Xod.Services
             this.exclusive = exclusive ?? (a => a());
             this.rootDirectory = rootDirectory;
             this.walFilePath = !string.IsNullOrEmpty(rootDirectory)
-                ? Path.Combine(rootDirectory, "transaction.xwal")
+                ? Path.Combine(rootDirectory, Helpers.DatabaseFiles.JournalName)
                 : null;
             this.onCommit = onCommit;
             this.onRollback = onRollback;
@@ -353,7 +353,9 @@ namespace Xod.Services
             if (string.IsNullOrEmpty(rootDirectory) || !Directory.Exists(rootDirectory))
                 return;
 
-            foreach (var walFile in Directory.GetFiles(rootDirectory, "*.xwal"))
+            // The journal by its name, the one a commit writes (ISS-182): another .xwal in the folder is none of the
+            // database's, and was read, then undone or deleted.
+            foreach (var walFile in Directory.GetFiles(rootDirectory).Where(Helpers.DatabaseFiles.IsJournal))
             {
                 XElement journalRoot;
                 try

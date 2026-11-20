@@ -469,12 +469,12 @@ namespace Xod.Engines.Xml
             // empty list is (left out, it read back null), and a null value is marked (StoredValue.ItemContent).
             else if (prop.TypeCategory == PropertyTypeCategory.Dictionary)
             {
-                if (value is IDictionary dict)
+                if (value != null)
                 {
                     propertyElement = new XElement(prop.PropertyName,
                         new XAttribute("collType", "dictionary"));
 
-                    foreach (DictionaryEntry entry in dict)
+                    foreach (var entry in ValueHelper.MapEntries(value))
                     {
                         if (entry.Key != null)
                         {

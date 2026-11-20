@@ -11,17 +11,19 @@ namespace Xod.Services
     internal partial class IOService
     {
         /// <summary>
-        /// Recovers what a crash left in the database folder <paramref name="root"/>: a password change, an atomic
-        /// write of a database file, a commit. Only with the database to the caller (an exclusive hold):
-        /// a context's open, and <see cref="XodMigrator"/> before it converts.
+        /// Recovers what a crash left in the folder of the database whose file is <paramref name="databaseFile"/>: a
+        /// password change, an atomic write of a file of the database, a commit. Only with the database to the caller (an
+        /// exclusive hold): a context's open, and <see cref="XodMigrator"/> before it converts.
         /// </summary>
-        internal static void RecoverInterruptedWrites(string root)
+        internal static void RecoverInterruptedWrites(string databaseFile)
         {
+            Helpers.DatabaseFiles.RequireDatabaseFile(databaseFile);
+            string root = Path.GetDirectoryName(databaseFile);
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
                 return;
 
             // A password change that can't be finished stops the open: it would leave files under two passwords.
-            PasswordSwitch.RecoverSwitch(root);
+            PasswordSwitch.RecoverSwitch(databaseFile);
 
             try
             {
@@ -31,7 +33,9 @@ namespace Xod.Services
                 // read of it failed on. A file never moved into place is as if its write hadn't started: its statement
                 // didn't finish, and a commit's journal (below) undoes the rest. A journal's own .tmp: its commit hadn't
                 // started.
-                foreach (var tmpFile in Directory.GetFiles(root, "*.tmp").Where(IsAtomicWriteLeft))
+                // Every file, filtered as WriteLeft filters (a glob's case rule is the platform's, and missed Foo.xtab.TMP
+                // that WriteLeft reported).
+                foreach (var tmpFile in Directory.GetFiles(root).Where(f => Helpers.DatabaseFiles.IsAtomicWrite(f, databaseFile)))
                     File.Delete(tmpFile);
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
@@ -47,7 +51,7 @@ namespace Xod.Services
 
             // After the journal, which puts back what a commit that got past it had deleted. Only an older version's
             // transaction leaves files set aside (ISS-166).
-            PutBackSetAsideFiles(root);
+            PutBackSetAsideFiles(databaseFile);
 
             // Last: the indexes of a context that stopped before they caught up with its pages (ISS-043).
             DropIndexesLeftBehind(root);
@@ -150,9 +154,9 @@ namespace Xod.Services
         /// then lost: the bug ISS-166 removed for transactions of this version. One that can't be put back stops the
         /// open, as a journal that can't be undone does: the index files still name its rows.
         /// </summary>
-        private static void PutBackSetAsideFiles(string root)
+        private static void PutBackSetAsideFiles(string databaseFile)
         {
-            foreach (string aside in Directory.GetFiles(root, "*" + SetAsideSuffix).Where(IsSetAsideLeft))
+            foreach (string aside in Directory.GetFiles(Path.GetDirectoryName(databaseFile)).Where(f => Helpers.DatabaseFiles.IsSetAside(f, databaseFile)))
             {
                 string target = aside.Substring(0, aside.Length - SetAsideSuffix.Length);
                 try
