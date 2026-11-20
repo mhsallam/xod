@@ -133,6 +133,7 @@ type Xod.DatabaseOptions
   prop DurabilityMode Durability { get; set; }
   prop String PropertyEncryptionKey { get; set; }
   prop SqlSchemaSource SqlSchema { get; set; }
+  prop Boolean Legacy1xDigests { get; set; }
 
 type Xod.DatabaseStatistics
   ctor()

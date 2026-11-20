@@ -24,6 +24,7 @@ The project's memory. `xod2` is the active rework of XOD; `xod` and `xod.core` a
 - [PLAN-086](plans/PLAN-086-an-update-filter-takes-a-relation-and-its-keys-together.md) - an update filter takes a relation and its keys together (2026-11-20, done): ISS-207 resolved
 - [PLAN-087](plans/PLAN-087-a-page-is-on-disk-while-a-table-names-it.md) - a page is on disk while a table names it (2026-11-20, done): ISS-196 resolved; ISS-209, ISS-210 filed
 - [PLAN-088](plans/PLAN-088-a-page-no-table-names-is-deleted-at-the-open.md) - a page a crash left unnamed is deleted at the next open; a relation's code that finds no row reads as gone (2026-11-20, done): ISS-209 resolved, ISS-210 closed by design; ISS-211 filed
+- [PLAN-089](plans/PLAN-089-page-bytes-stay-a-readers-and-a-read-digest-stays-a-digest.md) - a page's bytes stay a reader's; a 1.x digest read from a database said to hold them stays a digest (2026-11-20, done): ISS-105, ISS-171 resolved; ISS-212 filed
 - [PLAN-081](plans/PLAN-081-a-child-s-entry-is-found-by-its-row.md) - a child's entry in its parent's list is found by its row (2026-11-18, done): ISS-135 resolved; ISS-202 to ISS-204 filed
 - [PLAN-080](plans/PLAN-080-what-a-parent-s-update-writes-into-related-rows.md) - what a parent's update writes into the rows it names (2026-11-18, done): ISS-189 and ISS-181 resolved; ISS-200 filed
 - [PLAN-079](plans/PLAN-079-a-key-part-at-its-default-is-no-value.md) - a key part at its default is no value (2026-11-18, done): ISS-188 resolved; ISS-199 filed

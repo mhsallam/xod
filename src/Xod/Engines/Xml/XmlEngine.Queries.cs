@@ -766,6 +766,16 @@ namespace Xod.Engines.Xml
         private object StoredScalar(PropertyInfoItem prop, XElement entity) =>
             StoredValue.ReadBack(prop, entity, text => ReadValue(prop, prop.PropertyType, text));
 
+        /// <summary>
+        /// A one-way value goes back as stored: noted, in a database said to hold 1.x digests, so a write of this very
+        /// string knows it for a digest (ISS-171, <see cref="ReadDigests"/>). Every read that gives one back calls it.
+        /// </summary>
+        internal void NoteReadDigest(object value, CryptoMethod method)
+        {
+            if (options.Legacy1xDigests)
+                ReadDigests.Note(value, method);
+        }
+
         private object ReadValue(PropertyInfoItem prop, Type targetType, string stringValue)
         {
             if (!ValueHelper.IsScalarType(targetType))
@@ -776,7 +786,9 @@ namespace Xod.Engines.Xml
                 return propertyKeys.Decrypt(stringValue, prop.PropertyName);
             }
 
-            return ValueHelper.ParseScalar(targetType, stringValue);
+            object value = ValueHelper.ParseScalar(targetType, stringValue);
+            NoteReadDigest(value, prop.Encryption);
+            return value;
         }
 
         /// <summary>

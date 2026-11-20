@@ -354,7 +354,10 @@ namespace Xod.Engines.Xml
                 }
                 if (c.Crypto == "aes256")
                     return Decrypt(table, c, value);
-                return Parse(table, c, c.StoredType, value);
+                object read = Parse(table, c, c.StoredType, value);
+                if (Enum.TryParse(c.Crypto, ignoreCase: true, out CryptoMethod method))
+                    engine.NoteReadDigest(read, method);
+                return read;
             }
 
             /// <summary>A column of a table that records no schema, or that its schema doesn't list: its stored text.</summary>

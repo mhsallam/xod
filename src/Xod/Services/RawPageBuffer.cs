@@ -26,14 +26,14 @@ namespace Xod.Services
         public ReadOnlySpan<byte> Span => Bytes.AsSpan(0, Length);
 
         /// <summary>
-        /// Gives the page's array back to the pool: only for a buffer no reader can hold, one never put in the cache
-        /// (IOService.PreloadPagesForCodes). A page that leaves the cache keeps its bytes, which the GC takes once the
-        /// last reader drops the buffer: a reader takes a page from the cache and reads it outside the cache's lock,
-        /// beside another reader whose load or document read drops that page, so a dropped page's array given back
-        /// went to the next page loaded while the first reader still read it (ISS-143). Its bytes were set to null,
-        /// so that reader threw, or, holding the span, read the other page's bytes at this page's offsets. A writer
-        /// that moves a page to a larger array gives the old one back under the engine-wide write lock, which no
-        /// reader holds beside it.
+        /// Gives the page's array back to the pool: only for a buffer no reader can hold, one that never entered the
+        /// cache (IOService.PreloadPagesForCodes); entering it ends that (RawPageCache.Put, ISS-105). A
+        /// page that leaves the cache keeps its bytes, which the GC takes once the last reader drops the buffer: a
+        /// reader takes a page from the cache and reads it outside the cache's lock, beside another reader whose load
+        /// or document read drops that page, so a dropped page's array given back went to the next page loaded while
+        /// the first reader still read it. Its bytes were set to null, so that reader threw, or, holding the span, read
+        /// the other page's bytes at this page's offsets: another table's row, when the two have one shape
+        /// (XodPageBufferTests).
         /// </summary>
         public void ReleasePooledBuffer()
         {

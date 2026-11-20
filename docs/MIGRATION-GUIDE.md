@@ -48,16 +48,19 @@ All classic XOD 1.x attributes work, with one exception, `[Crypto]` with no meth
   of each byte, run together; XOD++ stores them in hexadecimal. A read gives a 1.x digest back as stored, an update
   of the row keeps it, and `CryptoHelper.VerifyHash` and SQL's `VERIFY_HASH` verify a value against either form. A
   value set again is stored in the new form. `CryptoHelper.GetMD5HashData` and `GetSHA1HashData` return the new form,
-  so code that compared their result with a stored 1.x digest should call `VerifyHash` instead. Three limits:
+  so code that compared their result with a stored 1.x digest should call `VerifyHash` instead. Its limits:
   - 1.x itself hashed a stored digest again at every update of its row, so a row a 1.x application updated without
     setting the value holds a digest of its digest, which neither 1.x nor XOD++ can verify;
   - a value with characters outside ASCII, hashed by a version before September 2016 (the system's code page),
     doesn't verify;
-  - a digest is still hashed again where a row is written without the row it replaces: a child without a primary key
-    when its parent is updated, or an object read from a 1.x database inserted elsewhere (`ISS-171`);
+  - any other write hashes a digest again: an object read from a 1.x database and inserted elsewhere, a digest
+    given to another row, a child without a primary key written again by its parent's update. Open the 1.x database
+    with `DatabaseOptions.Legacy1xDigests = true` and a digest read from it stays a digest wherever it is written. A
+    copy that makes a new string (serialized and back) is hashed still;
   - the other way round, a value a row stores in plaintext under `[Crypto]` (an attribute written by 2.0.0 or 2.0.1)
     is hashed by the next update of the row, unless it is digits that read as a 1.x digest, such as a 16-digit card
-    number under MD5: that stays as stored (`ISS-171`).
+    number under MD5: that stays as stored, and with `Legacy1xDigests` on it is copied as stored too. Leave the
+    option off for such a database (`ISS-171`).
 - **Change the password after migrating** an encrypted 1.x database: its files are keyed by one unsalted SHA-256 of
   the password until `ChangePassword` writes them again in the new format.
 

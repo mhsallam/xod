@@ -38,7 +38,7 @@ namespace Xod.Services
 
         private readonly object syncLock = new object();
         private readonly Dictionary<string, FileCache> cachedFiles = new Dictionary<string, FileCache>(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, RawPageBuffer> cachedRawPages = new Dictionary<string, RawPageBuffer>(StringComparer.OrdinalIgnoreCase);
+        private readonly RawPageCache cachedRawPages = new RawPageCache();
 
         private readonly string path;
         private readonly string root;

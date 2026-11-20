@@ -66,5 +66,17 @@ namespace Xod
         /// <c>xod query</c> reads a database without the classes.
         /// </summary>
         public SqlSchemaSource SqlSchema { get; set; } = SqlSchemaSource.Classes;
+
+        /// <summary>
+        /// The database holds <c>MD5</c> and <c>SHA1</c> digests XOD 1.x stored (decimal digits, where XOD 2 stores
+        /// hexadecimal). It says what this database's reads give back: a value of that form read from it stays a digest
+        /// when that same value is written, through any context, into any database (inserted elsewhere, given to another
+        /// row, or written again with its parent). A copy of it as new text (serialized and back, changed by a setter) is
+        /// hashed again. Off, a value read from this database is kept only by an update of its own row, and any other
+        /// write hashes it. Leave it off for a database that may store <c>[Crypto]</c> values in plaintext (attributes
+        /// written by 2.0.1 or earlier, or a property given <c>[Crypto]</c> later): a plaintext of digits reads the same
+        /// as a 1.x digest, and would be copied unhashed.
+        /// </summary>
+        public bool Legacy1xDigests { get; set; }
     }
 }

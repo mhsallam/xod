@@ -109,7 +109,7 @@ namespace Xod.Services
                             {
                                 EvictNonDirtyRawPages();
                             }
-                            cachedRawPages[normalizedName] = buf;
+                            cachedRawPages.Put(normalizedName, buf);
                         }
                         else
                         {
@@ -236,7 +236,7 @@ namespace Xod.Services
                 EvictNonDirtyRawPages();
             }
 
-            cachedRawPages[normalizedName] = rawPage;
+            cachedRawPages.Put(normalizedName, rawPage);
             return rawPage;
         }
 
@@ -303,6 +303,14 @@ namespace Xod.Services
             }
         }
 
+        /// <summary>
+        /// The step a read of one row by its code passes holding the row's bytes in the page's array, outside the cache's
+        /// lock, before it parses them (ISS-105): the interleaving a test holds, to read beside another read that drops
+        /// the page from the cache and loads others into whatever arrays the pool gives out
+        /// (<see cref="RawPageBuffer.ReleasePooledBuffer"/>). One read is enough to hold it; a scan isn't slowed by it.
+        /// </summary>
+        internal const string RowBytesHeldStep = "row-bytes-held";
+
         internal bool TryReadEntityFromRawPage(string pageFileName, string rowCode, TypeMetadata meta, out object entity)
         {
             entity = null;
@@ -327,7 +335,9 @@ namespace Xod.Services
 
             if (rawPage.TryFindRow(rowCode, out int startIdx, out int rowLen))
             {
-                return TryParseEntityFromUtf8Row(rawPage.Span.Slice(startIdx, rowLen), meta, out entity);
+                ReadOnlySpan<byte> row = rawPage.Span.Slice(startIdx, rowLen);
+                FaultInjection.Step(RowBytesHeldStep);
+                return TryParseEntityFromUtf8Row(row, meta, out entity);
             }
 
             return false;
@@ -574,13 +584,9 @@ namespace Xod.Services
                         if (tailLen > 0)
                             Buffer.BlockCopy(rawPage.Bytes, tailSrcOffset, newPageBytes, startOffset + replacementBytes.Length, tailLen);
 
-                        if (rawPage.IsPooled)
-                        {
-                            PageBufferPool.Return(rawPage.Bytes);
-                        }
+                        // The old array stays with any reader holding it (RawPageCache).
                         rawPage.Bytes = newPageBytes;
                         rawPage.Length = newPageLen;
-                        rawPage.IsPooled = false;
                     }
 
                     if (startOffset < rawPage.DirtyStartOffset)
@@ -648,7 +654,6 @@ namespace Xod.Services
                         DiskSyncedLength = 0,
                         DirtyStartOffset = 0,
                         IsNewFile = true,
-                        IsPooled = true,
                         RowCount = 0,
                         Name = pageFileName
                     };
@@ -657,7 +662,7 @@ namespace Xod.Services
                     {
                         EvictNonDirtyRawPages();
                     }
-                    cachedRawPages[pageFileName] = rawPage;
+                    cachedRawPages.Put(pageFileName, rawPage);
                 }
                 else
                 {
@@ -682,12 +687,11 @@ namespace Xod.Services
                                 DiskSyncedLength = 0,
                                 DirtyStartOffset = 0,
                                 IsNewFile = true,
-                                IsPooled = true,
                                 RowCount = 0,
                                 RowIndex = new Dictionary<string, (int, int)>(256, StringComparer.Ordinal),
                                 Name = pageFileName
                             };
-                            cachedRawPages[pageFileName] = rawPage;
+                            cachedRawPages.Put(pageFileName, rawPage);
                         }
                         else
                         {
@@ -718,12 +722,8 @@ namespace Xod.Services
                     int newCap = Math.Max(rawPage.Bytes.Length * 2, newLength + 65536);
                     byte[] grown = new byte[newCap];
                     Buffer.BlockCopy(rawPage.Bytes, 0, grown, 0, insertPos);
-                    if (rawPage.IsPooled)
-                    {
-                        PageBufferPool.Return(rawPage.Bytes);
-                    }
+                    // The old array stays with any reader holding it (RawPageCache).
                     rawPage.Bytes = grown;
-                    rawPage.IsPooled = true;
                 }
 
                 Buffer.BlockCopy(rowBuf, 0, rawPage.Bytes, insertPos, rowByteLen);

@@ -382,17 +382,22 @@ namespace Xod.Engines.Xml
         }
 
         /// <summary>
-        /// The XOD 1.x digest a row stores for <paramref name="prop"/>, when <paramref name="value"/> is it: a read
-        /// gives a one-way value back as stored, and an update of the row writes it again. 1.x's digests are decimal
-        /// digits, which <see cref="CryptoHelper.HashProperty"/> can't tell from a value, so they were hashed again
-        /// (ISS-151). Kept only when the value has a 1.x digest's form and is what the row stores: a value the row
-        /// stores in plaintext (a database of 2.0.1 or earlier, ISS-064, or a property given [Crypto] later) is hashed,
-        /// as before. Null otherwise, and the value is hashed. A digit-only plaintext of that form that the row stores
-        /// stays (ISS-171).
+        /// A XOD 1.x digest written as it is: <paramref name="value"/>, of a 1.x digest's form, when a read gave this
+        /// very string back for a property of <paramref name="prop"/>'s method (<see cref="ReadDigests"/>, ISS-171), or
+        /// the row an update replaces stores it (ISS-151: a value sent away as text and back). 1.x's digests are
+        /// decimal digits, which <see cref="CryptoHelper.HashProperty"/> can't tell from a value, so they were hashed
+        /// again: by an update of another property (ISS-151), and by every write without the replaced row (ISS-171: a
+        /// row inserted into another database, a digest given to another row, a keyless child written again). A value
+        /// the row stores in plaintext (a database of 2.0.1 or earlier, ISS-064, or a property given [Crypto] later) is
+        /// hashed, as before, unless it is digits of that form. Null otherwise, and the value is hashed.
         /// </summary>
-        private static string StoredDigest(XElement storedRow, PropertyInfoItem prop, string value)
+        private static string StoredDigest(XElement storedRow, PropertyInfoItem prop, object original, string value)
         {
-            if (storedRow == null || value == null || !CryptoHelper.IsLegacy1xDigest(value, prop.Encryption))
+            if (value == null || !CryptoHelper.IsLegacy1xDigest(value, prop.Encryption))
+                return null;
+            if (ReadDigests.WasRead(original, prop.Encryption))
+                return value;
+            if (storedRow == null)
                 return null;
             string stored = prop.ValuePosition == ValuePosition.Attribute
                 ? storedRow.Attribute(prop.PropertyName)?.Value
@@ -439,7 +444,7 @@ namespace Xod.Engines.Xml
                     formattedValue = prop.Encryption switch
                     {
                         CryptoMethod.MD5 or CryptoMethod.SHA1 or CryptoMethod.SHA256 or CryptoMethod.SHA512 =>
-                            StoredDigest(storedRow, prop, formattedValue) ?? CryptoHelper.HashProperty(formattedValue, prop.Encryption),
+                            StoredDigest(storedRow, prop, value, formattedValue) ?? CryptoHelper.HashProperty(formattedValue, prop.Encryption),
                         CryptoMethod.AES256 => propertyKeys.Encrypt(formattedValue, prop.PropertyName),
                         _ => formattedValue
                     };
