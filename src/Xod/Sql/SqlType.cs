@@ -333,17 +333,16 @@ namespace Xod.Sql
             Type[] types = Helpers.ValueHelper.MapArguments(u);
             if (types == null) return false;
             Type keyType = types[0], valueType = types[1];
-            // The type a read of the row makes too (ValueHelper.MapToRead); none where it can't be made (XQ005).
-            Type made = Helpers.ValueHelper.MapToRead(u);
-            if (made == null) return false;
-            var dict = (System.Collections.IDictionary)Activator.CreateInstance(made);
+            // The map a read of the row makes too (ValueHelper.MakeMap); none where it can't be made (XQ005).
+            if (Helpers.ValueHelper.UnreadableCollection(u) != null) return false;
+            var entries = new List<KeyValuePair<object, object>>();
             foreach (var kv in map)
             {
                 object key = Helpers.ValueHelper.ParseScalar(keyType, kv.Key);
                 if (key == null || !TryToClr(kv.Value, valueType, out object value)) return false;
-                dict[key] = value;
+                entries.Add(new KeyValuePair<object, object>(key, value));
             }
-            result = dict;
+            result = Helpers.ValueHelper.MakeMap(u, entries);
             return true;
         }
 

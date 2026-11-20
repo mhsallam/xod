@@ -419,6 +419,12 @@ namespace Xod.Engines.Xml
             if (prop.IsGenericType && value != null)
             {
                 effectivePropType = value.GetActualType();
+                // No collection reads back from an object property, so none is written there (ISS-201: one was, and
+                // read back null; a declared collection a read can't give back is refused when its class loads).
+                if (ValueHelper.CollectionInObject(effectivePropType) is Type held)
+                    exceptionService.Throw(new XodException($"Property '{prop.PropertyName}' of {type.Name} is an object property " +
+                        $"holding a {held.Name}: XOD can't read a collection back from an object property. Declare the property " +
+                        "as the collection's type."));
                 propertyService.LoadType(effectivePropType);
             }
 
@@ -857,7 +863,8 @@ namespace Xod.Engines.Xml
                     continue;
                 // A row never writes its parent, and a keyless object is written by the row's own write. A reference by a
                 // foreign key to the row's own type (SelfForeign) is a reference like any other: written when it declares
-                // Cascade = Update (ISS-200: it was left out), a cycle of them stopped by WrittenByThisUpdate.
+                // Cascade = Update (ISS-200: it was left out), a cycle of them stopped by WrittenByThisUpdate; and its row
+                // goes with it when it declares Cascade = Delete (OwnedRows, ISS-215).
                 if (prop.ReferenceType == PropertyReferenceType.Parent ||
                     prop.ReferenceType == PropertyReferenceType.Complex)
                     continue;
@@ -1443,10 +1450,10 @@ namespace Xod.Engines.Xml
 
             foreach (var prop in propertyService.Properties(type.FullName))
             {
-                // A reference by a foreign key to a type that names this one back (SelfForeign) owns nothing, whatever
-                // it declares: Cascade = Delete isn't followed (ISS-215), while Cascade = Update is (UpdateRelatedRows).
+                // A reference by a foreign key to a type that names this one back (SelfForeign) is a reference like any
+                // other: it owns its row when it declares Cascade = Delete (ISS-215: it was left out whatever it
+                // declared). A cycle of them ends at the row already deleted (TryDeleteRow finds it gone).
                 if (prop.ReferenceType == PropertyReferenceType.Parent ||
-                    prop.ReferenceType == PropertyReferenceType.SelfForeign ||
                     (prop.TypeCategory != PropertyTypeCategory.Class &&
                      prop.TypeCategory != PropertyTypeCategory.Array &&
                      prop.TypeCategory != PropertyTypeCategory.GenericCollection))

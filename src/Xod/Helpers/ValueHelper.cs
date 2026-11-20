@@ -181,7 +181,7 @@ namespace Xod.Helpers
             if (type.IsArray)
                 return UnreadableCollection(type.GetElementType());
             if (IsMapType(type))
-                return MapToRead(type) == null ? type : null;
+                return MapMakerOf(type) == null ? type : null;
             if (!typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
                 return null;
             if (!type.IsGenericType || type.GetGenericArguments().Length != 1)
@@ -191,6 +191,15 @@ namespace Xod.Helpers
                 return type;
             return UnreadableCollection(item);
         }
+
+        /// <summary>
+        /// The collection an <c>object</c> property holds, which no read gives back (ISS-201); null for a value that is no
+        /// collection (a scalar, a string, a class). A read takes a stored collection's item type from the property's
+        /// declared type (XmlEngine.StoredItemType), and <c>object</c> names none, so a list, an array or a set read back
+        /// null; a map was written as a list of its pairs and read back null too.
+        /// </summary>
+        internal static Type CollectionInObject(Type held) =>
+            held != typeof(string) && !IsScalarType(held) && typeof(System.Collections.IEnumerable).IsAssignableFrom(held) ? held : null;
 
         /// <summary>
         /// A map, which the writer stores as entries (PropertyTypeCategory.Dictionary): the one test. The non-generic
@@ -219,18 +228,103 @@ namespace Xod.Helpers
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Type, System.Runtime.CompilerServices.StrongBox<Type[]>> MapArgumentsByType = new();
 
         /// <summary>
-        /// The type a read of a map property makes: the property's own, where it can be made and filled as an
-        /// <c>IDictionary</c>; otherwise a <c>Dictionary&lt;K, V&gt;</c> of its types, where the property can hold one (an
-        /// interface); null where neither (refused at registration, <see cref="UnreadableCollection"/>).
+        /// The map a read of a property of <paramref name="type"/> gives back, holding <paramref name="entries"/>: the one
+        /// maker, for the row reader and for SQL putting a column into a class. Refused at registration where there is
+        /// none (<see cref="UnreadableCollection"/>).
         /// </summary>
-        internal static Type MapToRead(Type type)
+        internal static object MakeMap(Type type, IEnumerable<KeyValuePair<object, object>> entries) =>
+            (MapMakerOf(type) ?? throw new InvalidOperationException("XOD can't make a " + type.Name + "."))(entries);
+
+        /// <summary>
+        /// How a map of <paramref name="type"/> is made, cached per type (weakly: a type of an assembly that unloads isn't
+        /// held); null where it can't be (ISS-213: these were refused, though a filled <c>Dictionary&lt;K, V&gt;</c> makes
+        /// them):
+        /// <list type="number">
+        /// <item>the type itself, made empty and filled as an <c>IDictionary</c>;</item>
+        /// <item>a <c>Dictionary&lt;K, V&gt;</c> of its types, where the property can hold one (an interface);</item>
+        /// <item>from a filled <c>Dictionary&lt;K, V&gt;</c>, by the type's public constructor taking its entries: one
+        /// parameter of <c>Dictionary&lt;K, V&gt;</c>, <c>IDictionary&lt;K, V&gt;</c>, <c>IReadOnlyDictionary&lt;K, V&gt;</c>
+        /// or <c>IEnumerable&lt;KeyValuePair&lt;K, V&gt;&gt;</c> (<c>ReadOnlyDictionary&lt;K, V&gt;</c>). A parameter that only
+        /// accepts one (an <c>object</c>, an <c>IEnumerable</c>) takes something else;</item>
+        /// <item>from a filled <c>Dictionary&lt;K, V&gt;</c>, by a factory: <c>ImmutableDictionary&lt;K, V&gt;</c> (also for
+        /// <c>IImmutableDictionary&lt;K, V&gt;</c>), <c>ImmutableSortedDictionary&lt;K, V&gt;</c>,
+        /// <c>FrozenDictionary&lt;K, V&gt;</c>.</item>
+        /// </list>
+        /// </summary>
+        private static Func<IEnumerable<KeyValuePair<object, object>>, object> MapMakerOf(Type type) =>
+            MapMakersByType.GetValue(type, static t =>
+                new System.Runtime.CompilerServices.StrongBox<Func<IEnumerable<KeyValuePair<object, object>>, object>>(BuildMapMaker(t))).Value;
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Type,
+            System.Runtime.CompilerServices.StrongBox<Func<IEnumerable<KeyValuePair<object, object>>, object>>> MapMakersByType = new();
+
+        private static Func<IEnumerable<KeyValuePair<object, object>>, object> BuildMapMaker(Type type)
         {
             if (!type.IsAbstract && !type.IsInterface && type.GetConstructor(Type.EmptyTypes) != null &&
                 typeof(System.Collections.IDictionary).IsAssignableFrom(type))
-                return type;
-            Type[] args = MapArguments(type) ?? new[] { typeof(string), typeof(string) };
-            Type made = typeof(Dictionary<,>).MakeGenericType(args);
-            return type.IsAssignableFrom(made) ? made : null;
+                return entries => FillMap((System.Collections.IDictionary)CreateInstance(type), entries);
+
+            Type[] named = MapArguments(type);
+            Type[] args = named ?? new[] { typeof(string), typeof(string) };
+            Type dictionary = typeof(Dictionary<,>).MakeGenericType(args);
+            System.Collections.IDictionary Filled(IEnumerable<KeyValuePair<object, object>> entries) =>
+                FillMap((System.Collections.IDictionary)Activator.CreateInstance(dictionary), entries);
+            if (type.IsAssignableFrom(dictionary))
+                return Filled;
+            if (named == null)
+                return null;
+
+            if (!type.IsAbstract && !type.IsInterface)
+            {
+                Type[] entriesTypes =
+                {
+                    dictionary,
+                    typeof(IDictionary<,>).MakeGenericType(args),
+                    typeof(IReadOnlyDictionary<,>).MakeGenericType(args),
+                    typeof(IEnumerable<>).MakeGenericType(typeof(KeyValuePair<,>).MakeGenericType(args)),
+                };
+                var constructor = type.GetConstructors().FirstOrDefault(c =>
+                {
+                    var parameters = c.GetParameters();
+                    return parameters.Length == 1 && entriesTypes.Contains(parameters[0].ParameterType);
+                });
+                if (constructor != null)
+                    return entries => constructor.Invoke(new object[] { Filled(entries) });
+            }
+
+            var factory = typeof(ValueHelper).GetMethod(nameof(MapByFactory), BindingFlags.NonPublic | BindingFlags.Static).MakeGenericMethod(args);
+            Type[] made =
+            {
+                typeof(System.Collections.Immutable.ImmutableDictionary<,>).MakeGenericType(args),
+                typeof(System.Collections.Immutable.ImmutableSortedDictionary<,>).MakeGenericType(args),
+                typeof(System.Collections.Frozen.FrozenDictionary<,>).MakeGenericType(args),
+            };
+            for (int kind = 0; kind < made.Length; kind++)
+            {
+                if (!type.IsAssignableFrom(made[kind]))
+                    continue;
+                int chosen = kind;
+                return entries => factory.Invoke(null, new object[] { Filled(entries), chosen });
+            }
+            return null;
+        }
+
+        private static object MapByFactory<TKey, TValue>(System.Collections.IDictionary filled, int kind)
+        {
+            var source = (Dictionary<TKey, TValue>)filled;
+            return kind switch
+            {
+                0 => System.Collections.Immutable.ImmutableDictionary.CreateRange(source),
+                1 => System.Collections.Immutable.ImmutableSortedDictionary.CreateRange(source),
+                _ => System.Collections.Frozen.FrozenDictionary.ToFrozenDictionary(source),
+            };
+        }
+
+        private static System.Collections.IDictionary FillMap(System.Collections.IDictionary map, IEnumerable<KeyValuePair<object, object>> entries)
+        {
+            foreach (var entry in entries)
+                map[entry.Key] = entry.Value;
+            return map;
         }
 
         /// <summary>

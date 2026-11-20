@@ -18,6 +18,14 @@ namespace Xod.Services
 
         private readonly string[] keywords = { "dataType", "collType", "refType", "hostProp" };
 
+        /// <summary>The refusal of a declared collection a read can't give back, when its class loads (ISS-184).</summary>
+        internal static string UnreadableCollectionMessage(string property, string type, Type unreadable) =>
+            $"Property '{property}' of {type} is a {unreadable.Name}, which XOD can't read back: a collection property is an array, " +
+            "a map, a List<T>, or an interface a List<T> implements (IList<T>, ICollection<T>, IEnumerable<T>, IReadOnlyList<T>, " +
+            "IReadOnlyCollection<T>); a map is a Dictionary<K, V>, an IDictionary<K, V> or IReadOnlyDictionary<K, V>, a " +
+            "ReadOnlyDictionary<K, V>, an immutable or frozen dictionary, or a class with a public parameterless constructor that " +
+            "is an IDictionary. Mark it [NotMapped] to leave it out.";
+
         /// <summary>
         /// The one reader of a property's XOD attributes, those an <c>override</c> inherits from the property it overrides
         /// included (ISS-122). <c>PropertyInfo.GetCustomAttributes(true)</c> ignores <c>inherit</c> for a property (the .NET
@@ -106,11 +114,7 @@ namespace Xod.Services
                                     "DateOnly, TimeOnly or TimeSpan, a class, or a collection of these. Mark it [NotMapped] to leave it out.");
                             // A collection a read can't give back, refused the same way (ISS-184).
                             if (prop.CanWrite && ValueHelper.UnreadableCollection(prop.PropertyType) is Type unreadable)
-                                throw new XodException($"Property '{prop.Name}' of {type.Name} is a {unreadable.Name}, which XOD can't " +
-                                    "read back: a collection property is an array, a map, a List<T>, or an interface a List<T> implements " +
-                                    "(IList<T>, ICollection<T>, IEnumerable<T>, IReadOnlyList<T>, IReadOnlyCollection<T>); a map is a " +
-                                    "Dictionary<K, V>, an IDictionary<K, V> or IReadOnlyDictionary<K, V>, or a class with a public " +
-                                    "parameterless constructor that is an IDictionary. Mark it [NotMapped] to leave it out.");
+                                throw new XodException(UnreadableCollectionMessage(prop.Name, type.Name, unreadable));
 
                             PropertyTypeCategory propTypeCategory = GetPropertyTypeCategory(prop.PropertyType);
                             var propInfoItem = new PropertyInfoItem

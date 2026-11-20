@@ -23,12 +23,14 @@
     <ProjectReference Include="..\..\src\Xod\Xod.csproj" />
   </ItemGroup>
 
-  <!-- xod query (XodCliQueryTests) runs in process. The tool targets .NET 9 only, so its tests do too. -->
+  <!-- xod query (XodCliQueryTests) and xod convert (XodCliConvertTests) run in process. The tool targets .NET 9 only, so
+       its tests do too. -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
     <ProjectReference Include="..\..\src\Xod.Cli\Xod.Cli.csproj" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' != 'net9.0'">
     <Compile Remove="XodCliQueryTests.cs" />
+    <Compile Remove="XodCliConvertTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

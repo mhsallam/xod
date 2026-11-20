@@ -260,11 +260,15 @@ namespace Xod.Engines.Serializers
         private static readonly JsonStorageSerializer JsonInstance = new JsonStorageSerializer();
         private static readonly BinaryStorageSerializer BinaryInstance = new BinaryStorageSerializer();
 
+        /// <summary>The serializer of <paramref name="format"/>; an undefined format is refused (ISS-156: any value this
+        /// didn't know was taken for XML, so <c>(StorageFormat)7</c> was recorded as the database's format and written as
+        /// XML).</summary>
         public static IXodStorageSerializer Get(StorageFormat format) => format switch
         {
+            StorageFormat.Xml => XmlInstance,
             StorageFormat.Json => JsonInstance,
             StorageFormat.Binary => BinaryInstance,
-            _ => XmlInstance
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, "XOD stores Xml, Json or Binary.")
         };
 
         public static StorageFormat DetectFormat(byte[] data)

@@ -623,6 +623,15 @@ namespace Xod.Services
                 unhydratedBlocks.Remove(k);
             hydratedTypes.Remove(type.FullName);
             reverseHydratedTypes.Remove(type.FullName);
+            // The reverse map's entries of the type go too (ISS-111): kept, a later build added them again beside the
+            // stale ones.
+            foreach (var code in codeToIndexEntries.Keys.ToList())
+            {
+                var entries = codeToIndexEntries[code];
+                entries.RemoveAll(e => e.IndexKey.StartsWith(prefix, StringComparison.Ordinal));
+                if (entries.Count == 0)
+                    codeToIndexEntries.Remove(code);
+            }
             dirtyTypes.Remove(type);
             deltaLogs.Remove(type);
         }
@@ -710,6 +719,10 @@ namespace Xod.Services
             {
                 // A rebuild from the pages records no deltas: only a snapshot can persist it.
                 LogFor(type).MarkSnapshotDue();
+                // The reverse map holds the row only once it is built for the type, as every other writer of it asks
+                // (ISS-111): registered before, the row was added again when the map was built from the trees
+                // (EnsureReverseIndexBuilt), so every row of a rebuild was in it twice.
+                bool trackReverse = reverseHydratedTypes.Contains(type.FullName);
 
                 foreach (var (key, normVal, itemCodePath) in RowKeys(type, rowElement, pageCode, indexedProps))
                 {
@@ -720,7 +733,8 @@ namespace Xod.Services
                     }
 
                     AddCodeToBucket(tree, normVal, itemCodePath);
-                    RegisterReverseIndexEntry(itemCodePath, key, normVal);
+                    if (trackReverse)
+                        RegisterReverseIndexEntry(itemCodePath, key, normVal);
                 }
             }
         }

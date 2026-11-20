@@ -834,9 +834,18 @@ namespace Xod.Services
                 throw;
             }
 
-            log.SnapshotWritten(snapshotBytes);
-            // Replaced by what this context holds. (Never inside a transaction: SaveToDisk writes no index file there,
-            // ISS-100.)
+            SnapshotWrittenUnlocked(type, snapshotBytes);
+        }
+
+        /// <summary>
+        /// The end of both snapshot writers, plain and encrypted: the log starts over, and the file, whose replacement by
+        /// what this context holds is written or queued, is no longer one to delete. (Never inside a transaction:
+        /// SaveToDisk writes no index file there, ISS-100.) The encrypted writer kept the second step out, so the next flush deleted the file it had just
+        /// written, and the next open rebuilt the index (ISS-111). Called holding the lock.
+        /// </summary>
+        private void SnapshotWrittenUnlocked(Type type, long snapshotBytes)
+        {
+            LogFor(type).SnapshotWritten(snapshotBytes);
             if (!InTransaction)
                 undeletedIndexFiles.Remove(type);
         }
@@ -1013,7 +1022,7 @@ namespace Xod.Services
                 ioService.Save(xFile);
             lock (syncLock)
             {
-                LogFor(type).SnapshotWritten(-1); // an encrypted file is never appended to
+                SnapshotWrittenUnlocked(type, -1); // an encrypted file is never appended to
             }
         }
     }

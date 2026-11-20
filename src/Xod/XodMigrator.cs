@@ -41,6 +41,8 @@ namespace Xod
                 throw new ArgumentNullException(nameof(sourceDirectoryOrFile));
             if (string.IsNullOrEmpty(targetDirectory))
                 throw new ArgumentNullException(nameof(targetDirectory));
+            // An undefined format is refused (by its owner) before anything is held or written (ISS-156).
+            StorageSerializerFactory.Get(targetFormat);
 
             // The database as a context finds it: a folder with two database files is refused (ISS-085), since a
             // context opened through the other would write the tables this conversion holds.

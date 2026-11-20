@@ -514,7 +514,12 @@ namespace Xod.Engines.Xml
 
                 if (prop.ReferenceType == PropertyReferenceType.Parent && prop.ParentKeys != null)
                     mappingProps = prop.ParentKeys.Where(s => !string.IsNullOrEmpty(s.LocalProperty)).ToDictionary(s => s.RemoteProperty, s => s.LocalProperty);
-                if (prop.ReferenceType == PropertyReferenceType.Foreign && prop.ForeignKeys != null)
+                // The referenced row's keys are written to the local key columns, so the key and the element name one row.
+                // A reference to a type that names this one back (SelfForeign) was left out: repointed by its key alone
+                // while it held the object read, it stored the new key and the old row's element, and a delete that
+                // follows the element (Cascade = Delete) took the old row.
+                if ((prop.ReferenceType == PropertyReferenceType.Foreign || prop.ReferenceType == PropertyReferenceType.SelfForeign) &&
+                    prop.ForeignKeys != null)
                     mappingProps = prop.ForeignKeys.ToDictionary(s => s.RemoteProperty, s => s.LocalProperty);
             }
             return mappingProps;

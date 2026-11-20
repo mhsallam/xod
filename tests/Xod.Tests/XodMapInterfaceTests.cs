@@ -90,20 +90,106 @@ namespace Xod.Tests
             }
         }
 
-        public class MiReadOnly
+        // ISS-213: a map class with no parameterless constructor is made from a filled Dictionary<K, V>: through its
+        // constructor taking one (ReadOnlyDictionary), or its type's factory (the immutable and frozen dictionaries).
+        public class MiFixed
         {
             public int Id { get; set; }
-            public System.Collections.ObjectModel.ReadOnlyDictionary<string, int> Fixed { get; set; }
+            public System.Collections.ObjectModel.ReadOnlyDictionary<string, int> ReadOnly { get; set; }
+            public System.Collections.Immutable.ImmutableDictionary<string, int> Immutable { get; set; }
+            public System.Collections.Immutable.ImmutableSortedDictionary<string, int> Sorted { get; set; }
+            public System.Collections.Immutable.IImmutableDictionary<int, string> ByInterface { get; set; }
+            public System.Collections.Frozen.FrozenDictionary<string, int> Frozen { get; set; }
         }
 
-        // A map class a read can't make (no parameterless constructor, and no Dictionary<K, V> fits it) is refused when
-        // its type loads, as any collection a read can't give back is (ISS-184), saying which maps can be.
+        private static MiFixed Filled() => new MiFixed
+        {
+            ReadOnly = new System.Collections.ObjectModel.ReadOnlyDictionary<string, int>(new Dictionary<string, int> { ["a"] = 1, ["b"] = 2 }),
+            Immutable = System.Collections.Immutable.ImmutableDictionary.CreateRange(new Dictionary<string, int> { ["c"] = 3 }),
+            Sorted = System.Collections.Immutable.ImmutableSortedDictionary.CreateRange(new Dictionary<string, int> { ["z"] = 26, ["y"] = 25 }),
+            ByInterface = System.Collections.Immutable.ImmutableDictionary.CreateRange(new Dictionary<int, string> { [7] = "seven" }),
+            Frozen = System.Collections.Frozen.FrozenDictionary.ToFrozenDictionary(new Dictionary<string, int> { ["f"] = 6 }),
+        };
+
+        private static void AssertFilled(MiFixed row)
+        {
+            Assert.Equal(new[] { "a=1", "b=2" }, row.ReadOnly.Select(kv => kv.Key + "=" + kv.Value).OrderBy(x => x, StringComparer.Ordinal));
+            Assert.Equal(3, row.Immutable["c"]);
+            Assert.Equal(new[] { "y", "z" }, row.Sorted.Keys.ToArray());
+            Assert.Equal("seven", row.ByInterface[7]);
+            Assert.Equal(6, row.Frozen["f"]);
+        }
+
+        [Fact]
+        public void Maps_with_no_parameterless_constructor_read_back_as_written()
+        {
+            string path = NewPath("fixed");
+            using (var db = new XodContext(path))
+            {
+                db.Insert(Filled());
+                db.Insert(new MiFixed());
+            }
+
+            using (var db = new XodContext(path))
+            {
+                AssertFilled(db.Find<MiFixed>(r => r.Id == 1));
+                var empty = db.Find<MiFixed>(r => r.Id == 2);
+                Assert.Null(empty.ReadOnly);
+                Assert.Null(empty.Frozen);
+            }
+        }
+
+        // SQL puts such a column back into such a property, by the same maker.
+        [Fact]
+        public void Sql_puts_them_into_a_class()
+        {
+            string path = NewPath("fixed-sql");
+            using (var db = new XodContext(path))
+                db.Insert(Filled());
+
+            using (var db = new XodContext(path))
+                AssertFilled(db.Sql<MiFixed>("SELECT ReadOnly, Immutable, Sorted, ByInterface, Frozen FROM MiFixed").Single());
+        }
+
+        // A map class neither made by a parameterless constructor, nor from a Dictionary<K, V>, is still refused when its
+        // type loads, as any collection a read can't give back is (ISS-184), saying which maps can be.
+        public sealed class OnlyFromPairs : Dictionary<string, int>
+        {
+            public OnlyFromPairs(int seed) { this["seed"] = seed; }
+        }
+
+        public class MiUnmade
+        {
+            public int Id { get; set; }
+            public OnlyFromPairs Pairs { get; set; }
+        }
+
         [Fact]
         public void A_map_class_a_read_cannot_make_is_refused_when_its_type_loads()
         {
             using var db = new XodContext(NewPath("refused"));
-            var e = Assert.ThrowsAny<XodException>(() => db.Insert(new MiReadOnly()));
+            var e = Assert.ThrowsAny<XodException>(() => db.Insert(new MiUnmade()));
             Assert.Contains("a map is a Dictionary<K, V>", e.Message);
+        }
+
+        // A constructor whose one parameter only accepts a dictionary (an object: a configuration, say) doesn't take the
+        // entries, so it makes no map.
+        public sealed class ConfiguredMap : Dictionary<string, int>
+        {
+            public ConfiguredMap(object configuration) { }
+        }
+
+        public class MiConfigured
+        {
+            public int Id { get; set; }
+            public ConfiguredMap Pairs { get; set; }
+        }
+
+        [Fact]
+        public void A_map_class_whose_constructor_takes_no_entries_is_refused()
+        {
+            using var db = new XodContext(NewPath("configured"));
+            Assert.ThrowsAny<XodException>(() => db.Insert(new MiConfigured()));
         }
 
         // SQL reads the column as a map, by the class and by the schema recorded.

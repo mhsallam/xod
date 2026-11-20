@@ -706,7 +706,7 @@ namespace Xod.Engines.Xml
         /// update of such a row reads it too where its type has relations, so the way out is to delete the row and insert
         /// it again.
         /// </summary>
-        private static IDictionary ReadMapOfRow(Type type, XElement row, PropertyInfoItem prop, XElement e)
+        private static object ReadMapOfRow(Type type, XElement row, PropertyInfoItem prop, XElement e)
         {
             if (!StoredValue.IsStoredMap(e))
                 throw new DatabaseFileException($"The row '{row.Attribute("code")?.Value}' of {type.Name} stores {prop.PropertyName} as a " +
@@ -715,16 +715,16 @@ namespace Xod.Engines.Xml
             return ReadStoredMap(prop, e);
         }
 
-        private static IDictionary ReadStoredMap(PropertyInfoItem prop, XElement e)
+        private static object ReadStoredMap(PropertyInfoItem prop, XElement e)
         {
             // The key and value types its IDictionary<K, V> or IReadOnlyDictionary<K, V> names (strings for a
-            // Hashtable); the property's own type where it can be made, a Dictionary<K, V> otherwise (ValueHelper.MapToRead).
+            // Hashtable); the map the property's type makes (ValueHelper.MakeMap).
             // A Dictionary<,> was set on every map property, which a SortedDictionary or a Hashtable can't hold: once an
             // empty map was stored, reading one threw (review of TASK-071; a map with entries always did).
             Type[] types = ValueHelper.MapArguments(prop.PropertyType);
             Type keyType = types?[0] ?? typeof(string);
             Type valType = types?[1] ?? typeof(string);
-            var map = (IDictionary)ValueHelper.CreateInstance(ValueHelper.MapToRead(prop.PropertyType));
+            var entries = new List<KeyValuePair<object, object>>();
             foreach (var entry in e.Elements("Entry"))
             {
                 string key = entry.Attribute("key")?.Value;
@@ -732,9 +732,11 @@ namespace Xod.Engines.Xml
                     continue;
                 // A null where the value type has none reads as its default, as a list's item does (AddRange).
                 object value = ValueHelper.ParseScalar(valType, StoredValue.ItemText(entry));
-                map[ValueHelper.ParseScalar(keyType, key)] = value ?? (valType.IsValueType ? ValueHelper.DefaultOf(valType) : null);
+                entries.Add(new KeyValuePair<object, object>(ValueHelper.ParseScalar(keyType, key),
+                    value ?? (valType.IsValueType ? ValueHelper.DefaultOf(valType) : null)));
             }
-            return map;
+            // The one maker (ValueHelper.MakeMap): the property's type, a Dictionary<K, V>, or one made from it.
+            return ValueHelper.MakeMap(prop.PropertyType, entries);
         }
 
         private static object ReadStoredScalarItems(PropertyInfoItem prop, Type itemType, XElement e)
