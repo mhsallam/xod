@@ -68,7 +68,7 @@ namespace Xod.Engines.Xml
 
         /// <summary>
         /// ISS-188: a key part at its type's default is no value, by the rule every example takes
-        /// (<see cref="SetsProperty"/>). The index looked a part at its default up literally, a <c>0</c> included, while
+        /// (ValueHelper.SetsValue). The index looked a part at its default up literally, a <c>0</c> included, while
         /// the example matcher and the primary-key check took it as unset, so such a key named different rows with and
         /// without indexing, and a row stored with one was never kept unique. A row is written only with every part set
         /// (<see cref="ValidateUniqueAndPrimaryConstraints"/>, after an autonumber is given its value); a lookup by key
@@ -86,7 +86,7 @@ namespace Xod.Engines.Xml
 
             int set = 0;
             foreach (var prop in primaryProps)
-                if (SetsProperty(prop, item))
+                if (ValueHelper.SetsValue(prop, item))
                     set++;
             return set == 0 ? KeyParts.None : set == primaryProps.Length ? KeyParts.All : KeyParts.Some;
         }
@@ -121,24 +121,24 @@ namespace Xod.Engines.Xml
                     var pkProp = primaryProps[0];
                     if (pkProp.ScalarKind == ScalarPropertyKind.Int32)
                     {
-                        int pkInt = pkProp.IntGetter(item);
-                        if (pkInt != 0 && indexService.HasNormalizedKeyConflict(type, pkProp, IndexService.NormalizeInt32(pkInt), existingCodeToIgnore))
+                        if (ValueHelper.SetsValue(pkProp, item) &&
+                            indexService.HasNormalizedKeyConflict(type, pkProp, IndexService.NormalizeInt32(pkProp.IntGetter(item)), existingCodeToIgnore))
                         {
                             exceptionService.Throw(new ReservedPrimaryKeyException());
                         }
                     }
                     else if (pkProp.ScalarKind == ScalarPropertyKind.Int64)
                     {
-                        long pkLong = pkProp.LongGetter(item);
-                        if (pkLong != 0L && indexService.HasNormalizedKeyConflict(type, pkProp, IndexService.NormalizeInt64(pkLong), existingCodeToIgnore))
+                        if (ValueHelper.SetsValue(pkProp, item) &&
+                            indexService.HasNormalizedKeyConflict(type, pkProp, IndexService.NormalizeInt64(pkProp.LongGetter(item)), existingCodeToIgnore))
                         {
                             exceptionService.Throw(new ReservedPrimaryKeyException());
                         }
                     }
                     else if (pkProp.ScalarKind == ScalarPropertyKind.String)
                     {
-                        string pkStr = pkProp.StringGetter(item);
-                        if (!string.IsNullOrEmpty(pkStr) && indexService.HasNormalizedKeyConflict(type, pkProp, pkStr, existingCodeToIgnore))
+                        if (ValueHelper.SetsValue(pkProp, item) &&
+                            indexService.HasNormalizedKeyConflict(type, pkProp, pkProp.StringGetter(item), existingCodeToIgnore))
                         {
                             exceptionService.Throw(new ReservedPrimaryKeyException());
                         }
@@ -146,7 +146,7 @@ namespace Xod.Engines.Xml
                     else
                     {
                         object pkVal = pkProp.GetValue(item);
-                        if (pkVal != null && !pkVal.Equals(ValueHelper.DefaultOf(pkProp.PropertyType)))
+                        if (!ValueHelper.IsNoValue(pkVal, pkProp.PropertyType))
                         {
                             if (indexService.HasKeyConflict(type, pkProp, pkVal, existingCodeToIgnore))
                             {
@@ -182,8 +182,8 @@ namespace Xod.Engines.Xml
                 {
                     if (uniqueProp.ScalarKind == ScalarPropertyKind.String && uniqueProp.Encryption == CryptoMethod.None)
                     {
-                        string uStr = uniqueProp.StringGetter(item);
-                        if (!string.IsNullOrEmpty(uStr) && indexService.HasNormalizedKeyConflict(type, uniqueProp, uStr, existingCodeToIgnore))
+                        if (ValueHelper.SetsValue(uniqueProp, item) &&
+                            indexService.HasNormalizedKeyConflict(type, uniqueProp, uniqueProp.StringGetter(item), existingCodeToIgnore))
                         {
                             exceptionService.Throw(new ReservedUniqueKeyException());
                         }
@@ -191,8 +191,8 @@ namespace Xod.Engines.Xml
                     }
                     if (uniqueProp.ScalarKind == ScalarPropertyKind.Int32)
                     {
-                        int uInt = uniqueProp.IntGetter(item);
-                        if (uInt != 0 && indexService.HasNormalizedKeyConflict(type, uniqueProp, IndexService.NormalizeInt32(uInt), existingCodeToIgnore))
+                        if (ValueHelper.SetsValue(uniqueProp, item) &&
+                            indexService.HasNormalizedKeyConflict(type, uniqueProp, IndexService.NormalizeInt32(uniqueProp.IntGetter(item)), existingCodeToIgnore))
                         {
                             exceptionService.Throw(new ReservedUniqueKeyException());
                         }
@@ -200,8 +200,8 @@ namespace Xod.Engines.Xml
                     }
                     if (uniqueProp.ScalarKind == ScalarPropertyKind.Int64)
                     {
-                        long uLong = uniqueProp.LongGetter(item);
-                        if (uLong != 0L && indexService.HasNormalizedKeyConflict(type, uniqueProp, IndexService.NormalizeInt64(uLong), existingCodeToIgnore))
+                        if (ValueHelper.SetsValue(uniqueProp, item) &&
+                            indexService.HasNormalizedKeyConflict(type, uniqueProp, IndexService.NormalizeInt64(uniqueProp.LongGetter(item)), existingCodeToIgnore))
                         {
                             exceptionService.Throw(new ReservedUniqueKeyException());
                         }
@@ -210,7 +210,7 @@ namespace Xod.Engines.Xml
                 }
 
                 object val = uniqueProp.GetValue(item);
-                if (val == null || val.Equals(ValueHelper.DefaultOf(uniqueProp.PropertyType)))
+                if (ValueHelper.IsNoValue(val, uniqueProp.PropertyType))
                     continue;
 
                 if (options.EnableIndexing)
@@ -269,7 +269,7 @@ namespace Xod.Engines.Xml
                 }
 
                 object value = primaryProp.GetValue(item);
-                if (value != null && !value.Equals(ValueHelper.DefaultOf(primaryProp.PropertyType)))
+                if (!ValueHelper.IsNoValue(value, primaryProp.PropertyType))
                 {
                     values.Add(primaryProp.PropertyName, value);
                 }

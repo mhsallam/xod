@@ -109,14 +109,14 @@ namespace Xod.Engines.Xml
                                 if (parentKeyProp != null)
                                     parentKeyValue = parentKeyProp.Property.GetValue(item);
 
-                                if (parentKeyValue != null && !string.IsNullOrEmpty(parentKeyPropAtt.LocalProperty))
+                                if (!ValueHelper.IsNoValue(parentKeyValue, parentKeyProp?.PropertyType) && !string.IsNullOrEmpty(parentKeyPropAtt.LocalProperty))
                                 {
                                     PropertyInfoItem childKeyProp = propertyService.Properties(childType.FullName)
                                         .FirstOrDefault(s => s.PropertyName == parentKeyPropAtt.LocalProperty);
                                     if (childKeyProp != null)
                                     {
                                         object childKeyValue = childKeyProp.Property.GetValue(child);
-                                        if (childKeyValue != null && !childKeyValue.Equals(ValueHelper.DefaultOf(childKeyProp.PropertyType)))
+                                        if (!ValueHelper.IsNoValue(childKeyValue, childKeyProp.PropertyType))
                                         {
                                             if (!childKeyValue.Equals(parentKeyValue))
                                                 exceptionService.Throw(new ReservedChildException());
@@ -293,7 +293,7 @@ namespace Xod.Engines.Xml
                         if (remoteProp != null)
                         {
                             object remoteValue = remoteProp.GetValue(writeTrack.Parent.Item);
-                            if (remoteValue != null && !remoteValue.Equals(ValueHelper.DefaultOf(remoteProp.PropertyType)))
+                            if (!ValueHelper.IsNoValue(remoteValue, remoteProp.PropertyType))
                             {
                                 xpe.SetAttributeValue(remoteProp.Name, remoteValue);
                                 if (localProp != null)
@@ -436,7 +436,7 @@ namespace Xod.Engines.Xml
                                 object localValue = localProp.GetValue(item);
                                 object remoteValue = remoteProp.GetValue(writeTrack.Parent.Item);
 
-                                if (localValue == null || localValue.Equals(ValueHelper.DefaultOf(localProp.PropertyType)))
+                                if (ValueHelper.IsNoValue(localValue, localProp.PropertyType))
                                     break;
 
                                 if (localValue.Equals(remoteValue))

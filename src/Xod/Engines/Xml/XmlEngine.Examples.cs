@@ -12,7 +12,7 @@ namespace Xod.Engines.Xml
         /// <summary>
         /// ISS-139: the one test of a stored row against an example, for every match by example (the query by
         /// example, Update and Delete by an item, the primary-key and unique checks made without an index). A property
-        /// takes part when the example sets it (<see cref="SetsProperty"/>). A scalar matches when the value a read
+        /// takes part when the example sets it (ValueHelper.SetsValue). A scalar matches when the value a read
         /// gives back from the row and the example's have one index key, by the index's own functions
         /// (IndexService.GetNormalizedPropertyValue and NormalizeIndexValue, StoredValue.ReadBack): equal exactly
         /// when C# says equal, text exact. So a match gives the rows an index lookup gives, indexed or not. Any other
@@ -33,36 +33,9 @@ namespace Xod.Engines.Xml
             public XElement Written;
         }
 
-        /// <summary>
-        /// The one rule for which properties of an example take part: those it sets, not null and not their type's
-        /// default (ValueHelper.DefaultOf, which for text is the empty string, so an empty string doesn't take part).
-        /// The example filters (FilterItemPrimaryProperties) clear the other properties to those defaults.
-        /// </summary>
-        private static bool SetsProperty(PropertyInfoItem prop, object example)
-        {
-            switch (prop.ScalarKind)
-            {
-                case ScalarPropertyKind.Int32:
-                    return prop.IntGetter(example) != 0;
-                case ScalarPropertyKind.Int64:
-                    return prop.LongGetter(example) != 0L;
-                case ScalarPropertyKind.Decimal:
-                    return prop.DecimalGetter(example) != 0m;
-                case ScalarPropertyKind.Double:
-                    return prop.DoubleGetter(example) != 0.0;
-                case ScalarPropertyKind.Boolean:
-                    return prop.BoolGetter(example);
-                case ScalarPropertyKind.String:
-                    return !string.IsNullOrEmpty(prop.StringGetter(example));
-                case ScalarPropertyKind.Guid:
-                    return prop.GuidGetter(example) != Guid.Empty;
-                default:
-                {
-                    var val = prop.GetValue(example);
-                    return val != null && !val.Equals(ValueHelper.DefaultOf(prop.PropertyType));
-                }
-            }
-        }
+        // The properties of an example that take part are those it sets (ValueHelper.SetsValue: not null and not their
+        // type's default, which for text is the empty string, so an empty string doesn't take part). The example filters
+        // (FilterItemPrimaryProperties) clear the other properties to those defaults.
 
         // A one-way digest is stored as itself, not as the value: it matches by its stored form.
         private static bool MatchesByValue(PropertyInfoItem prop) =>
@@ -84,7 +57,7 @@ namespace Xod.Engines.Xml
             };
             foreach (var prop in props)
             {
-                if (!SetsProperty(prop, example))
+                if (!ValueHelper.SetsValue(prop, example))
                     continue;
                 test.Set.Add(prop);
                 if (MatchesByValue(prop))

@@ -18,7 +18,7 @@ namespace Xod.Services
             if (candidateCodes == null || candidateCodes.Count < 8)
                 return;
 
-            bool useRawByteCache = string.IsNullOrEmpty(password) && storageSerializer.Format == StorageFormat.Xml;
+            bool useRawByteCache = string.IsNullOrEmpty(Password) && storageSerializer.Format == StorageFormat.Xml;
             HashSet<string> missingSet = null;
             List<RawPageBuffer> unindexedCachedPages = null;
             lock (syncLock)
@@ -125,7 +125,7 @@ namespace Xod.Services
 
             string[] missingXFiles = missingSet.ToArray();
             var loadedFiles = new XFile[missingXFiles.Length];
-            FileKeys currentKeys = fileKeys;
+            FileKeys currentKeys = FileKeys;
 
             ParallelReads.For(missingXFiles.Length, i =>
             {
@@ -255,7 +255,7 @@ namespace Xod.Services
                     return cached.File.GetRowByCode(rowCode);
                 }
 
-                if (string.IsNullOrEmpty(password) && storageSerializer.Format == StorageFormat.Xml)
+                if (string.IsNullOrEmpty(Password) && storageSerializer.Format == StorageFormat.Xml)
                 {
                     long tLoad = WriteDiagnostics.Begin();
                     rawPage = GetOrLoadRawPageUnlocked(pageFileName, out _);
@@ -295,7 +295,7 @@ namespace Xod.Services
         // document, or isn't read from its bytes (a password, another format).
         private RawPageBuffer RawPageForRead(string pageFileName)
         {
-            if (!string.IsNullOrEmpty(password) || storageSerializer.Format != StorageFormat.Xml)
+            if (!string.IsNullOrEmpty(Password) || storageSerializer.Format != StorageFormat.Xml)
                 return null;
             lock (syncLock)
             {
@@ -318,7 +318,7 @@ namespace Xod.Services
                 string.IsNullOrEmpty(rowCode) ||
                 meta == null ||
                 !meta.IsPureScalarStandalone ||
-                !string.IsNullOrEmpty(password) ||
+                !string.IsNullOrEmpty(Password) ||
                 storageSerializer.Format != StorageFormat.Xml)
             {
                 return false;
@@ -400,7 +400,7 @@ namespace Xod.Services
             startOffset = -1;
             byteLength = 0;
 
-            if (!string.IsNullOrEmpty(password) || storageSerializer.Format != StorageFormat.Xml)
+            if (!string.IsNullOrEmpty(Password) || storageSerializer.Format != StorageFormat.Xml)
                 return false;
 
             RawPageBuffer rawPage;
@@ -616,7 +616,7 @@ namespace Xod.Services
             pageElement = null;
             tableModified = false;
 
-            if (!string.IsNullOrEmpty(password) ||
+            if (!string.IsNullOrEmpty(Password) ||
                 storageSerializer.Format != StorageFormat.Xml ||
                 table == null ||
                 item == null ||

@@ -43,7 +43,6 @@ namespace Xod.Engines.Xml
         private readonly object hydrationLock = new object();
         private readonly int pageSize;
 
-        private string password;
         private readonly string root;
         private readonly string path;
         private readonly DatabaseOptions options;
@@ -115,14 +114,15 @@ namespace Xod.Engines.Xml
             this.propertyService.LoadType(typeof(Database));
             this.propertyService.LoadType(typeof(Table));
 
-            if (!string.IsNullOrEmpty(password))
-                this.password = CryptoHelper.GetSHA256HashData(password);
+            // The password the files are under has one owner, the password switch, which a change commits; the I/O
+            // service, the AES256 keys and the statistics read it there (ISS-205: the engine, the I/O service and its
+            // keys each kept a copy, and a change set them one after another).
 
             this.exceptionService = new ExceptionService(path);
-            this.passwordSwitch = new PasswordSwitch(path, this.password);
+            this.passwordSwitch = new PasswordSwitch(path, string.IsNullOrEmpty(password) ? null : CryptoHelper.GetSHA256HashData(password));
             this.ioService = new IOService(
                 path,
-                this.password,
+                () => passwordSwitch.Password,
                 this.propertyService,
                 this.StorageFormat,
                 this.options.LockRetryTimeoutMs,
@@ -175,7 +175,7 @@ namespace Xod.Engines.Xml
                 if (!IsNew)
                     this.ioService.DeleteUnnamedPages();
 
-                this.propertyKeys = new PropertyKeyService(ioService, databaseFile, this.options.PropertyEncryptionKey, () => this.password);
+                this.propertyKeys = new PropertyKeyService(ioService, databaseFile, this.options.PropertyEncryptionKey, () => passwordSwitch.Password);
 
                 this.itemsCacheService = new ItemsCacheService();
                 this.indexService = new IndexService(this.propertyService, this.ioService);

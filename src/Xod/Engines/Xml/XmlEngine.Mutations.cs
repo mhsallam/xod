@@ -855,8 +855,10 @@ namespace Xod.Engines.Xml
                     prop.TypeCategory != PropertyTypeCategory.Array &&
                     prop.TypeCategory != PropertyTypeCategory.GenericCollection)
                     continue;
+                // A row never writes its parent, and a keyless object is written by the row's own write. A reference by a
+                // foreign key to the row's own type (SelfForeign) is a reference like any other: written when it declares
+                // Cascade = Update (ISS-200: it was left out), a cycle of them stopped by WrittenByThisUpdate.
                 if (prop.ReferenceType == PropertyReferenceType.Parent ||
-                    prop.ReferenceType == PropertyReferenceType.SelfForeign ||
                     prop.ReferenceType == PropertyReferenceType.Complex)
                     continue;
                 if (prop.ReferenceType != PropertyReferenceType.Children && !prop.Cascade.HasFlag(CascadeOptions.Update))
@@ -975,7 +977,7 @@ namespace Xod.Engines.Xml
                     if (remoteKeyValue != null && localProp != null)
                     {
                         object localKeyValue = localProp.GetValue(item);
-                        if (!Equals(remoteKeyValue, ValueHelper.DefaultOf(localProp.PropertyType)) && !remoteKeyValue.Equals(localKeyValue))
+                        if (!ValueHelper.IsNoValue(remoteKeyValue, localProp.PropertyType) && !remoteKeyValue.Equals(localKeyValue))
                         {
                             localProp.SetValue(item, remoteKeyValue);
                             RewriteKeyProperty(type, item, xItem, localProp.Name);
@@ -1441,6 +1443,8 @@ namespace Xod.Engines.Xml
 
             foreach (var prop in propertyService.Properties(type.FullName))
             {
+                // A reference by a foreign key to a type that names this one back (SelfForeign) owns nothing, whatever
+                // it declares: Cascade = Delete isn't followed (ISS-215), while Cascade = Update is (UpdateRelatedRows).
                 if (prop.ReferenceType == PropertyReferenceType.Parent ||
                     prop.ReferenceType == PropertyReferenceType.SelfForeign ||
                     (prop.TypeCategory != PropertyTypeCategory.Class &&

@@ -42,7 +42,7 @@ namespace Xod.Services
 
         private readonly string path;
         private readonly string root;
-        private string password;
+        private readonly Helpers.KeysOfPassword passwordKeys;
         private readonly PropertyService propertyService;
         private IXodStorageSerializer storageSerializer;
         private DatabaseHold lockStream;
@@ -93,7 +93,7 @@ namespace Xod.Services
 
         public IOService(
             string path,
-            string password,
+            Func<string> password,
             PropertyService propertyService,
             StorageFormat storageFormat = StorageFormat.Xml,
             int lockRetryTimeoutMs = 0,
@@ -102,8 +102,7 @@ namespace Xod.Services
         {
             this.path = path;
             this.root = Path.GetDirectoryName(this.path);
-            this.password = password;
-            this.fileKeys = KeysFor(password);
+            this.passwordKeys = new Helpers.KeysOfPassword(password);
             this.propertyService = propertyService;
             this.storageSerializer = StorageSerializerFactory.Get(storageFormat);
             this.bufferedDurability = bufferedDurability;
@@ -123,23 +122,16 @@ namespace Xod.Services
         internal string RootDirectory => root;
         internal bool IsBatchOrBuffered => batchDepth > 0 || bufferedDurability;
 
-        internal string Password
-        {
-            get => password;
-            set
-            {
-                password = value;
-                fileKeys = KeysFor(value);
-            }
-        }
+        /// <summary>
+        /// The password hash the files are under, read from its one owner each time (the engine's PasswordSwitch, which
+        /// a password change commits; ISS-205). This service kept the password string and the keys made from it apart,
+        /// set one after the other, and its decisions read either (encryption the keys, the raw page cache and the
+        /// serialization the string).
+        /// </summary>
+        internal string Password => passwordKeys.Password;
 
-        // The keys of this context's files, under its password (ISS-152); null without one.
-        private Helpers.FileKeys fileKeys;
-
-        internal Helpers.FileKeys FileKeys => fileKeys;
-
-        private Helpers.FileKeys KeysFor(string pwd) =>
-            string.IsNullOrEmpty(pwd) ? null : pwd == password && fileKeys != null && fileKeys.Password == pwd ? fileKeys : new Helpers.FileKeys(pwd);
+        /// <summary>The keys of the password the files are under (ISS-152); null without one.</summary>
+        internal Helpers.FileKeys FileKeys => passwordKeys.Current;
 
         internal IXodStorageSerializer StorageSerializer
         {

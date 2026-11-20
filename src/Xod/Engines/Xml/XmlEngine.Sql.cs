@@ -277,6 +277,8 @@ namespace Xod.Engines.Xml
                         case "map":
                         {
                             var e = entity.Element(prop.PropertyName);
+                            if (e != null && !StoredValue.IsNil(e) && !StoredValue.IsStoredMap(e))
+                                return Unparsed(table, c); // a map stored as a list (ISS-214)
                             object map = e == null ? StoredValue.ReadBackOfMissing(prop) : StoredValue.IsNil(e) ? null : ReadStoredMap(prop, e);
                             return SqlTypes.FromClr(map);
                         }
@@ -314,6 +316,7 @@ namespace Xod.Engines.Xml
                         var e = entity.Element(c.Name);
                         if (e == null) return c.Default == "" ? new SqlMap(new Dictionary<string, object>()) : null;
                         if (StoredValue.IsNil(e)) return null;
+                        if (!StoredValue.IsStoredMap(e)) return Unparsed(table, c); // a map stored as a list (ISS-214)
                         var entries = new Dictionary<string, object>(StringComparer.Ordinal);
                         foreach (var entry in e.Elements("Entry"))
                         {

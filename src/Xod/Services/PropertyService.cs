@@ -18,6 +18,59 @@ namespace Xod.Services
 
         private readonly string[] keywords = { "dataType", "collType", "refType", "hostProp" };
 
+        /// <summary>
+        /// The one reader of a property's XOD attributes, those an <c>override</c> inherits from the property it overrides
+        /// included (ISS-122). <c>PropertyInfo.GetCustomAttributes(true)</c> ignores <c>inherit</c> for a property (the .NET
+        /// docs for <c>MemberInfo.GetCustomAttributes(Boolean)</c>), so a key, an autonumber, a unique key or
+        /// <c>[NotMapped]</c> declared on a base class's <c>virtual</c> property did nothing on a derived type.
+        /// <para>
+        /// For each attribute type the nearest declaration wins: an override that declares a <c>[Property]</c> or a
+        /// <c>[ForeignKey]</c> of its own replaces the base property's, all of them, and declares the rest by inheriting.
+        /// That is .NET's rule for an attribute that allows one, made the rule for those that allow several too
+        /// (<c>Attribute.GetCustomAttributes(prop, true)</c> returns both levels' <c>[ForeignKey]</c>s, and a relation with
+        /// two key maps failed on insert; the review of TASK-107). An attribute whose usage says it isn't inherited isn't.
+        /// </para>
+        /// </summary>
+        internal static Attribute[] AttributesOf(PropertyInfo prop)
+        {
+            var found = new List<Attribute>();
+            var seen = new HashSet<Type>();
+            for (PropertyInfo level = prop; level != null; level = OverriddenProperty(level))
+            {
+                var declaredHere = Attribute.GetCustomAttributes(level, inherit: false);
+                foreach (var att in declaredHere)
+                {
+                    Type t = att.GetType();
+                    if (seen.Contains(t) || (level != prop && !IsInherited(t)))
+                        continue;
+                    found.Add(att);
+                }
+                foreach (var att in declaredHere)
+                    seen.Add(att.GetType());
+            }
+            return found.ToArray();
+        }
+
+        private static bool IsInherited(Type attributeType) =>
+            attributeType.GetCustomAttribute<AttributeUsageAttribute>(inherit: true)?.Inherited ?? true;
+
+        /// <summary>The property <paramref name="prop"/> overrides, or null when it overrides none.</summary>
+        private static PropertyInfo OverriddenProperty(PropertyInfo prop)
+        {
+            MethodInfo accessor = prop.GetMethod ?? prop.SetMethod;
+            if (accessor == null || accessor.GetBaseDefinition() == accessor)
+                return null;
+            const BindingFlags declaredOnly = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+            for (Type t = prop.DeclaringType?.BaseType; t != null; t = t.BaseType)
+            {
+                var candidate = t.GetProperty(prop.Name, declaredOnly, null, prop.PropertyType,
+                    prop.GetIndexParameters().Select(p => p.ParameterType).ToArray(), null);
+                if (candidate != null)
+                    return candidate;
+            }
+            return null;
+        }
+
         internal void LoadType(Type type)
         {
             if (type == null || type == typeof(object) || ValueHelper.IsScalarType(type))
@@ -42,7 +95,7 @@ namespace Xod.Services
 
                         foreach (var prop in props)
                         {
-                            var atts = prop.GetCustomAttributes(true).ToArray();
+                            var atts = AttributesOf(prop);
                             if (atts.OfType<NotMappedAttribute>().Any())
                                 continue;
                             // A value the format can't store is refused before anything is written (ISS-142): it was
@@ -156,7 +209,7 @@ namespace Xod.Services
                                 else if (foreignKeyAtts.Count > 0)
                                 {
                                     if (prop.PropertyType.GetProperties()
-                                        .Any(s => s.PropertyType == type && s.GetCustomAttribute<ForeignKeyAttribute>(true) != null))
+                                        .Any(s => s.PropertyType == type && AttributesOf(s).OfType<ForeignKeyAttribute>().Any()))
                                         propInfoItem.ReferenceType = PropertyReferenceType.SelfForeign;
                                     else
                                         propInfoItem.ReferenceType = PropertyReferenceType.Foreign;
@@ -168,7 +221,7 @@ namespace Xod.Services
                                 else if (propTypeCategory == PropertyTypeCategory.Class)
                                 {
                                     var targetTypeProps = prop.PropertyType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                                    var targetPkProp = targetTypeProps.FirstOrDefault(p => p.GetCustomAttributes(true).OfType<PrimaryKeyAttribute>().Any())
+                                    var targetPkProp = targetTypeProps.FirstOrDefault(p => AttributesOf(p).OfType<PrimaryKeyAttribute>().Any())
                                         ?? targetTypeProps.FirstOrDefault(p => p.Name == "Id");
 
                                     if (targetPkProp != null)

@@ -23,6 +23,7 @@
     "Xod.Conformance.Model.Event": {
       "Id": "int",
       "Fee": "decimal",
+      "Code": "char",
       "MaybeFlag": "bool"
     },
     "Xod.Conformance.Model.Integration": {

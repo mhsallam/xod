@@ -243,6 +243,97 @@ namespace Xod.Tests
             }
         }
 
+        // ISS-200: a relation to the row's own type by a foreign key (SelfForeign) follows Cascade = Update, as any other
+        // reference does. It was left out of the rows an update writes.
+        public class UrPerson
+        {
+            public int Id { get; set; }
+            public string Name { get; set; }
+            public int ManagerId { get; set; }
+            [ForeignKey(nameof(ManagerId)), Property(Cascade = CascadeOptions.Update)] public UrPerson Manager { get; set; }
+        }
+
+        public class UrPlainPerson
+        {
+            public int Id { get; set; }
+            public string Name { get; set; }
+            public int ManagerId { get; set; }
+            [ForeignKey(nameof(ManagerId))] public UrPlainPerson Manager { get; set; }
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void A_self_reference_that_cascades_updates_writes_its_row(bool indexing)
+        {
+            string path = NewPath("self-cascade", indexing);
+            using (var db = Open(path, indexing))
+            {
+                db.Insert(new UrPerson { Name = "boss" });
+                db.Insert(new UrPerson { Name = "emp", ManagerId = 1 });
+
+                var emp = db.Find<UrPerson>(x => x.Name == "emp");
+                Assert.Equal("boss", emp.Manager?.Name);
+                emp.Manager.Name = "boss edited";
+                Assert.True(db.Update(emp));
+            }
+
+            using (var db = Open(path, indexing))
+            {
+                Assert.Equal("boss edited", db.Find<UrPerson>(x => x.Id == 1)?.Name);
+                Assert.Equal("boss edited", db.Find<UrPerson>(x => x.Name == "emp").Manager?.Name);
+            }
+        }
+
+        // Two rows that manage each other: the update writes both once, and the first's edit stands.
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void A_cycle_of_self_references_that_cascade_updates_ends(bool indexing)
+        {
+            string path = NewPath("self-cycle", indexing);
+            using (var db = Open(path, indexing))
+            {
+                db.Insert(new UrPerson { Name = "a" });
+                db.Insert(new UrPerson { Name = "b", ManagerId = 1 });
+                var first = db.Find<UrPerson>(x => x.Name == "a");
+                first.ManagerId = 2;
+                Assert.True(db.Update(first));
+
+                var a = db.Find<UrPerson>(x => x.Name == "a");
+                a.Name = "a2";
+                a.Manager.Name = "b2";
+                Assert.True(db.Update(a));
+            }
+
+            using (var db = Open(path, indexing))
+            {
+                Assert.Equal(new[] { "a2", "b2" }, db.Select<UrPerson>().Select(n => n.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray());
+                Assert.Equal("b2", db.Find<UrPerson>(x => x.Name == "a2").Manager?.Name);
+            }
+        }
+
+        // Without Cascade = Update a self reference only links: the copy it holds isn't written.
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void A_plain_self_reference_does_not_write_its_row(bool indexing)
+        {
+            string path = NewPath("self-plain", indexing);
+            using (var db = Open(path, indexing))
+            {
+                db.Insert(new UrPlainPerson { Name = "boss" });
+                db.Insert(new UrPlainPerson { Name = "emp", ManagerId = 1 });
+
+                var emp = db.Find<UrPlainPerson>(x => x.Name == "emp");
+                emp.Manager.Name = "boss edited";
+                Assert.True(db.Update(emp));
+            }
+
+            using (var db = Open(path, indexing))
+                Assert.Equal("boss", db.Find<UrPlainPerson>(x => x.Id == 1)?.Name);
+        }
+
         public class UrLeaf
         {
             public int Id { get; set; }

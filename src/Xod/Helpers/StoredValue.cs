@@ -20,6 +20,14 @@ namespace Xod.Helpers
         internal static bool IsNil(System.Xml.Linq.XElement element) =>
             element.HasAttributes && element.Attribute(NilAttribute)?.Value == "true";
 
+        /// <summary>
+        /// True when a stored collection is a map (<c>collType="dictionary"</c>, PLAN-046 section 7): the one test every
+        /// reader of a map property asks (ISS-214). A map property whose value is stored as a list can't be read as a
+        /// map: XOD 2.0.x stored an <c>IDictionary&lt;K, V&gt;</c> property so, each pair as its text.
+        /// </summary>
+        internal static bool IsStoredMap(System.Xml.Linq.XElement element) =>
+            element.Attribute("collType")?.Value == "dictionary";
+
         /// <summary>The name of a stored list's item element (PLAN-046 section 7): the item type's short name, and a
         /// nullable item type's underlying type's (ISS-097: <c>Nullable`1</c> isn't an XML name, so a list of
         /// <c>int?</c> couldn't be stored). The writer and both row readers name items here.</summary>

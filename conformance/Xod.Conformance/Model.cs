@@ -79,7 +79,7 @@ namespace Xod.Conformance.Model
         public float Ratio { get; set; }
         public double Score { get; set; }
         public decimal Price { get; set; }
-        public char Code { get; set; }
+        [Property(Indexed = true)] public char Code { get; set; }
         public Perm Perms { get; set; }
         public Guid Ref { get; set; }
         public DateTime StartsUtc { get; set; }

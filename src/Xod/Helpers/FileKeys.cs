@@ -76,4 +76,42 @@ namespace Xod.Helpers
 
         internal byte[] Decrypt(byte[] data) => FileCryptoHelper.DecryptBytes(data, this);
     }
+
+    /// <summary>
+    /// The keys of the password an owner says the files are under (ISS-205): <see cref="Current"/> asks the owner each
+    /// time, and makes the keys again when its password is another one (a password change). So the keys can't stand for
+    /// a password the files aren't under, and the keys made last are reachable only through <see cref="Current"/>: a
+    /// direct read of them before their first making found none and wrote a file unencrypted.
+    /// </summary>
+    internal sealed class KeysOfPassword
+    {
+        private readonly Func<string> passwordOf;
+        private FileKeys madeLast;
+
+        internal KeysOfPassword(Func<string> passwordOf)
+        {
+            this.passwordOf = passwordOf ?? (() => null);
+        }
+
+        /// <summary>The owner's password (a hash), or null.</summary>
+        internal string Password => passwordOf();
+
+        /// <summary>The keys of the owner's password; null without one.</summary>
+        internal FileKeys Current
+        {
+            get
+            {
+                string pwd = passwordOf();
+                if (string.IsNullOrEmpty(pwd))
+                    return null;
+                var keys = System.Threading.Volatile.Read(ref madeLast);
+                if (keys != null && keys.Password == pwd)
+                    return keys;
+                // Kept for the next read: a context writes under one salt, derived once (FileKeys.ForWrite).
+                var made = new FileKeys(pwd);
+                var prior = System.Threading.Interlocked.CompareExchange(ref madeLast, made, keys);
+                return prior == keys || prior?.Password != pwd ? made : prior;
+            }
+        }
+    }
 }

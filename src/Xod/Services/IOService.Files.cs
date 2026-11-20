@@ -238,7 +238,7 @@ namespace Xod.Services
                     // Its bytes are the file's when nothing of it waits to be written. The page keeps them: another
                     // reader may hold it (RawPageBuffer.ReleasePooledBuffer).
                     bool asOnDisk = !rawPage.IsNewFile && rawPage.DirtyStartOffset >= rawPage.DiskSyncedLength && rawPage.Length == rawPage.DiskSyncedLength;
-                    file = new XFile(doc, type, filePath, password) { DiskBytes = asOnDisk ? exact : null };
+                    file = new XFile(doc, type, filePath, Password) { DiskBytes = asOnDisk ? exact : null };
                     if (dirtyBatchRawPages.Remove(normalizedName))
                     {
                         dirtyBatchFiles.Add(file);
@@ -251,13 +251,13 @@ namespace Xod.Services
                 }
                 else if (OnDiskHere(filePath))
                 {
-                    file = Load(type, filePath, password);
+                    file = Load(type, filePath);
                 }
                 else if (!openOnly && type != null)
                 {
                     StatementChangesUnlocked();
                     XDocument doc = ItemWriterDelegate(type, normalizedName);
-                    file = new XFile(doc, type, filePath, password);
+                    file = new XFile(doc, type, filePath, Password);
                     // A new database's file is on disk when the open returns, in every mode: the next open must find
                     // it, and a record written into it at once (an AES256 key, SaveNow) must not be overwritten later
                     // by a copy waiting to be written (review of TASK-068).
@@ -291,8 +291,8 @@ namespace Xod.Services
                 if (cachedFiles.TryGetValue(normalizedName, out var item))
                     return item.File;
                 if (cachedRawPages.TryGetValue(normalizedName, out var rawPage) && rawPage?.Bytes != null)
-                    return new XFile(storageSerializer.Deserialize(rawPage.ToExactArray()), typeof(TablePage), filePath, password);
-                return OnDiskHere(filePath) ? LoadUnlocked(typeof(TablePage), filePath, fileKeys) : null;
+                    return new XFile(storageSerializer.Deserialize(rawPage.ToExactArray()), typeof(TablePage), filePath, Password);
+                return OnDiskHere(filePath) ? LoadUnlocked(typeof(TablePage), filePath, FileKeys) : null;
             }
         }
 
@@ -644,8 +644,8 @@ namespace Xod.Services
         {
             RefuseWriteInsideTransaction(file.Path);
             byte[] serializedBytes = storageSerializer.Serialize(file.Document);
-            byte[] payloadBytes = fileKeys != null
-                ? fileKeys.Encrypt(serializedBytes)
+            byte[] payloadBytes = FileKeys is { } keys
+                ? keys.Encrypt(serializedBytes)
                 : serializedBytes;
 
             file.LastSavedSize = payloadBytes.Length;
@@ -704,14 +704,14 @@ namespace Xod.Services
             }
         }
 
-        internal XFile Load(Type type, string filePath, string pwd = null)
+        internal XFile Load(Type type, string filePath)
         {
             if (!OnDiskHere(filePath))
                 return null;
 
             lock (syncLock)
             {
-                return LoadUnlocked(type, filePath, KeysFor(pwd));
+                return LoadUnlocked(type, filePath, FileKeys);
             }
         }
 

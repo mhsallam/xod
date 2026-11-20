@@ -442,6 +442,12 @@ namespace Xod.Engines.Xml
                     if (!propMap.TryGetValue(e.Name.LocalName, out var prop))
                         continue;
 
+                    if (prop.TypeCategory == PropertyTypeCategory.Dictionary)
+                    {
+                        prop.SetValue(item, StoredValue.IsNil(e) ? null : ReadMapOfRow(type, row, prop, e));
+                        continue;
+                    }
+
                     if (!e.HasAttributes)
                     {
                         SetFromStoredScalar(item, prop, e);
@@ -451,16 +457,9 @@ namespace Xod.Engines.Xml
                     XAttribute isColl = e.Attribute("collType");
                     if (isColl != null)
                     {
-                        if (isColl.Value == "dictionary" && prop.TypeCategory == PropertyTypeCategory.Dictionary)
-                        {
-                            prop.SetValue(item, ReadStoredMap(prop, e));
-                        }
-                        else
-                        {
-                            Type itemType = StoredItemType(prop);
-                            if (itemType != null && ValueHelper.IsScalarType(itemType))
-                                prop.SetValue(item, ReadStoredScalarItems(prop, itemType, e));
-                        }
+                        Type itemType = StoredItemType(prop);
+                        if (itemType != null && ValueHelper.IsScalarType(itemType))
+                            prop.SetValue(item, ReadStoredScalarItems(prop, itemType, e));
                     }
                     else
                     {
@@ -508,16 +507,16 @@ namespace Xod.Engines.Xml
                 }
 
                 XElement e = element.Element(prop.PropertyName);
+                if (e != null && prop.TypeCategory == PropertyTypeCategory.Dictionary)
+                {
+                    prop.SetValue(item, StoredValue.IsNil(e) ? null : ReadMapOfRow(type, row, prop, e));
+                    continue;
+                }
                 if (e != null)
                 {
                     XAttribute isColl = e.Attribute("collType");
                     if (isColl != null)
                     {
-                        if (isColl.Value == "dictionary" && prop.TypeCategory == PropertyTypeCategory.Dictionary)
-                        {
-                            prop.SetValue(item, ReadStoredMap(prop, e));
-                            continue;
-                        }
 
                         Type itemType = StoredItemType(prop);
                         if (itemType == null)
@@ -699,6 +698,22 @@ namespace Xod.Engines.Xml
 
         private static Type StoredItemType(PropertyInfoItem prop) =>
             prop.PropertyType.IsArray ? prop.PropertyType.GetElementType() : prop.PropertyType.GetGenericArguments().FirstOrDefault();
+
+        /// <summary>
+        /// A map property's stored value that isn't null, for both row readers: one that isn't a map fails, naming the row
+        /// (ISS-214). Both readers sent a list to the list reader, which set a list on the map property
+        /// (<c>ArgumentException</c>). SQL reads it as NULL with a warning, as any value that isn't its column's type. An
+        /// update of such a row reads it too where its type has relations, so the way out is to delete the row and insert
+        /// it again.
+        /// </summary>
+        private static IDictionary ReadMapOfRow(Type type, XElement row, PropertyInfoItem prop, XElement e)
+        {
+            if (!StoredValue.IsStoredMap(e))
+                throw new DatabaseFileException($"The row '{row.Attribute("code")?.Value}' of {type.Name} stores {prop.PropertyName} as a " +
+                    "list, which a map property can't read: XOD 2.0.x stored an IDictionary<K, V> property so, each pair as its text, " +
+                    "and couldn't read it back either. Delete the row and insert it again with the map set.");
+            return ReadStoredMap(prop, e);
+        }
 
         private static IDictionary ReadStoredMap(PropertyInfoItem prop, XElement e)
         {

@@ -19,7 +19,7 @@ namespace Xod.Engines.Xml
                 {
                     DatabasePath = path,
                     StorageFormat = StorageFormat,
-                    IsEncrypted = !string.IsNullOrEmpty(password)
+                    IsEncrypted = !string.IsNullOrEmpty(passwordSwitch.Password)
                 };
 
                 if (!Directory.Exists(root))
@@ -142,18 +142,16 @@ namespace Xod.Engines.Xml
                     // Everything this context holds goes to disk first: the switch rewrites the files on disk,
                     // and nothing may be written over them afterwards that the switch didn't see.
                     FlushToDisk();
-                    propertyKeys.PasswordChanging(password, newPassword);
+                    propertyKeys.PasswordChanging(passwordSwitch.Password, newPassword);
                     try
                     {
                         passwordSwitch.SwitchTo(newPassword);
                     }
                     finally
                     {
-                        // The files' password is the security service's: the old one if the switch failed before
-                        // its commit, the new one from the commit on (even when a file is replaced only at the
-                        // next open).
-                        password = passwordSwitch.Password;
-                        ioService.Password = password;
+                        // The files' password is the switch's (the I/O service reads it there): the old one if the
+                        // switch failed before its commit, the new one from the commit on (even when a file is
+                        // replaced only at the next open). What was read under the old one goes.
                         ClearCache();
                     }
                     // Only after a finished switch: removes the key's protection by the old password. A switch

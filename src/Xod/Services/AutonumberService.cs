@@ -65,10 +65,10 @@ namespace Xod.Services
             }
         }
 
-        /// <summary>The one rule for an autonumber an item leaves unset: its type's default (0, or an empty Guid).
-        /// The typed paths of <see cref="Autonumber"/> compare with 0 and Guid.Empty directly, the same rule.</summary>
+        /// <summary>An autonumber an item leaves unset: no value, by the one rule (ValueHelper.IsNoValue: 0, an empty
+        /// Guid, or null).</summary>
         internal static bool IsUnset(PropertyInfoItem prop, object value) =>
-            value == null || value.Equals(ValueHelper.DefaultOf(prop.PropertyType));
+            ValueHelper.IsNoValue(value, prop.PropertyType);
 
         /// <summary>The whole numbers an autonumber of type <paramref name="t"/> holds, each exactly: its
         /// MinValue to MaxValue, but a float or a double only to 2^24 or 2^53 either way (beyond, two numbers
@@ -125,27 +125,25 @@ namespace Xod.Services
                 var prop = props[i];
                 if (prop.ScalarKind == ScalarPropertyKind.Int32 && prop.IntGetter != null && prop.IntSetter != null)
                 {
-                    int cur = prop.IntGetter(item);
-                    if (cur == 0)
+                    if (!ValueHelper.SetsValue(prop, item))
                         prop.IntSetter(item, checked((int)Issue(type, prop, prop.Seed, prop.Increment)));
                     else
-                        Observe(type, prop, cur);
+                        Observe(type, prop, prop.IntGetter(item));
                     continue;
                 }
 
                 if (prop.ScalarKind == ScalarPropertyKind.Int64 && prop.LongGetter != null && prop.LongSetter != null)
                 {
-                    long cur = prop.LongGetter(item);
-                    if (cur == 0L)
+                    if (!ValueHelper.SetsValue(prop, item))
                         prop.LongSetter(item, checked((long)Issue(type, prop, prop.Seed, prop.Increment)));
                     else
-                        Observe(type, prop, cur);
+                        Observe(type, prop, prop.LongGetter(item));
                     continue;
                 }
 
                 if (prop.ScalarKind == ScalarPropertyKind.Guid && prop.GuidGetter != null && prop.GuidSetter != null)
                 {
-                    if (prop.GuidGetter(item) == Guid.Empty)
+                    if (!ValueHelper.SetsValue(prop, item))
                         prop.GuidSetter(item, Guid.NewGuid());
                     continue;
                 }

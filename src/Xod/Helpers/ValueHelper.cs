@@ -83,6 +83,44 @@ namespace Xod.Helpers
         }
 
         /// <summary>
+        /// The one rule for a value that is no value (ISS-188, ISS-199): null, or the default of
+        /// <paramref name="type"/> (<see cref="DefaultOf"/>: <c>0</c>, <c>false</c>, <c>0.00m</c>, <c>-0.0</c>, an empty
+        /// <c>Guid</c>, the empty string; a nullable type's default is null, so its <c>0</c> is a value). A key part, a
+        /// property an example sets, an autonumber left unset and a relation's key all take it. It was written in each of
+        /// those places, and a fix to one wouldn't have reached the others.
+        /// </summary>
+        internal static bool IsNoValue(object value, Type type) =>
+            value == null || value.Equals(DefaultOf(type));
+
+        /// <summary>
+        /// Whether <paramref name="item"/> sets <paramref name="prop"/>: <see cref="IsNoValue"/> for the property's value,
+        /// read through its typed getter where it has one, which doesn't box. Each typed case is that rule for its type
+        /// (XodNoValueRuleTests checks they agree).
+        /// </summary>
+        internal static bool SetsValue(PropertyInfoItem prop, object item)
+        {
+            switch (prop.ScalarKind)
+            {
+                case ScalarPropertyKind.Int32 when prop.IntGetter != null:
+                    return prop.IntGetter(item) != 0;
+                case ScalarPropertyKind.Int64 when prop.LongGetter != null:
+                    return prop.LongGetter(item) != 0L;
+                case ScalarPropertyKind.Decimal when prop.DecimalGetter != null:
+                    return prop.DecimalGetter(item) != 0m;
+                case ScalarPropertyKind.Double when prop.DoubleGetter != null:
+                    return prop.DoubleGetter(item) != 0.0;
+                case ScalarPropertyKind.Boolean when prop.BoolGetter != null:
+                    return prop.BoolGetter(item);
+                case ScalarPropertyKind.String when prop.StringGetter != null:
+                    return !string.IsNullOrEmpty(prop.StringGetter(item));
+                case ScalarPropertyKind.Guid when prop.GuidGetter != null:
+                    return prop.GuidGetter(item) != Guid.Empty;
+                default:
+                    return !IsNoValue(prop.GetValue(item), prop.PropertyType);
+            }
+        }
+
+        /// <summary>
         /// The scalars the format stores, and their nullable forms (PLAN-046 section 7.5): every reader, writer and index
         /// key knows these. Any other value type was taken too, written as its text and read back as its default
         /// (ISS-142); a property of one is now refused when its type loads (<see cref="UnstorableValueType"/>).
@@ -371,7 +409,7 @@ namespace Xod.Helpers
                 if (prop != null)
                 {
                     object value = prop.GetValue(item);
-                    if (value != null && !value.Equals(DefaultOf(prop.PropertyType)))
+                    if (!IsNoValue(value, prop.PropertyType))
                         values.Add(prop.Name, value);
                 }
                 else
@@ -393,7 +431,7 @@ namespace Xod.Helpers
                 if (prop != null)
                 {
                     object value = prop.GetValue(item);
-                    if (value != null && !value.Equals(DefaultOf(prop.PropertyType)))
+                    if (!IsNoValue(value, prop.PropertyType))
                         values.Add(propName.Value, value);
                 }
                 else

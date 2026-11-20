@@ -145,6 +145,11 @@ function normKey(type, text, version) {
 const TWO63 = 2n ** 63n;
 function keyV2(type, text) {
   if (type === 'int') return (BigInt(text) + TWO63).toString().padStart(20, '0');
+  // A char by its code point, as every integer type (section 8.3, IndexKeys.KindOf; ISS-183: it was keyed by its text).
+  if (type === 'char') {
+    if (text.length !== 1) throw new Error('a char of ' + text.length + ' UTF-16 units: ' + JSON.stringify(text));
+    return (BigInt(text.charCodeAt(0)) + TWO63).toString().padStart(20, '0');
+  }
   if (type?.enum) {
     // By value: a name, a number, or a [Flags] list such as "Read, Write".
     let v = 0n;
@@ -195,7 +200,9 @@ function keyV1(type, text) {
     const digits = shifted.toString().padStart(27, '0');
     return digits.slice(0, 19) + '.' + digits.slice(19);
   }
-  if (type === 'text' || type === 'enum' || type === 'uuid') return text;
+  // A char by its text: 2.0 keyed every type it didn't treat as a number or a date by its scalar text (section 8.3,
+  // keys v1, "anything else"; IndexService.NormalizeIndexValue at v2.0.0).
+  if (type === 'text' || type === 'enum' || type === 'uuid' || type === 'char') return text;
   throw new Error('no key rule for type ' + type);
 }
 
@@ -362,7 +369,7 @@ function manifestTypes(schema) {
     const t = c.attrs.type;
     types[c.attrs.name] = INT_TYPES.has(t) ? 'int'
       : t === 'enum' ? { enum: Object.fromEntries(c.children.filter((m) => m.name === 'Member').map((m) => [m.attrs.name, Number(m.attrs.value)])) }
-      : t === 'float64' ? 'double' : t === 'float32' ? 'float' : t === 'char' ? 'text' : t;
+      : t === 'float64' ? 'double' : t === 'float32' ? 'float' : t;
   }
   return types;
 }
