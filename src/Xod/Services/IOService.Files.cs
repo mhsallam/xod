@@ -86,6 +86,26 @@ namespace Xod.Services
         internal string[] IndexFileNames() =>
             Directory.GetFiles(root, "*.xidx").Select(f => Path.GetFileName(f)).ToArray();
 
+        /// <summary>
+        /// ISS-196: the one rule for a page a table names, for every read that walks a table's pages: it is there, as
+        /// this context holds it (cached, or on disk and not deleted here), or the table is damaged, a
+        /// <see cref="DatabaseFileException"/> naming both. A read skipped it, and the table read as fewer rows than it
+        /// holds (fewer than <c>Count</c> said), with no error. This context's writes put a page on disk before any
+        /// table names it and take it away after (<see cref="WriteInOrderUnlocked"/>, and a failed statement's undo), so
+        /// a missing page was deleted or lost outside this context: by another program, or, for a context that holds
+        /// nothing and opened for reading only, by a writer beside it that changed the table while it read
+        /// (<c>ISS-173</c>).
+        /// </summary>
+        internal void RequirePage(XFile table, string pageFileName)
+        {
+            if (FileExists(pageFileName))
+                return;
+            string tableName = table?.Path != null ? Path.GetFileName(table.Path) : "its table file";
+            throw new DatabaseFileException("The table file '" + tableName + "' names the page '" + Path.GetFileName(pageFileName) +
+                "', which isn't in the database folder: the page file was deleted or lost, or another program changed the table while " +
+                "this context read it. If reopening the database doesn't clear it, restore the folder from a backup.");
+        }
+
         internal bool FileExists(string fileName)
         {
             if (string.IsNullOrEmpty(fileName)) return false;
@@ -352,22 +372,6 @@ namespace Xod.Services
                 {
                     string typeString = Path.GetFileNameWithoutExtension(file);
                     return propertyService.RegisteredType(typeString);
-                }
-            }
-            return null;
-        }
-
-        internal string GetItemPage(Type type, string code)
-        {
-            XFile tableFile = OpenFileOrCreate(type.FullName + ".xtab", typeof(Table), openOnly: true);
-            if (tableFile == null) return null;
-
-            foreach (var file in tableFile.Pages().Select(s => s.Attribute("file")?.Value).Where(f => f != null))
-            {
-                XFile pageFile = OpenFileOrCreate(file, typeof(TablePage), openOnly: true);
-                if (pageFile?.GetRowByCode(code) != null)
-                {
-                    return Path.GetFileNameWithoutExtension(file);
                 }
             }
             return null;
@@ -759,19 +763,25 @@ namespace Xod.Services
             cachedRawPages.Remove(normalizedName); // its bytes stay with it (RawPageBuffer.ReleasePooledBuffer)
             if (onDisk && File.Exists(fullPath))
             {
-                // ISS-166: inside a transaction a data file (never an index file: Delete refuses one) is deleted by its commit, as its other files are written
-                // then; until then it stays on disk, gone for this context (pendingDeletes). Deleted at once, a page
-                // a delete emptied was lost though nothing was committed (ISS-107); renamed aside (2.0.2), a crash
-                // left a .xdel for the next open to put back.
-                if (batchDepth > 0 && inTransaction)
+                // A data file waits for the write of the files that stop naming it, and is deleted after them
+                // (WriteInOrderUnlocked, ISS-196); until then it stays on disk, gone for this context (DeletedHere).
+                // Inside a transaction that is its commit (ISS-166: deleted at once, a page a delete emptied was lost
+                // though nothing was committed, ISS-107; renamed aside, 2.0.2, a crash left a .xdel for the next open
+                // to put back). Outside one, the batch's end, the buffer's flush or the statement's end: deleted at
+                // once, a page went before the table that named it was written without it. An index file is deleted
+                // as it is: a cache, which no table names. With no writer to come (no batch, no buffer, no
+                // statement), deleted at once.
+                bool waits = !IsIndex(fullPath) && (batchDepth > 0 || bufferedDurability || savepoint != null);
+                if (waits)
                 {
                     lock (pendingDeletesLock)
                     {
-                        pendingDeletes.Add(normalizedName);
+                        (batchDepth > 0 ? batchDeletes : bufferedDeletes).Add(normalizedName);
                     }
                 }
                 else
                 {
+                    FaultInjection.Step("file-deleting", file: normalizedName);
                     File.Delete(fullPath);
                     ChangedOnDisk(fullPath);
                 }

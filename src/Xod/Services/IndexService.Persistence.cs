@@ -918,8 +918,9 @@ namespace Xod.Services
             foreach (var pageElm in tableFile.Pages())
             {
                 string pageFileName = pageElm.Attribute("file")?.Value;
-                if (string.IsNullOrEmpty(pageFileName) || !ioService.FileExists(pageFileName))
+                if (string.IsNullOrEmpty(pageFileName))
                     continue;
+                ioService.RequirePage(tableFile, pageFileName);
 
                 // Read without moving it between the page caches (ISS-113).
                 XFile pageFile = ioService.PageForReading(pageFileName);

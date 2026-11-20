@@ -102,6 +102,7 @@ namespace Xod.Tests
         public NavKeyParent Parent { get; set; }
     }
 
+    [Collection(InProcessHookCollection.Name)]
     public class XodStatementUndoTests
     {
         private static string PageText<T>(string dbPath)
@@ -238,38 +239,39 @@ namespace Xod.Tests
 
         // The same with buffered durability: the close of a context that writes nothing more writes nothing, so it
         // doesn't throw, and it lets go of everything (review of TASK-063: the close threw from the buffer's flush
-        // and left the rest of the context undisposed). What was still buffered is dropped, as at a crash.
+        // and left the rest of the context undisposed). What was still buffered is dropped, as at a crash. The undo
+        // fails at its step: in buffered mode it changes nothing on disk (a page it empties is deleted by the flush,
+        // ISS-196), so a file held open no longer fails it.
         [Fact]
         public void A_buffered_context_whose_undo_failed_closes_without_writing()
         {
-            if (!OperatingSystem.IsWindows())
-                return; // a file held open blocks its deletion on Windows only
-
             string path = NewDatabase("undo-fails-buffered");
-            string dir = Path.GetDirectoryName(path)!;
             using (var seed = new XodContext(path))
                 seed.Insert(new UndoTag { Name = "seed" });
 
             var db = new XodContext(path, null, new DatabaseOptions { Durability = DurabilityMode.Buffered, LockDatabase = true });
-            FileStream held = null;
+            var thread = System.Threading.Thread.CurrentThread;
             db.AfterAction += (_, e) =>
             {
                 if (e.Item is UndoTag t && t.Name == "refused")
                 {
                     db.Delete(db.Find<UndoTag>(x => x.Name == "seed"));
-                    string table = File.ReadAllText(Path.Combine(dir, typeof(UndoTag).FullName + ".xtab"));
-                    string page = Regex.Match(table, "file=\"([^\"]+)\"").Groups[1].Value;
-                    held = new FileStream(Path.Combine(dir, page), FileMode.Open, FileAccess.Read, FileShare.None);
                     throw new InvalidOperationException("trigger refused it");
                 }
             };
+            Xod.Services.FaultInjection.InProcess = step =>
+            {
+                if (System.Threading.Thread.CurrentThread == thread && step == "undo-statement")
+                    throw new IOException("the undo failed");
+            };
             try
             {
-                Assert.ThrowsAny<XodException>(() => db.Insert(new UndoTag { Name = "refused" }));
+                var e = Assert.ThrowsAny<XodException>(() => db.Insert(new UndoTag { Name = "refused" }));
+                Assert.Contains("couldn't all be removed", e.Message);
             }
             finally
             {
-                held?.Dispose();
+                Xod.Services.FaultInjection.InProcess = null;
             }
             db.Dispose();
 

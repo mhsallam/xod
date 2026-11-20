@@ -63,8 +63,7 @@ namespace Xod.Engines.Xml
                         continue;
                     }
 
-                    if (!ioService.FileExists(pageFileName))
-                        continue;
+                    ioService.RequirePage(tableFile, pageFileName);
 
                     if (!backward)
                     {
@@ -145,8 +144,7 @@ namespace Xod.Engines.Xml
                         continue;
                     }
 
-                    if (!ioService.FileExists(pageFileName))
-                        continue;
+                    ioService.RequirePage(tableFile, pageFileName);
 
                     if (ioService.TryCountRowsInRawPage(pageFileName, out int rawRowCount))
                     {
@@ -220,11 +218,7 @@ namespace Xod.Engines.Xml
                                 return;
                             }
 
-                            XElement rawRow = GetRawData(codeArray[i]);
-                            if (rawRow != null)
-                            {
-                                hydrated[i] = (T)Read(type, rawRow, include);
-                            }
+                            hydrated[i] = (T)Read(type, IndexedRawRow(type, codeArray[i]), include);
                         });
                         var parallelResults = new List<T>(codeArray.Length);
                         for (int i = 0; i < hydrated.Length; i++)
@@ -246,13 +240,9 @@ namespace Xod.Engines.Xml
                             continue;
                         }
 
-                        XElement rawRow = GetRawData(code);
-                        if (rawRow != null)
-                        {
-                            var entity = (T)Read(type, rawRow, include);
-                            if (entity != null && (residualFilter == null || residualFilter(entity)))
-                                results.Add(entity);
-                        }
+                        var entity = (T)Read(type, IndexedRawRow(type, code), include);
+                        if (entity != null && (residualFilter == null || residualFilter(entity)))
+                            results.Add(entity);
                     }
                     return results;
                 }
@@ -411,8 +401,7 @@ namespace Xod.Engines.Xml
                 string pageCode = System.IO.Path.GetFileNameWithoutExtension(pageFileName);
                 if (wantPage != null && !wantPage(pageCode))
                     continue;
-                if (!ioService.FileExists(pageFileName))
-                    continue;
+                ioService.RequirePage(tableFile, pageFileName);
 
                 XFile pageFile = ioService.OpenFileOrCreate<TablePage>(pageFileName, openOnly: true);
                 if (pageFile == null)
@@ -893,8 +882,8 @@ namespace Xod.Engines.Xml
                         continue;
                     }
 
-                    XElement rawRow = GetRawData(code);
-                    if (rawRow != null && (isFullyCovered || Matches(test, rawRow.Elements().FirstOrDefault())))
+                    XElement rawRow = IndexedRawRow(type, code);
+                    if (isFullyCovered || Matches(test, rawRow.Elements().FirstOrDefault()))
                         results.Add(Read(type, rawRow, include));
                 }
                 return results;
@@ -927,8 +916,12 @@ namespace Xod.Engines.Xml
         // Every row of a table, page by page.
         private IEnumerable<XElement> TableRows(XFile tableFile) =>
             tableFile.Pages()
-                .Where(s => ioService.FileExists(s.Attribute("file").Value))
-                .SelectMany(s => ioService.OpenFileOrCreate<TablePage>(s.Attribute("file").Value, openOnly: true).Rows());
+                .Select(s => s.Attribute("file").Value)
+                .SelectMany(file =>
+                {
+                    ioService.RequirePage(tableFile, file);
+                    return ioService.OpenFileOrCreate<TablePage>(file, openOnly: true).Rows();
+                });
 
         private XRow GetRow(Type type, object example)
         {
@@ -947,23 +940,7 @@ namespace Xod.Engines.Xml
                 if (tableFile != null)
                 {
                     foreach (var code in pkCodes)
-                    {
-                        string[] parts = code.Split('.');
-                        if (parts.Length == 2)
-                        {
-                            XFile pageFile = ioService.OpenFileOrCreate<TablePage>($"{parts[0]}.xpag", openOnly: true);
-                            XElement row = pageFile?.GetRowByCode(parts[1]);
-                            if (row != null)
-                            {
-                                return new XRow
-                                {
-                                    Table = tableFile,
-                                    Page = pageFile,
-                                    Row = row
-                                };
-                            }
-                        }
-                    }
+                        return IndexedRow(type, tableFile, code);
                 }
                 return null;
             }
@@ -995,30 +972,14 @@ namespace Xod.Engines.Xml
                     if (isFullyCovered)
                     {
                         foreach (var code in candidateCodes)
-                        {
-                            string[] parts = code.Split('.');
-                            if (parts.Length == 2)
-                            {
-                                XFile pageFile = ioService.OpenFileOrCreate<TablePage>($"{parts[0]}.xpag", openOnly: true);
-                                XElement row = pageFile?.GetRowByCode(parts[1]);
-                                if (row != null)
-                                {
-                                    return new XRow
-                                    {
-                                        Table = tableFile,
-                                        Page = pageFile,
-                                        Row = row
-                                    };
-                                }
-                            }
-                        }
+                            return IndexedRow(type, tableFile, code);
                         return null;
                     }
                 }
 
-                var pages = tableFile.Pages().Where(s => ioService.FileExists(s.Attribute("file").Value));
-                foreach (var page in pages)
+                foreach (var page in tableFile.Pages())
                 {
+                    ioService.RequirePage(tableFile, page.Attribute("file").Value);
                     XFile pageFile = ioService.OpenFileOrCreate<TablePage>(page.Attribute("file").Value, openOnly: true);
                     if (pageFile != null)
                     {
@@ -1062,20 +1023,11 @@ namespace Xod.Engines.Xml
 
                     foreach (var code in pkCodes)
                     {
-                        string[] parts = code.Split('.');
-                        if (parts.Length == 2)
+                        return new XRowTree
                         {
-                            XFile pageFile = ioService.OpenFileOrCreate<TablePage>($"{parts[0]}.xpag", openOnly: true);
-                            XElement row = pageFile?.GetRowByCode(parts[1]);
-                            if (row != null)
-                            {
-                                return new XRowTree
-                                {
-                                    Table = tableFile,
-                                    Rows = new List<XRow> { new XRow { Table = tableFile, Page = pageFile, Row = row } }
-                                };
-                            }
-                        }
+                            Table = tableFile,
+                            Rows = new List<XRow> { IndexedRow(type, tableFile, code) }
+                        };
                     }
                     return null;
                 }
@@ -1096,9 +1048,9 @@ namespace Xod.Engines.Xml
 
                 var test = ExampleTestFor(type, item);
 
-                var pages = tableFile.Pages().Where(s => ioService.FileExists(s.Attribute("file").Value));
-                foreach (var page in pages)
+                foreach (var page in tableFile.Pages())
                 {
+                    ioService.RequirePage(tableFile, page.Attribute("file").Value);
                     XFile pageFile = ioService.OpenFileOrCreate<TablePage>(page.Attribute("file").Value, openOnly: true);
                     if (pageFile != null)
                     {
@@ -1140,6 +1092,32 @@ namespace Xod.Engines.Xml
 
         // A row by its code; a page that can't be read throws (DatabaseFileException). Any failure read as "no row"
         // here (ISS-144).
+        /// <summary>
+        /// ISS-196: the row an index names, for every read that takes its rows from an index (a query, a lookup by key
+        /// or by example): it is on its page, or the index is out of date, a <see cref="DatabaseFileException"/>. A read
+        /// dropped the row and went on, so a query returned fewer rows than the table holds, and a lookup by key found
+        /// none, with no error. Not rebuilt here: an index that is wrong is a fault to see, and rebuilding at each such
+        /// read would hide it. The message gives the way out: the index file deleted, it is built from the pages again
+        /// when next needed.
+        /// </summary>
+        private XElement IndexedRawRow(Type type, string code) => GetRawData(code) ?? throw StaleIndex(type, code);
+
+        /// <inheritdoc cref="IndexedRawRow"/>
+        private XRow IndexedRow(Type type, XFile tableFile, string code)
+        {
+            string[] parts = code.Split('.');
+            XFile pageFile = parts.Length == 2 ? ioService.OpenFileOrCreate<TablePage>($"{parts[0]}.xpag", openOnly: true) : null;
+            XElement row = pageFile?.GetRowByCode(parts[1]);
+            if (row == null)
+                throw StaleIndex(type, code);
+            return new XRow { Table = tableFile, Page = pageFile, Row = row };
+        }
+
+        private static DatabaseFileException StaleIndex(Type type, string code) =>
+            new DatabaseFileException("The index of " + type.Name + " names the row '" + code + "', which isn't on its page: the index file '" +
+                Xod.Services.IndexService.GetIndexFileName(type) + "' is out of date, or the page was lost. Close the database and delete that file: it " +
+                "is built again from the pages when it is next needed, and a page that is missing is then named.");
+
         private XElement GetRawData(string code)
         {
             if (string.IsNullOrEmpty(code)) return null;

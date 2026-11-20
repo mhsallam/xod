@@ -21,6 +21,8 @@ The project's memory. `xod2` is the active rework of XOD; `xod` and `xod.core` a
 - [PLAN-083](plans/PLAN-083-a-context-owns-its-file-keys.md) - a context owns its file keys (2026-11-18, done): ISS-152 resolved; ISS-205, ISS-206 filed
 - [PLAN-084](plans/PLAN-084-every-file-written-whole-goes-through-its-tmp.md) - every file written whole goes through its .tmp (2026-11-18, done): ISS-134 resolved
 - [PLAN-085](plans/PLAN-085-a-moved-child-leaves-the-parent-its-row-names.md) - a child's parent is the one its row and its list say (2026-11-18, done): ISS-202, ISS-203 resolved; ISS-207, ISS-208 filed
+- [PLAN-086](plans/PLAN-086-an-update-filter-takes-a-relation-and-its-keys-together.md) - an update filter takes a relation and its keys together (2026-11-20, done): ISS-207 resolved
+- [PLAN-087](plans/PLAN-087-a-page-is-on-disk-while-a-table-names-it.md) - a page is on disk while a table names it (2026-11-20, done): ISS-196 resolved; ISS-209, ISS-210 filed
 - [PLAN-081](plans/PLAN-081-a-child-s-entry-is-found-by-its-row.md) - a child's entry in its parent's list is found by its row (2026-11-18, done): ISS-135 resolved; ISS-202 to ISS-204 filed
 - [PLAN-080](plans/PLAN-080-what-a-parent-s-update-writes-into-related-rows.md) - what a parent's update writes into the rows it names (2026-11-18, done): ISS-189 and ISS-181 resolved; ISS-200 filed
 - [PLAN-079](plans/PLAN-079-a-key-part-at-its-default-is-no-value.md) - a key part at its default is no value (2026-11-18, done): ISS-188 resolved; ISS-199 filed

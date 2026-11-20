@@ -551,6 +551,8 @@ namespace Xod.Engines.Xml
 
         private bool UpdateItem(Type type, object item, object newItem, ReadWriteTrack track = null, UpdateFilter filter = null, PropertyInfoItem via = null)
         {
+            propertyService.LoadType(type);
+            filter = WithRelationKeys(type, filter);
             HashSet<string> outerRecord = rowsThisUpdateWrote;
             if (track == null)
                 rowsThisUpdateWrote = new HashSet<string>(StringComparer.Ordinal);
@@ -570,6 +572,63 @@ namespace Xod.Engines.Xml
                 if (track == null)
                     rowsThisUpdateWrote = outerRecord;
             }
+        }
+
+        /// <summary>
+        /// The update filter, with each relation and its key columns taken or left together (ISS-207). A relation is
+        /// stored twice, as its local key columns and as the relation's element (a child's parent element, and the
+        /// parent's list that names the child; a reference's element), and each read and each delete follows one or the
+        /// other. A filter that named one of them wrote it alone: a child moved by its key alone stayed in its old
+        /// parent's list and was deleted with it, and a relation left by its key alone was written anyway. A filter
+        /// that names a relation or any of its key columns now names them all, for Target and for Skip. The caller's
+        /// filter is never changed. No filter, or one that touches no relation: the same filter back.
+        /// </summary>
+        private UpdateFilter WithRelationKeys(Type type, UpdateFilter filter)
+        {
+            if (filter?.Properties == null || filter.Properties.Length == 0)
+                return filter;
+
+            var props = propertyService.Properties(type.FullName);
+            if (props == null)
+                return filter;
+
+            var groups = new List<HashSet<string>>();
+            foreach (var prop in props)
+            {
+                IEnumerable<string> locals = (prop.ParentKeys?.Select(k => k.LocalProperty) ?? Enumerable.Empty<string>())
+                    .Concat(prop.ForeignKeys?.Select(k => k.LocalProperty) ?? Enumerable.Empty<string>())
+                    .Where(n => !string.IsNullOrEmpty(n));
+                var group = new HashSet<string>(StringComparer.Ordinal) { prop.PropertyName };
+                foreach (string local in locals)
+                {
+                    // The property's own name, as the filter and the row give it (the attribute may differ in case).
+                    group.Add(props.FirstOrDefault(p => string.Equals(p.PropertyName, local, StringComparison.OrdinalIgnoreCase))?.PropertyName ?? local);
+                }
+                if (group.Count > 1)
+                    groups.Add(group);
+            }
+            if (groups.Count == 0)
+                return filter;
+
+            // Grown until no group adds a name: two relations that share a key column go together too.
+            var names = new HashSet<string>(filter.Properties, StringComparer.Ordinal);
+            bool grew = true;
+            while (grew)
+            {
+                grew = false;
+                foreach (var group in groups)
+                {
+                    if (group.Overlaps(names) && !group.IsSubsetOf(names))
+                    {
+                        names.UnionWith(group);
+                        grew = true;
+                    }
+                }
+            }
+
+            return names.Count == filter.Properties.Length
+                ? filter
+                : new UpdateFilter { Behavior = filter.Behavior, Properties = names.ToArray() };
         }
 
         private bool UpdateRows(Type type, object item, object newItem, ReadWriteTrack track, UpdateFilter filter, PropertyInfoItem via)

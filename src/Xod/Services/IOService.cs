@@ -57,18 +57,25 @@ namespace Xod.Services
         // sets above, written when it ends (WriteSaved). What changed without a save waits for the next flush.
         private readonly StatementSaves saved = new StatementSaves();
 
-        // ISS-166: the data files this context's open transaction deleted, by name (Delete); never an index file, which
-        // the index service deletes at the commit (IndexService.DeleteIndexFile). A transaction changes no data file
-        // before its commit, deletes included: each stays on disk, whole, and is gone for this context (DeletedHere,
-        // asked by each of its reads of the disk). Its commit deletes them, with their
-        // bytes in its journal (EndBatch); a rollback, or a commit refused before
-        // its journal, forgets them (DiscardBatch, DiscardPendingWrites). Before, they were renamed aside at once
+        // ISS-166: a transaction changes no data file before its commit, deletes included: each stays on disk, whole, and
+        // is gone for this context (DeletedHere, asked by each of its reads of the disk); never an index file, which the
+        // index service deletes at the commit (IndexService.DeleteIndexFile). Its commit deletes them, with their bytes in
+        // its journal (EndBatch); a rollback, or a commit refused before its journal, forgets them (DiscardBatch,
+        // DiscardPendingWrites). Since ISS-196 every data-file delete waits so (batchDeletes, bufferedDeletes, below).
+        // Before, they were renamed aside at once
         // ("<file>.xdel", ISS-107): another context then saw a dropped table gone and made a new one at its fixed name,
         // the rollback couldn't put the old one back over it, and the next open dropped the old one with its rows. An
         // older version's crash can still leave such a file; the open puts it back (PutBackSetAsideFiles).
         internal const string SetAsideSuffix = ".xdel";
-        private readonly HashSet<string> pendingDeletes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        // Its own lock: pages are read from disk on worker threads (the prefetches in IOService.RawPages) while the
+        // ISS-196: every data-file delete waits, as the transaction's did, for the write of the files that stop naming
+        // it, and is made after them (WriteInOrderUnlocked): a page deleted at once, before the table that named it was
+        // written without it, left a crash between the two with a table naming a page that wasn't there. Two sets, as
+        // the writes have two: a delete made while a batch is open waits for that batch's end (EndBatch; a rollback
+        // forgets it, DiscardBatch), any other for the buffer's flush or, in direct mode, the statement's end
+        // (WriteSaved). Each is gone for this context meanwhile (DeletedHere).
+        private readonly HashSet<string> batchDeletes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> bufferedDeletes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Their own lock: pages are read from disk on worker threads (the prefetches in IOService.RawPages) while the
         // thread that started them may hold syncLock.
         private readonly object pendingDeletesLock = new object();
 
@@ -170,21 +177,14 @@ namespace Xod.Services
             lock (syncLock)
             {
                 if (OutermostBatchEndsUnlocked())
-                {
-                    // The deletes, then the writes. A file the transaction deleted and then made again (a table
-                    // dropped and made anew) isn't deleted: the flush replaces it. Deleted first, its name could be
-                    // refused to the write while another program still had the old file open (Windows without POSIX
-                    // delete, where a deleted file keeps its name until the last handle closes: DeleteFileW). Both
-                    // are undone from the commit's journal if either fails.
-                    DeletePending(TakePendingDeletes());
-                    FlushPending(dirtyBatchFiles, dirtyBatchRawPages);
-                }
+                    FlushPending(dirtyBatchFiles, dirtyBatchRawPages, batchDeletes);
             }
         }
 
         /// <summary>
-        /// ISS-166: true for a file this context's open transaction deleted. It is still on disk, for every other
-        /// context, until the commit; for this context it is gone, and each read of the disk asks here first.
+        /// True for a data file this context has deleted and whose delete waits for the write of the files that stop
+        /// naming it (ISS-166, ISS-196). It is still on disk, for every other context, until then; for this context it
+        /// is gone, and each read of the disk asks here first.
         /// </summary>
         internal bool DeletedHere(string fileName)
         {
@@ -192,41 +192,112 @@ namespace Xod.Services
                 return false;
             lock (pendingDeletesLock)
             {
-                return pendingDeletes.Count > 0 && pendingDeletes.Contains(Path.GetFileName(fileName));
+                if (batchDeletes.Count == 0 && bufferedDeletes.Count == 0)
+                    return false;
+                string name = Path.GetFileName(fileName);
+                return batchDeletes.Contains(name) || bufferedDeletes.Contains(name);
             }
         }
 
-        /// <summary>A file on disk as this context sees it: there, and not deleted by its open transaction.</summary>
+        /// <summary>A file on disk as this context sees it: there, and not deleted by it (<see cref="DeletedHere"/>).</summary>
         internal bool OnDiskHere(string fullPath) => !DeletedHere(fullPath) && File.Exists(fullPath);
 
-        private List<string> TakePendingDeletes()
+        // Forgets the deletes of one set, or of both (null): they never reach the disk.
+        private void ForgetDeletes(HashSet<string> deletes)
         {
             lock (pendingDeletesLock)
             {
-                if (pendingDeletes.Count == 0)
-                    return null;
-                var taken = pendingDeletes.ToList();
-                pendingDeletes.Clear();
-                return taken;
+                if (deletes == null)
+                {
+                    batchDeletes.Clear();
+                    bufferedDeletes.Clear();
+                }
+                else
+                {
+                    deletes.Clear();
+                }
             }
         }
 
-        // The commit's deletes, after its journal, which holds each file's bytes: one that fails fails the commit, and
-        // its undo writes back every file it deleted. A file the batch writes again is left to that write (EndBatch).
-        // Data files only: an index file never waits here.
-        private void DeletePending(List<string> names)
+        private bool HasDeletes(HashSet<string> deletes)
         {
-            if (names == null)
-                return;
-            foreach (string name in names)
+            lock (pendingDeletesLock)
             {
-                if (dirtyBatchFiles.Contains(name) || dirtyBatchRawPages.Contains(name))
-                    continue;
-                string fullPath = Path.Combine(root, name);
-                File.Delete(fullPath);
-                ChangedOnDisk(fullPath);
+                return deletes.Count > 0;
             }
         }
+
+        /// <summary>
+        /// ISS-196: the one order in which this context's writes reach the disk, for every writer (a statement's end, a
+        /// batch's or a commit's, a buffer's flush): pages first, then the tables and the other files, then the deletes
+        /// waiting with them (<paramref name="deletes"/>), tables before pages. A page is on disk before any table on
+        /// disk names it, and leaves only after the last table that named it is written without it. A crash between
+        /// two writes leaves at most a page no table names, which no read reaches (a read finds a table's pages by
+        /// the table), and no table naming a page that isn't there. It was tables first, then pages, and a page a
+        /// delete emptied, or a dropped table's pages, went at once. The deletes are made only once every write has
+        /// succeeded: when one fails they stay, to be made with the writes or forgotten with them
+        /// (<see cref="DiscardPendingWrites"/>). A file deleted and then made again (a table dropped and made anew)
+        /// isn't deleted: its write replaces it, and deleted first, its name could be refused to the write while
+        /// another program still had the old file open (Windows without POSIX delete, where a deleted file keeps its
+        /// name until the last handle closes: DeleteFileW). In a commit, the journal holds each file's bytes, and a
+        /// write or a delete that fails fails the commit, whose undo puts them all back. Under syncLock.
+        /// </summary>
+        private void WriteInOrderUnlocked(List<XFile> files, List<string> rawPages, HashSet<string> deletes)
+        {
+            var pages = new List<XFile>();
+            var others = new List<XFile>();
+            foreach (var file in files)
+                (IsPage(file.Path) ? pages : others).Add(file);
+
+            if (pages.Count > 0)
+                FlushFilesList(pages);
+            if (rawPages.Count > 0)
+                FlushRawPagesList(rawPages);
+            if (others.Count > 0)
+                FlushFilesList(others);
+
+            List<string> names;
+            lock (pendingDeletesLock)
+            {
+                // A file made again since its delete, and now written, replaces the file the delete was for: no delete
+                // of it waits any more, in either set (a table dropped in the buffer and written again by a batch). Only
+                // a write counts: a file only held here, such as a table an insert that failed made in memory before
+                // its row was refused, never replaced anything, and the old file goes with its pages (review of
+                // ISS-196: it was kept, and named the pages deleted beside it).
+                foreach (var file in files)
+                {
+                    string name = Path.GetFileName(file.Path);
+                    batchDeletes.Remove(name);
+                    bufferedDeletes.Remove(name);
+                }
+                foreach (string name in rawPages)
+                {
+                    batchDeletes.Remove(name);
+                    bufferedDeletes.Remove(name);
+                }
+                if (deletes.Count == 0)
+                    return;
+                names = deletes.ToList();
+            }
+            foreach (string name in names.OrderBy(n => IsPage(n) ? 1 : 0))
+            {
+                // Made again and waiting for another writer: the delete waits too, cancelled by that write, or made
+                // after it if the write is discarded.
+                if (dirtyBatchFiles.Contains(name) || dirtyBufferedFiles.Contains(name) ||
+                    dirtyBatchRawPages.Contains(name) || dirtyBufferedRawPages.Contains(name))
+                    continue;
+                string fullPath = Path.Combine(root, name);
+                FaultInjection.Step("file-deleting", file: name);
+                File.Delete(fullPath);
+                ChangedOnDisk(fullPath);
+                lock (pendingDeletesLock)
+                {
+                    deletes.Remove(name);
+                }
+            }
+        }
+
+        private static bool IsPage(string fileName) => fileName.EndsWith(".xpag", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Writes what waits in a batch or in the buffer. When a write fails, whatever this call took stays to be
@@ -236,9 +307,9 @@ namespace Xod.Services
         /// Writing again a file that was written is harmless: each is written whole, or from where its last write
         /// that succeeded ended (FlushRawPageToDisk). Called under syncLock.
         /// </summary>
-        private void FlushPending(PendingFiles files, HashSet<string> rawPages)
+        private void FlushPending(PendingFiles files, HashSet<string> rawPages, HashSet<string> deletes)
         {
-            if (files.Count == 0 && rawPages.Count == 0)
+            if (files.Count == 0 && rawPages.Count == 0 && !HasDeletes(deletes))
                 return;
             var toFlush = files.ToList();
             var rawToFlush = rawPages.ToList();
@@ -246,10 +317,7 @@ namespace Xod.Services
             rawPages.Clear();
             try
             {
-                if (toFlush.Count > 0)
-                    FlushFilesList(toFlush);
-                if (rawToFlush.Count > 0)
-                    FlushRawPagesList(rawToFlush);
+                WriteInOrderUnlocked(toFlush, rawToFlush, deletes);
             }
             catch
             {
@@ -402,15 +470,13 @@ namespace Xod.Services
             {
                 if (IsBatchOrBuffered)
                     return;
-                // Only what this thread's statement saved (StatementSaves).
+                // Only what this thread's statement saved (StatementSaves), and its deletes: one write statement at a
+                // time, so every delete waiting outside a batch is its own.
                 var (files, rawPages) = saved.OfThisThread();
-                if (files.Count == 0 && rawPages.Count == 0)
+                if (files.Count == 0 && rawPages.Count == 0 && !HasDeletes(bufferedDeletes))
                     return;
                 FaultInjection.Step("statement-saving");
-                if (files.Count > 0)
-                    FlushFilesList(files);
-                if (rawPages.Count > 0)
-                    FlushRawPagesList(rawPages);
+                WriteInOrderUnlocked(files, rawPages, bufferedDeletes);
                 saved.Written(files, rawPages);
                 dirtyBufferedFiles.Written(files);
                 dirtyBufferedRawPages.ExceptWith(rawPages);
@@ -429,7 +495,8 @@ namespace Xod.Services
                 {
                     return batchDepth == 0 &&
                         dirtyBatchFiles.Count == 0 && dirtyBufferedFiles.Count == 0 &&
-                        dirtyBatchRawPages.Count == 0 && dirtyBufferedRawPages.Count == 0;
+                        dirtyBatchRawPages.Count == 0 && dirtyBufferedRawPages.Count == 0 &&
+                        !HasDeletes(batchDeletes) && !HasDeletes(bufferedDeletes);
                 }
             }
         }
@@ -439,8 +506,8 @@ namespace Xod.Services
         /// write still to make, in the buffer's sets, as after a batch write that failed (<see cref="FlushPending"/>): in
         /// direct mode the statement's undo forgets it with the rest (<see cref="UndoStatement"/>); in buffered mode the
         /// statement's own undo takes its rows back in those files, and the next flush writes them. Inside an outer batch
-        /// (a transaction's) only the depth goes down: the outer batch keeps it all. No delete waits at depth 0: only a
-        /// transaction's are deferred (<see cref="DeleteUnlocked"/>), and its batch is the outer one.
+        /// (a transaction's) only the depth goes down: the outer batch keeps it all. Its deletes wait with its writes, in
+        /// the buffer's set (ISS-196).
         /// </summary>
         internal void EndBatchUnwritten()
         {
@@ -451,6 +518,12 @@ namespace Xod.Services
                     WaitInBufferUnlocked(dirtyBatchFiles.ToList(), dirtyBatchRawPages);
                     dirtyBatchFiles.Clear();
                     dirtyBatchRawPages.Clear();
+                    // Its deletes wait with its writes (ISS-196).
+                    lock (pendingDeletesLock)
+                    {
+                        bufferedDeletes.UnionWith(batchDeletes);
+                        batchDeletes.Clear();
+                    }
                 }
             }
         }
@@ -464,7 +537,7 @@ namespace Xod.Services
                     dirtyBatchFiles.Clear();
                     dirtyBatchRawPages.Clear();
                     // Its deletes are forgotten: they never reached the disk (ISS-166).
-                    TakePendingDeletes();
+                    ForgetDeletes(batchDeletes);
                 }
             }
         }
@@ -473,7 +546,9 @@ namespace Xod.Services
         {
             lock (syncLock)
             {
-                FlushPending(dirtyBufferedFiles, dirtyBufferedRawPages);
+                // The buffer's writes, and the deletes waiting with them; not a batch's (a transaction's), which wait
+                // for its end.
+                FlushPending(dirtyBufferedFiles, dirtyBufferedRawPages, bufferedDeletes);
             }
         }
 
@@ -517,7 +592,7 @@ namespace Xod.Services
                 dirtyBatchRawPages.Clear();
                 dirtyBufferedRawPages.Clear();
                 saved.Clear();
-                TakePendingDeletes();
+                ForgetDeletes(null);
                 ClearCurrentCache();
             }
         }

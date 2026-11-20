@@ -61,8 +61,9 @@ namespace Xod.Engines.Xml
             foreach (var pageElm in tableFile.Pages().ToList())
             {
                 string pageFileName = pageElm.Attribute("file")?.Value;
-                if (string.IsNullOrEmpty(pageFileName) || !ioService.FileExists(pageFileName))
+                if (string.IsNullOrEmpty(pageFileName))
                     continue;
+                ioService.RequirePage(tableFile, pageFileName);
                 XFile pageFile = ioService.OpenFileOrCreate<TablePage>(pageFileName, openOnly: true);
                 if (pageFile == null)
                     continue;

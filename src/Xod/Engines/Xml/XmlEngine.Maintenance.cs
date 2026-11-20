@@ -57,8 +57,9 @@ namespace Xod.Engines.Xml
                     foreach (var pageElm in tableFile.Pages())
                     {
                         string pageFileName = pageElm.Attribute("file")?.Value;
-                        if (string.IsNullOrEmpty(pageFileName) || !ioService.FileExists(pageFileName))
+                        if (string.IsNullOrEmpty(pageFileName))
                             continue;
+                        ioService.RequirePage(tableFile, pageFileName);
 
                         tableStat.PageCount++;
                         stats.TotalPageCount++;

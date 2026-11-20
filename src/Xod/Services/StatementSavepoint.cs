@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace Xod.Services
 {
@@ -171,18 +172,26 @@ namespace Xod.Services
         /// Puts every file the statement changed back as it found it: one it made is deleted, one written whole or
         /// deleted is written back whole (as every whole file is: <see cref="IOService.WriteRawBytesAtomic"/>), one
         /// written in place gets its bytes back and its length. A file noted whose write failed before changing it
-        /// (another program holds it), or that no write reached, is left alone. Each file is tried; the failures are
-        /// thrown together after.
+        /// (another program holds it), or that no write reached, is left alone. Each file of a rank is tried, and the
+        /// failures are thrown together after; once one has failed, the later ranks are left as the statement wrote them
+        /// (ISS-196's review): a table put back after a page that couldn't be would name that page, and a page the
+        /// statement made deleted while a table it wrote still names it. The disk is then no statement's, and the
+        /// context writes nothing more (XmlEngine.UndoWriteStatement), but every table names pages that are there.
         /// </summary>
         internal void Undo()
         {
             List<Exception> failures = null;
             int putBack = 0;
+            int failedRank = int.MaxValue;
             lock (gate)
             {
-                foreach (var (fullPath, before) in files)
+                // ISS-196: in the order that keeps every table on disk naming only pages on disk at each step: the pages
+                // it found there first (one it deleted is back before the table naming it), then the tables and other
+                // files, then the files it made, pages last (one it made goes only once no table names it).
+                foreach (var (fullPath, before) in files.OrderBy(f => UndoRank(f.Key, f.Value)))
                 {
-                    if (!before.Changed)
+                    int rank = UndoRank(fullPath, before);
+                    if (!before.Changed || rank > failedRank)
                         continue;
                     try
                     {
@@ -208,12 +217,21 @@ namespace Xod.Services
                     catch (Exception e)
                     {
                         (failures ??= new List<Exception>()).Add(e);
+                        failedRank = Math.Min(failedRank, rank);
                     }
                 }
             }
             Release();
             if (failures != null)
                 throw failures.Count == 1 ? failures[0] : new AggregateException(failures);
+        }
+
+        private static int UndoRank(string fullPath, Before before)
+        {
+            bool page = fullPath.EndsWith(".xpag", StringComparison.OrdinalIgnoreCase);
+            if (before.Existed)
+                return page ? 0 : 1;
+            return page ? 3 : 2;
         }
 
         /// <summary>The statement is over: the copies taken from the pool go back to it, and the record is emptied.</summary>
