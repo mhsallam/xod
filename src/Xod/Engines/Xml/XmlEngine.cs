@@ -170,6 +170,11 @@ namespace Xod.Engines.Xml
                     this.ioService.StorageSerializer = StorageSerializerFactory.Get(this.StorageFormat);
                 }
 
+                // ISS-209: the pages a crash left that no table names, once the database file is read (its password
+                // and format are known) and before anything is written. Not in a new database: it has none.
+                if (!IsNew)
+                    this.ioService.DeleteUnnamedPages();
+
                 this.propertyKeys = new PropertyKeyService(ioService, databaseFile, this.options.PropertyEncryptionKey, () => this.password);
 
                 this.itemsCacheService = new ItemsCacheService();
@@ -573,6 +578,11 @@ namespace Xod.Engines.Xml
                     indexService.EndStatement();
                     autonumberService.EndStatement();
                 }
+                // ISS-209: the outermost statement is over and written, so no page it chose or deleted can be left
+                // unnamed by a crash now (IOService.PagesSettled). Only here and in FlushToDisk, where no write is
+                // under way: not in the writers, which run in the middle of a statement too.
+                if (outermost && ioService.NothingPending)
+                    ioService.PagesSettled();
                 return result;
             }
             catch (Exception failure) when (savepoint)

@@ -365,6 +365,69 @@ public static class Program
             return 0;
         }
 
+        // ISS-209: every member deleted with no transaction, no batch of the caller's and no buffer: their pages
+        // emptied, the table written without them, then the pages deleted (a test sets where the process dies).
+        if (mode == "deletemembers")
+        {
+            using var db = new XodContext(path, options: options);
+            int deleted = db.DeleteWhere<CrashMember>(m => true);
+            Console.WriteLine("DELETED " + deleted);
+            return 0;
+        }
+
+        // ISS-209's review: the customer and order tables, with no pages (a row of each written, then deleted).
+        if (mode == "emptytables")
+        {
+            using var db = new XodContext(path, options: options);
+            db.Insert(new CrashCustomer { Id = 1, Name = "a", Orders = new List<CrashOrder> { new CrashOrder { Id = 10, Status = "s" } } });
+            db.DeleteWhere<CrashOrder>(o => true);
+            db.DeleteWhere<CrashCustomer>(c => true);
+            Console.WriteLine("EMPTY");
+            return 0;
+        }
+
+        // ISS-209's review: an order's trigger flushes in the middle of its customer's insert, after the customer's
+        // page was chosen and before it is pending (a test sets where the process dies).
+        if (mode == "triggerflush")
+        {
+            using var db = new XodContext(path, options: options);
+            db.AfterAction += (_, e) => { if (e.Type == typeof(CrashOrder)) db.Flush(); };
+            db.Insert(new CrashCustomer { Id = 2, Name = "b", Orders = new List<CrashOrder> { new CrashOrder { Id = 20, Status = "s" }, new CrashOrder { Id = 21, Status = "t" } } });
+            db.Flush();
+            Console.WriteLine("INSERTED");
+            return 0;
+        }
+
+        // ISS-209's review: an InsertRange in direct mode, failed after its batch was written (XOD_FAIL_AT_STEP=
+        // batch-written), so its undo puts the files back (a test sets where the process dies in it).
+        if (mode == "rangeundo")
+        {
+            using var db = new XodContext(path, options: options);
+            try
+            {
+                db.InsertRange(new List<CrashNote> { new CrashNote { Id = 1, Text = "x" }, new CrashNote { Id = 2, Text = "y" } });
+                Console.WriteLine("INSERTED");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("FAILED " + e.GetType().Name);
+            }
+            return 0;
+        }
+
+        // ISS-209's review: one context, in direct mode, writes rows over many statements and pages, never flushing,
+        // then the process dies with every statement written.
+        if (mode == "longlived")
+        {
+            options.PageSize = 4096;
+            var db = new XodContext(path, options: options);
+            for (int i = 1; i <= 400; i++)
+                db.Insert(new CrashNote { Id = i, Text = "note " + i + " " + new string('x', 40) });
+            Console.WriteLine("INSERTED");
+            Console.Out.Flush();
+            Environment.FailFast("killed after its statements, with no flush");
+        }
+
         // ISS-107: a transaction deletes every member (their pages emptied), then the process dies before the commit.
         if (mode == "txdelete")
         {

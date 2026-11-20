@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace Xod.Services
 {
@@ -55,13 +56,127 @@ namespace Xod.Services
                 return;
             lock (indexesBehindLock)
             {
-                if (indexesBehind)
-                    return;
-                indexesBehindMarker ??= new FileStream(path + "." + Guid.NewGuid().ToString("N").Substring(0, 8) + IndexesBehindSuffix,
-                    FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                indexesBehindMarker.SetLength(1);
-                indexesBehind = true;
+                MarkBehindUnlocked();
             }
+        }
+
+        // The mark, under indexesBehindLock: this context's marker, created at its first use, holds one byte (or more:
+        // NotePageInFlight). A marker that can't be created or marked throws, failing the write that asked.
+        private void MarkBehindUnlocked()
+        {
+            if (indexesBehind)
+                return;
+            indexesBehindMarker ??= new FileStream(path + "." + Guid.NewGuid().ToString("N").Substring(0, 8) + IndexesBehindSuffix,
+                FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            indexesBehindMarker.SetLength(1);
+            indexesBehind = true;
+        }
+
+        // Whether this context's marker names pages now (NotePageInFlight), so settling them has something to clear.
+        private bool pagesInFlight;
+
+        /// <summary>
+        /// ISS-209: a page that no table on disk may name for a while, recorded in this context's marker before that
+        /// window opens: a new page's name, when it is chosen (<see cref="NewPageFileName"/>), before any write of it or
+        /// of the table that will name it; a page whose delete waits for the write of the table that stops naming it
+        /// (<see cref="DeleteUnlocked"/>). The window closes once no write of this context is under way and nothing of
+        /// it waits (<see cref="PagesSettled"/>, which clears the records). A crash
+        /// inside it leaves the marker naming the page, and the next open alone deletes it if no table names it then
+        /// (<see cref="DeleteUnnamedPages"/>). A page no marker names is never deleted, and a record lasts only its
+        /// window: a table file missing for another reason (a copy or a restore not finished) costs a page only if the
+        /// copy also caught a crash inside a window that page was in (the review of TASK-104: records lasted until the
+        /// indexes caught up, which a long-lived context may never reach, so a crash named every page it ever made).
+        /// One line per page after the marker's first byte; an older release reads any marker that isn't empty as
+        /// behind, as before. Flushed to the system before the page's own write, the order the page writes themselves
+        /// keep (none is flushed to the device, so after a power cut a page may lack its record: it stays, unnamed, as
+        /// before). Not for a context that holds no lock, which writes nothing, nor where the file system takes no
+        /// locks, where no open reads it (<see cref="KeptForTheSweep"/>).
+        /// </summary>
+        internal void NotePageInFlight(string pageName)
+        {
+            if (released)
+                throw new ObjectDisposedException(nameof(XodContext), "The database context is closed.");
+            if (NoHoldReason != null || FileLockingSwitchedOff)
+                return;
+            byte[] line = System.Text.Encoding.UTF8.GetBytes("\n" + pageName);
+            lock (indexesBehindLock)
+            {
+                MarkBehindUnlocked();
+                indexesBehindMarker.Seek(0, SeekOrigin.End);
+                indexesBehindMarker.Write(line, 0, line.Length);
+                indexesBehindMarker.Flush();
+                pagesInFlight = true;
+            }
+        }
+
+        /// <summary>
+        /// The windows <see cref="NotePageInFlight"/> opened are closed, and the records are cleared; the marker still
+        /// says the indexes are behind, until they catch up (<see cref="IndexesCaughtUp"/>). Called by the engine
+        /// (XmlEngine), which alone knows when that holds: no write statement under way (a trigger's flush comes in the
+        /// middle of one, before the page it chose is pending, and a statement's undo comes after its batch was
+        /// written: the review of TASK-104 found both cleared here, by the writers, while a window was open) and
+        /// nothing of this context waiting, so each page recorded is named by a table on disk, gone, or never written.
+        /// A statement that failed doesn't settle: its records last until a later settle, which costs nothing but a
+        /// longer record. Neither does a commit, whose journal the next open may still undo; the next flush or
+        /// transaction settles it.
+        /// </summary>
+        internal void PagesSettled()
+        {
+            lock (indexesBehindLock)
+            {
+                if (!pagesInFlight || released || indexesBehindMarker == null)
+                    return;
+                indexesBehindMarker.SetLength(indexesBehind ? 1 : 0);
+                pagesInFlight = false;
+            }
+        }
+
+        // The pages a marker names (NotePageInFlight): the lines after its first byte that name a page file in the
+        // folder. A marker that can't be read names none.
+        private static string[] PagesInFlight(string marker)
+        {
+            byte[] bytes;
+            try
+            {
+                bytes = File.ReadAllBytes(marker);
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                return Array.Empty<string>();
+            }
+            if (bytes.Length <= 1)
+                return Array.Empty<string>();
+            return System.Text.Encoding.UTF8.GetString(bytes, 1, bytes.Length - 1)
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Where(n => n.EndsWith(".xpag", StringComparison.OrdinalIgnoreCase) && n.IndexOfAny(new[] { '/', '\\', ':' }) < 0 && n != ".xpag")
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        /// <summary>
+        /// A marker kept for the open's sweep of the pages a crash left (<see cref="DeleteUnnamedPages"/>), which
+        /// reads the tables and so runs after the recovery: one no context holds that names pages. The recovery's step
+        /// for the markers (<see cref="DropIndexesLeftBehind"/>) drops the indexes for it and leaves it; the sweep
+        /// deletes it, and a conversion into another folder carries it there (XodMigrator). Not where the file system
+        /// takes no locks (<see cref="FileLockingSwitchedOff"/>): there a live context's marker can't be told from one a
+        /// crash left (ISS-104), so its pages, which that context may be writing, are left and the marker goes as before.
+        /// </summary>
+        internal static bool KeptForTheSweep(string marker) => !FileLockingSwitchedOff && PagesInFlight(marker).Length > 0;
+
+        /// <summary>The markers in a folder kept for the sweep (<see cref="KeptForTheSweep"/>), by path.</summary>
+        internal static string[] MarkersKeptForTheSweep(string root) => Markers(root).Where(KeptForTheSweep).ToArray();
+
+        /// <summary>The markers kept for the sweep (<see cref="KeptForTheSweep"/>) and the pages each names.</summary>
+        internal List<(string Marker, string[] Pages)> MarkersNamingPages()
+        {
+            var found = new List<(string, string[])>();
+            foreach (string marker in Markers(root))
+            {
+                if (ProbeMarker(marker) == MarkerState.Live || !KeptForTheSweep(marker))
+                    continue;
+                found.Add((marker, PagesInFlight(marker)));
+            }
+            return found;
         }
 
         /// <summary>
@@ -76,6 +191,7 @@ namespace Xod.Services
                     return;
                 indexesBehindMarker.SetLength(0);
                 indexesBehind = false;
+                pagesInFlight = false;
             }
         }
 
@@ -292,6 +408,8 @@ namespace Xod.Services
 
             foreach (string marker in left)
             {
+                if (KeptForTheSweep(marker))
+                    continue; // ISS-209: deleted by the open's sweep, once the pages it names are dealt with
                 try
                 {
                     File.Delete(marker);

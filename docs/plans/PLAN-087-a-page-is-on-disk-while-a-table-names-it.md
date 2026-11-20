@@ -105,7 +105,7 @@ An independent review (the code and the problem, not this plan), with probes aga
 - `NothingPending` counts the deletes still waiting; the unused `IOService.GetItemPage`, which still skipped a missing
   page, is removed.
 - **Filed:** `ISS-209` (a crash between a new page's write and its table's leaves a page no table names; nothing removes
-  it), `ISS-210` (a relation's stored row code that finds no row reads as no row: the same silent drop for relations).
+  it), `ISS-210` (a relation's stored row code that finds no row reads as no row: the same silent drop for relations). Both were taken up in [`PLAN-088`](PLAN-088-a-page-no-table-names-is-deleted-at-the-open.md): `ISS-209` resolved; `ISS-210` closed, since XOD makes such codes itself and leaving them out is the right answer.
 - **Unconfirmed:** the Windows delete behaviour the writer's comment cites (`DeleteFileW`) was kept from the earlier code
   and not checked against the documentation in this task.
 

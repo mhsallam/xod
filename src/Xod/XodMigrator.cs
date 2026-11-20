@@ -88,7 +88,7 @@ namespace Xod
                 var keys = string.IsNullOrEmpty(hashedPassword) ? null : new FileKeys(hashedPassword);
                 return inPlace
                     ? ConvertInPlace(files, targetFormat, keys)
-                    : ConvertInto(files, targetDir, targetFormat, keys);
+                    : ConvertInto(sourceDir, files, targetDir, targetFormat, keys);
             }
         }
 
@@ -112,7 +112,7 @@ namespace Xod
 
         // The database written in a folder beside the target, on the same volume, then moved into place whole. A
         // failure deletes that folder, which only this call has written; a crash leaves it.
-        private static int ConvertInto(List<string> files, string targetDir, StorageFormat targetFormat, FileKeys keys)
+        private static int ConvertInto(string sourceDir, List<string> files, string targetDir, StorageFormat targetFormat, FileKeys keys)
         {
             string parent = Path.GetDirectoryName(targetDir);
             Directory.CreateDirectory(parent);
@@ -127,6 +127,11 @@ namespace Xod
                     converted++;
                     FaultInjection.Step("convert-written", converted);
                 }
+                // ISS-209: a crash's marker naming pages that may be named by no table goes with them, so the converted
+                // database's first open deletes those it finds unnamed (IOService.DeleteUnnamedPages): it is read with
+                // the tables, which only an open can read. Converted in place, the marker stays where it is.
+                foreach (string marker in IOService.MarkersKeptForTheSweep(sourceDir))
+                    File.Copy(marker, Path.Combine(staging, Path.GetFileName(marker)));
 
                 // An empty target folder makes way (Directory.Delete refuses one that isn't empty any more).
                 if (Directory.Exists(targetDir))

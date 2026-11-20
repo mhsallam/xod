@@ -54,6 +54,94 @@ namespace Xod.Services
         }
 
         /// <summary>
+        /// ISS-209: deletes the pages a crash left that no table names. A page reaches the disk before any table names
+        /// it and leaves only after the last table naming it is written without it (<see cref="WriteInOrderUnlocked"/>,
+        /// ISS-196), so a crash in between leaves a page no table names: a table's first page written before its table
+        /// file, a page a delete emptied or a dropped table's page not yet deleted after its table was written. No read
+        /// of its table reaches it; a stored reference naming a row on it does (GetRawData), and reads as gone once the
+        /// page is deleted, as a reference to any row that is gone does (ISS-210). Nothing else removed it.
+        /// <para>
+        /// Only a page the crashed context named in its marker (<see cref="NotePageInFlight"/>, which keeps a page's
+        /// record only while the crash could leave it unnamed) is deleted, and only if no table names it now: "no table
+        /// names it" alone isn't a crash's mark, since a table file can be missing for another reason (a copy, a sync or
+        /// a restore not finished), and its pages are then kept. Each marker read is deleted once its pages are dealt
+        /// with, whether or not they all could be: kept, it would leave every index file untrusted at every open (the
+        /// review of TASK-104), for a page that only wastes space. A page left so stays, unnamed, as before ISS-209.
+        /// </para>
+        /// <para>
+        /// Run by the open (XmlEngine), with the database held alone and before this context writes anything: after
+        /// the recovery (<see cref="RecoverInterruptedWrites"/>, which may put a journal's tables back, and keeps these
+        /// markers for this step) and once the database file has been read, since a table file is read with the
+        /// database's password and format. Not by a context without a hold (<see cref="NoHoldReason"/>), and the
+        /// markers aren't kept where the file system takes no locks (<see cref="KeptForTheSweep"/>). Every table file is
+        /// read first; one that can't be read (damaged, or written by something else) names pages no one can know, so
+        /// then no page is deleted, and the read of that table reports it. A page that can't be deleted now (held by
+        /// another program) stays. Deleted as the other recovery steps delete what a crash left, straight from the disk:
+        /// nothing of this context holds or names it, so no statement, savepoint or index takes part.
+        /// </para>
+        /// </summary>
+        internal void DeleteUnnamedPages()
+        {
+            if (NoHoldReason != null || string.IsNullOrEmpty(root) || !Directory.Exists(root))
+                return;
+            var markers = MarkersNamingPages();
+            if (markers.Count == 0)
+                return;
+
+            HashSet<string> named = PagesTheTablesName();
+            foreach (var (marker, pages) in markers)
+            {
+                // Null: a table couldn't be read, so no page is known to be unnamed (see the summary).
+                foreach (string name in named == null ? Array.Empty<string>() : pages)
+                {
+                    string page = Path.Combine(root, name);
+                    if (named.Contains(name) || !File.Exists(page))
+                        continue;
+                    try
+                    {
+                        FaultInjection.Step("unnamed-page-deleting", file: name);
+                        File.Delete(page);
+                    }
+                    catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                    {
+                        // Held by another program: it stays, unnamed (see the summary).
+                    }
+                }
+                try
+                {
+                    File.Delete(marker);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                {
+                    // Stays, and the next open reads it again; meanwhile the indexes are rebuilt from the pages.
+                }
+            }
+        }
+
+        // The pages the table files on disk name, or null when one of them can't be read (DeleteUnnamedPages).
+        private HashSet<string> PagesTheTablesName()
+        {
+            var named = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string table in Directory.GetFiles(root, "*.xtab"))
+            {
+                XFile tableFile;
+                try
+                {
+                    tableFile = OpenFileOrCreate(Path.GetFileName(table), typeof(Table), openOnly: true);
+                }
+                catch (Exception e) when (e is XodException || e is IOException || e is UnauthorizedAccessException || e is System.Xml.XmlException)
+                {
+                    return null;
+                }
+                if (tableFile?.Root() == null)
+                    return null;
+                foreach (string page in tableFile.Pages().Select(p => p.Attribute("file")?.Value).Where(f => !string.IsNullOrEmpty(f)))
+                    named.Add(page);
+            }
+            return named;
+        }
+
+        /// <summary>
         /// ISS-107: the files a transaction of an older version set aside (deleted, <c>&lt;file&gt;.xdel</c>) and didn't
         /// get to delete or put back before a crash; since ISS-166 a transaction deletes nothing before its commit and
         /// sets nothing aside. One whose file is there again (a journal's undo put it back) is deleted; one whose file
@@ -364,15 +452,20 @@ namespace Xod.Services
         // had no type, and an update kept the rows it dropped, a cascade through an object property the rows it named.
         internal Type GetPageType(string xpagCode)
         {
+            string table = PageTableName(xpagCode);
+            return table == null ? null : propertyService.RegisteredType(Path.GetFileNameWithoutExtension(table));
+        }
+
+        /// <summary>The table file that lists a page (see <see cref="GetPageType"/>), or null when no table does: the
+        /// page's rows are gone (its table dropped, its last row deleted) or were never named (ISS-209).</summary>
+        internal string PageTableName(string xpagCode)
+        {
             if (!Directory.Exists(root)) return null;
             foreach (var file in TableFileNames())
             {
                 XFile tableFile = OpenFileOrCreate(file, typeof(Table), openOnly: true);
                 if (tableFile != null && tableFile.Pages().Any(s => s.Attribute("file")?.Value == xpagCode + ".xpag"))
-                {
-                    string typeString = Path.GetFileNameWithoutExtension(file);
-                    return propertyService.RegisteredType(typeString);
-                }
+                    return file;
             }
             return null;
         }
@@ -671,7 +764,13 @@ namespace Xod.Services
 
         private static bool IsFullPage(XElement page) => page.Attribute("full")?.Value == "true";
 
-        private static string NewPageFileName() => $"{ValueHelper.PickCode()}.xpag";
+        // A new page's name, noted in this context's marker before anything of it is written (ISS-209: NotePageInFlight).
+        private string NewPageFileName()
+        {
+            string name = $"{ValueHelper.PickCode()}.xpag";
+            NotePageInFlight(name);
+            return name;
+        }
 
         private static XElement AddPageElement(XElement pagesRoot, string pageFileName)
         {
@@ -774,6 +873,9 @@ namespace Xod.Services
                 bool waits = !IsIndex(fullPath) && (batchDepth > 0 || bufferedDurability || savepoint != null);
                 if (waits)
                 {
+                    // ISS-209: until it is deleted, the table written without it no longer names it.
+                    if (IsPage(normalizedName))
+                        NotePageInFlight(normalizedName);
                     lock (pendingDeletesLock)
                     {
                         (batchDepth > 0 ? batchDeletes : bufferedDeletes).Add(normalizedName);

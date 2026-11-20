@@ -12,5 +12,7 @@ records it. The last release: [2.1.0](RELEASE-NOTES-2.1.0.md).
 
 ## Fixed
 
+- **A page a crash left behind is removed.** A crash between writing a page and writing the table that names it could leave a page file nothing used. The next open now deletes it. Only pages the crashed process was writing are touched, so a table file that is missing for another reason never costs its pages. ([`PLAN-088`](plans/PLAN-088-a-page-no-table-names-is-deleted-at-the-open.md))
+- **A reference of type `object` to a row that was deleted reads as null.** It threw, saying the type isn't registered, and the row holding it couldn't be read. ([`PLAN-088`](plans/PLAN-088-a-page-no-table-names-is-deleted-at-the-open.md))
 - **A crash no longer leaves a table naming a page that isn't there.** A new page is written before its table, and a page a delete empties, or a dropped table's pages, are deleted after the table stops naming them, in every mode. ([`PLAN-087`](plans/PLAN-087-a-page-is-on-disk-while-a-table-names-it.md))
 - **An update filter takes a relation and its key together.** Targeting `BoxId` alone moves the child to the new box, and skipping `Box` or `BoxId` leaves both; the same for a `[ForeignKey]` reference. ([`PLAN-086`](plans/PLAN-086-an-update-filter-takes-a-relation-and-its-keys-together.md))

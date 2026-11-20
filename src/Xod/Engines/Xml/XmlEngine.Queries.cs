@@ -538,6 +538,11 @@ namespace Xod.Engines.Xml
                                 {
                                     string fullChildCode = s?.ToString();
                                     XElement rawChildRow = GetRawData(fullChildCode);
+                                    // An entry whose row isn't there is left out, by design (ISS-210): XOD makes such
+                                    // entries itself. A dropped table's rows go without the rows that name them, a row
+                                    // deleted leaves the lists of the rows that aren't its parent, and a child with no
+                                    // parent property leaves its entry after its delete (ISS-095), as 2.0 did for any. Not damage to report, unlike a page a table
+                                    // names (RequirePage) or a row an index names (IndexedRawRow), which XOD keeps in step.
                                     if (rawChildRow == null)
                                         return null;
 
@@ -591,7 +596,16 @@ namespace Xod.Engines.Xml
                             {
                                 itemParts = stringValue.Split('.');
                                 if (itemParts.Length == 2)
-                                    targetPropType = ioService.GetPageType(itemParts[0]);
+                                {
+                                    // A reference whose page no table lists names a row that is gone (its table
+                                    // dropped, its last row deleted): null, as for any reference whose row is gone
+                                    // (ISS-210). It threw that the type isn't registered, and the whole row read
+                                    // failed. A page a table lists whose type isn't registered still throws.
+                                    string pageTable = ioService.PageTableName(itemParts[0]);
+                                    if (pageTable == null)
+                                        continue;
+                                    targetPropType = propertyService.RegisteredType(System.IO.Path.GetFileNameWithoutExtension(pageTable));
+                                }
                             }
                             else
                             {
@@ -633,6 +647,9 @@ namespace Xod.Engines.Xml
                                     ReadId = Guid.NewGuid()
                                 };
 
+                                // A reference whose row isn't there (deleted, or its table dropped: neither changes
+                                // the rows that name it) is found again by its foreign key, or reads as null: by
+                                // design, as for a list's entry above (ISS-210).
                                 XElement xRefItem = GetRawData(stringValue);
                                 if (xRefItem != null)
                                 {

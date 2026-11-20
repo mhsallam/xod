@@ -16,6 +16,13 @@ public class CrashMember
     [UniqueKey] public string Email { get; set; }
 }
 
+// A second standalone table (no relations), beside CrashMember (ISS-124; ISS-209's long-lived context).
+public class CrashNote
+{
+    [PrimaryKey] public int Id { get; set; }
+    public string Text { get; set; }
+}
+
 public class CrashCustomer
 {
     public int Id { get; set; }

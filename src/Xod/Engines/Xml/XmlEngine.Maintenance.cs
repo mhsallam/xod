@@ -241,6 +241,8 @@ namespace Xod.Engines.Xml
             ioService.FlushBufferedFiles();
             indexService.FlushDirtyIndexes();
             ioService.FlushBufferedFiles();
+            if (NoWriteUnderWay && ioService.NothingPending)
+                ioService.PagesSettled(); // ISS-209: see WriteStatement
             if (NoWriteUnderWay && ioService.NothingPending && indexService.AllSaved)
                 ioService.IndexesCaughtUp();
         }

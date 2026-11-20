@@ -35,7 +35,9 @@ namespace Xod.Engines.Xml
             return false;
         }
 
-        /// <summary>The row an item code (<c>page.row</c>) names, or null when there is none.</summary>
+        /// <summary>The row an item code (<c>page.row</c>) names, or null when there is none: a relation's stored code
+        /// may name a row that is gone (a table dropped, a referenced row deleted), and its callers then find the row by
+        /// its keys or take it as gone (ISS-210).</summary>
         private XRow RowByItemCode(Type type, string itemCode)
         {
             int dot = itemCode?.IndexOf('.') ?? -1;
