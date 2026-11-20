@@ -91,6 +91,21 @@ namespace Xod.Services
         }
 
         /// <summary>
+        /// Whether there is a database to open at <paramref name="databaseFile"/>: its file, or what a crash left that
+        /// the recovery gives it back from (<see cref="Helpers.DatabaseFiles.GivesBackDatabaseFile"/>). The one answer
+        /// for a context opened without creating and for the migrator (ISS-156: the open held, recovered and was refused,
+        /// leaving its lock files where only a cut-short write was, and the migrator refused a database a crash had set
+        /// aside, which a context opens).
+        /// </summary>
+        internal static bool HoldsDatabase(string databaseFile)
+        {
+            Helpers.DatabaseFiles.RequireDatabaseFile(databaseFile);
+            string folder = Path.GetDirectoryName(databaseFile);
+            return File.Exists(databaseFile) ||
+                (Directory.Exists(folder) && Helpers.DatabaseFiles.GivesBackDatabaseFile(Directory.GetFiles(folder), databaseFile));
+        }
+
+        /// <summary>
         /// Lets go of the database. The lock file stays, whoever held it: on Unix a context that opened it just
         /// before a deletion would hold a file no longer in the folder while the next open created another, and
         /// the two wouldn't see each other; on Windows an open racing the deletion fails.

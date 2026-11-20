@@ -53,7 +53,9 @@ namespace Xod
             string targetDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(targetDirectory));
             if (!Directory.Exists(sourceDir))
                 throw new DirectoryNotFoundException($"Source database directory not found: {sourceDir}");
-            if (!File.Exists(databaseFile))
+            // As a context opened without creating decides (IOService.HoldsDatabase): a database a crash set aside is
+            // one, recovered under the hold below (ISS-156: it was refused here, while a context opened it).
+            if (!IOService.HoldsDatabase(databaseFile))
                 throw new XodException($"'{sourceDir}' holds no XOD database: no .xod, .xodj or .xodb file.");
 
             bool inPlace = SameFolder(sourceDir, targetDir);
@@ -85,6 +87,10 @@ namespace Xod
                 // added since the check above would be converted with the database (review of TASK-071).
                 DatabaseFiles.Recheck(sourceDirectoryOrFile, databaseFile);
                 IOService.RecoverInterruptedWrites(databaseFile);
+                // What the check above counted may not give the file back after all (a password change's record that
+                // names no commit beside its staged file): nothing to convert.
+                if (!File.Exists(databaseFile))
+                    throw new XodException($"'{sourceDir}' holds no XOD database: what a crash left of one didn't give its file back.");
 
                 var files = Directory.GetFiles(sourceDir).Where(f => DatabaseFiles.IsOfDatabase(f, databaseFile)).ToList();
                 var keys = string.IsNullOrEmpty(hashedPassword) ? null : new FileKeys(hashedPassword);

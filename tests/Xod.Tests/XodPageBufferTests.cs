@@ -15,8 +15,8 @@ namespace Xod.Tests
     /// (a <c>Select</c> turns a cached page into a document) gave the page's array back to the pool, until ISS-143
     /// (<c>XodPageBufferLifetimeTests</c>), and the next page loaded was read into it: the first reader read another
     /// page's bytes. Through the public calls, the reader held at the step between the two
-    /// (<see cref="IOService.RowBytesHeldStep"/>). Red with that give-back put back and a cached page left pooled; green
-    /// with the give-back put back alone, since a page in the cache is no longer pooled (<see cref="RawPageCache"/>).
+    /// (<see cref="IOService.RowBytesHeldStep"/>). No page's array is pooled since ISS-212 (<see cref="RawPageCache"/>),
+    /// so the test now guards that a dropped page's bytes stay with the reader holding them.
     /// </summary>
     [Collection(InProcessHookCollection.Name)]
     public class XodPageBufferTests : IDisposable

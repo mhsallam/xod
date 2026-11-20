@@ -121,12 +121,10 @@ namespace Xod.Engines.Xml
             // keys each kept a copy, and a change set them one after another).
 
             this.exceptionService = new ExceptionService(path);
-            // No database file, none to create, and nothing a crash left of one (IOService.WriteLeft, by the predicates
-            // the recovery takes): there is nothing to open, so no hold is taken (ISS-156: the refused open left its two
-            // lock files in a folder that holds no database). Where a crash left something, the open holds and recovers
-            // it as before: a database file set aside, for one, is put back.
-            if (!this.options.InitialCreate && !File.Exists(resolvedPath) &&
-                (!Directory.Exists(resolvedRoot) || IOService.WriteLeft(resolvedPath) == null))
+            // No database to open and none to create (IOService.HoldsDatabase): no hold is taken (ISS-156: the refused
+            // open left its two lock files in a folder that holds no database). Where a crash left something the recovery
+            // makes the database from, the open holds and recovers it as before: a database file set aside is put back.
+            if (!this.options.InitialCreate && !IOService.HoldsDatabase(resolvedPath))
                 exceptionService.Throw(new DatabaseFileException());
             this.passwordSwitch = new PasswordSwitch(path, string.IsNullOrEmpty(password) ? null : CryptoHelper.GetSHA256HashData(password));
             this.ioService = new IOService(

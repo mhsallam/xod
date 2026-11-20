@@ -18,6 +18,13 @@ namespace Xod.Services
 
         private readonly string[] keywords = { "dataType", "collType", "refType", "hostProp" };
 
+        /// <summary>The refusal of a collection where an object is held, which no read gives back
+        /// (<see cref="ValueHelper.CollectionInObject"/>): an <c>object</c> property (ISS-201), an item of a list of
+        /// <c>object</c> or a map's value (ISS-217).</summary>
+        internal static string ObjectCollectionMessage(string property, string type, Type held) =>
+            $"Property '{property}' of {type} holds a {held.Name} as an object: XOD can't read a collection back from an object. " +
+            "Declare the property, or a list's item type, as the collection's type.";
+
         /// <summary>The refusal of a declared collection a read can't give back, when its class loads (ISS-184).</summary>
         internal static string UnreadableCollectionMessage(string property, string type, Type unreadable) =>
             $"Property '{property}' of {type} is a {unreadable.Name}, which XOD can't read back: a collection property is an array, " +

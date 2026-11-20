@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Xml.Linq;
 using Xod.Helpers;
+using Xod.Services;
 
 namespace Xod.Engines.Xml
 {
@@ -133,7 +134,7 @@ namespace Xod.Engines.Xml
                             var xpe = new XElement(childType.Name, refCode);
                             var itmKeySet = GetPrimaryValues(childType, child);
                             foreach (var itmKey in itmKeySet)
-                                xpe.Add(new XAttribute(itmKey.Key, itmKey.Value));
+                                xpe.Add(new XAttribute(itmKey.Key, EntryKeyText(itmKey.Value)));
                             xProp.Add(xpe);
                         }
                     }
@@ -146,6 +147,18 @@ namespace Xod.Engines.Xml
             }
             else
             {
+                // An item of a list of object is an object too: no collection reads back from one, so none is written,
+                // before any item is (ISS-217: one was written as a row of its own type, which failed with a raw
+                // XmlException, a generic type's name holding a backtick).
+                if (childType == typeof(object))
+                {
+                    foreach (var itm in children)
+                    {
+                        if (itm != null && ValueHelper.CollectionInObject(itm.GetActualType()) is Type held)
+                            exceptionService.Throw(new XodException(PropertyService.ObjectCollectionMessage(prop.PropertyName, type.Name, held)));
+                    }
+                }
+
                 bool isRefChild = ListLinksStoredRows(childType);
                 xProp.SetAttributeValue("refType", isRefChild ? "reference" : "complex");
 
@@ -173,13 +186,31 @@ namespace Xod.Engines.Xml
                         {
                             var itmKeySet = GetPrimaryValues(childType, itm);
                             foreach (var itmKey in itmKeySet)
-                                xpe.Add(new XAttribute(itmKey.Key, itmKey.Value));
+                                xpe.Add(new XAttribute(itmKey.Key, EntryKeyText(itmKey.Value)));
                         }
                         xProp.Add(xpe);
                     }
                 }
             }
         }
+
+        /// <summary>
+        /// A list entry's key attribute: the key as it is stored (<see cref="ValueHelper.FormatScalar"/>). Each writer
+        /// of an entry writes it so, and <see cref="EntryKeyMatches"/> reads it (ISS-204: written by <c>XAttribute</c>'s
+        /// own conversion and compared with <c>ToString</c>, a <c>TimeSpan</c>, a <c>bool</c> or a <c>DateTime</c> key
+        /// never matched).
+        /// </summary>
+        private static string EntryKeyText(object key) => ValueHelper.FormatScalar(key);
+
+        /// <summary>
+        /// Whether an entry's key attribute holds <paramref name="key"/>: as <see cref="EntryKeyText"/> writes it, or as
+        /// <c>XAttribute</c>'s own conversion wrote it before (<c>PT1H</c> for an hour, <c>true</c> for a bool): the
+        /// entries an earlier version left are the ones taken over. Read only for an entry that names no row; an update
+        /// of the child alone doesn't write its entry, so a key changed since it was listed isn't there (ISS-204).
+        /// </summary>
+        private static bool EntryKeyMatches(XAttribute attribute, object key) =>
+            attribute != null && key != null &&
+            (attribute.Value == EntryKeyText(key) || attribute.Value == new XAttribute(attribute.Name, key).Value);
 
         /// <summary>
         /// Whether a child of this type in a list can be linked to its stored row: its type has a key. A plain list
@@ -381,8 +412,7 @@ namespace Xod.Engines.Xml
                                 {
                                     foreach (var childPrimProp in childPrimProps)
                                     {
-                                        var xAtt = s.Attribute(childPrimProp.Key);
-                                        if (xAtt == null || xAtt.Value != childPrimProp.Value.ToString())
+                                        if (!EntryKeyMatches(s.Attribute(childPrimProp.Key), childPrimProp.Value))
                                             return false;
                                     }
                                     return true;
@@ -407,7 +437,7 @@ namespace Xod.Engines.Xml
                             {
                                 xChild = new XElement(type.Name, writeTrack.Code);
                                 foreach (var childPrimProp in childPrimProps)
-                                    xChild.Add(new XAttribute(childPrimProp.Key, childPrimProp.Value));
+                                    xChild.Add(new XAttribute(childPrimProp.Key, EntryKeyText(childPrimProp.Value)));
                                 childrenElement.Add(xChild);
                                 statementLog?.Linked.Add((effectivePropType, writeTrack.Parent.Code, type, writeTrack.Code));
                                 parentChanged = true;

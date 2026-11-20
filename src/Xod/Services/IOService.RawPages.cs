@@ -111,10 +111,6 @@ namespace Xod.Services
                             }
                             cachedRawPages.Put(normalizedName, buf);
                         }
-                        else
-                        {
-                            buf.ReleasePooledBuffer(); // never cached: no reader holds it
-                        }
                     }
                 }
                 return;
@@ -168,7 +164,6 @@ namespace Xod.Services
             if (!OnDiskHere(filePath))
                 return null;
 
-            byte[] rented = null;
             try
             {
                 using var handle = File.OpenHandle(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
@@ -176,29 +171,28 @@ namespace Xod.Services
                 if (fileLenLong <= 0 || fileLenLong > int.MaxValue)
                     return null;
 
+                // An array of the page's size (ISS-212: every load took at least 528 KB from a pool, for a reuse that a
+                // cached page can't give, its array being a reader's, ISS-105). A page read only is never grown; a page
+                // the raw writer appends to moves once to an array of a full page's size (its growth step).
                 int fileLen = (int)fileLenLong;
-                rented = PageBufferPool.Rent(fileLen);
+                byte[] bytes = GC.AllocateUninitializedArray<byte>(fileLen);
                 int totalRead = 0;
                 while (totalRead < fileLen)
                 {
-                    int read = RandomAccess.Read(handle, rented.AsSpan(totalRead, fileLen - totalRead), totalRead);
+                    int read = RandomAccess.Read(handle, bytes.AsSpan(totalRead, fileLen - totalRead), totalRead);
                     if (read <= 0)
                         break;
                     totalRead += read;
                 }
 
-                if (totalRead <= 0 || IsEncryptedPayload(rented) || StorageSerializerFactory.DetectFormat(rented) != StorageFormat.Xml)
-                {
-                    PageBufferPool.Return(rented);
+                if (totalRead <= 0 || IsEncryptedPayload(bytes) || StorageSerializerFactory.DetectFormat(bytes) != StorageFormat.Xml)
                     return null;
-                }
 
                 var buf = new RawPageBuffer
                 {
-                    Bytes = rented,
+                    Bytes = bytes,
                     Length = totalRead,
                     DiskSyncedLength = totalRead,
-                    IsPooled = true,
                     Name = Path.GetFileName(filePath)
                 };
                 buf.EnsureRowIndex();
@@ -206,8 +200,6 @@ namespace Xod.Services
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is DatabaseFileException)
             {
-                if (rented != null)
-                    PageBufferPool.Return(rented);
                 // A file it can't read is read as a document instead (OpenFileOrCreate), which names it when it can't
                 // either. A page whose rows it can't follow (PageRows) is damaged: read whole, it hid a fault of the
                 // scanner as a slower read (ISS-143).
@@ -306,8 +298,8 @@ namespace Xod.Services
         /// <summary>
         /// The step a read of one row by its code passes holding the row's bytes in the page's array, outside the cache's
         /// lock, before it parses them (ISS-105): the interleaving a test holds, to read beside another read that drops
-        /// the page from the cache and loads others into whatever arrays the pool gives out
-        /// (<see cref="RawPageBuffer.ReleasePooledBuffer"/>). One read is enough to hold it; a scan isn't slowed by it.
+        /// the page from the cache and loads others (<see cref="RawPageCache"/>). One read is enough to hold it; a scan
+        /// isn't slowed by it.
         /// </summary>
         internal const string RowBytesHeldStep = "row-bytes-held";
 
@@ -645,7 +637,8 @@ namespace Xod.Services
                     page = AddPageElement(pagesRoot, pageFileName);
                     tableModified = true;
 
-                    byte[] initialBuf = PageBufferPool.Rent(Math.Max(pageMaxSizeBytes + 16384, 65536));
+                    // A new page is appended to until it is full: an array of a full page's size.
+                    byte[] initialBuf = GC.AllocateUninitializedArray<byte>(Math.Max(pageMaxSizeBytes + 16384, 65536));
                     Buffer.BlockCopy(EmptyXmlPageBytes, 0, initialBuf, 0, EmptyXmlPageBytes.Length);
                     rawPage = new RawPageBuffer
                     {
@@ -678,7 +671,7 @@ namespace Xod.Services
                         string existingFullPath = Path.Combine(root, pageFileName);
                         if (!OnDiskHere(existingFullPath))
                         {
-                            byte[] initialBuf = PageBufferPool.Rent(Math.Max(pageMaxSizeBytes + 16384, 65536));
+                            byte[] initialBuf = GC.AllocateUninitializedArray<byte>(Math.Max(pageMaxSizeBytes + 16384, 65536));
                             Buffer.BlockCopy(EmptyXmlPageBytes, 0, initialBuf, 0, EmptyXmlPageBytes.Length);
                             rawPage = new RawPageBuffer
                             {
@@ -719,7 +712,9 @@ namespace Xod.Services
                 int newLength = insertPos + rowByteLen + XmlPageTrailerBytes.Length;
                 if (newLength > rawPage.Bytes.Length)
                 {
-                    int newCap = Math.Max(rawPage.Bytes.Length * 2, newLength + 65536);
+                    // To a full page's size at once: a page read from disk has an array of its own size (ISS-212), and
+                    // doubling from there moved a page appended to row by row four times on its way to full.
+                    int newCap = Math.Max(Math.Max(rawPage.Bytes.Length * 2, newLength + 65536), pageMaxSizeBytes + 16384);
                     byte[] grown = new byte[newCap];
                     Buffer.BlockCopy(rawPage.Bytes, 0, grown, 0, insertPos);
                     // The old array stays with any reader holding it (RawPageCache).
@@ -777,8 +772,9 @@ namespace Xod.Services
                     // Waits in the batch (RawPagePendingUnlocked, above), full or not, and is written with the rest of it
                     // at its end by the batch's one writer (FlushPending). ISS-129: a page that filled was written by a
                     // task of its own, from its pooled bytes, while the batch went on; opening the page as a document
-                    // meanwhile gave those bytes back to the pool, the next page rented them and wrote its rows into
-                    // them, and the task wrote that: other pages' rows in a full page, the table unreadable.
+                    // meanwhile gave those bytes back to the pool (there is none since ISS-212), the next page rented them
+                    // and wrote its rows into them, and the task wrote that: other pages' rows in a full page, the table
+                    // unreadable.
                 }
                 else if (bufferedDurability)
                 {
@@ -1376,7 +1372,7 @@ namespace Xod.Services
                         break;
                 }
             }
-            // An evicted page keeps its bytes: a reader beside this one may hold it (RawPageBuffer.ReleasePooledBuffer).
+            // An evicted page keeps its bytes: a reader beside this one may hold it (RawPageCache).
             for (int i = 0; i < keysToRemove.Count; i++)
                 cachedRawPages.Remove(keysToRemove[i]);
         }

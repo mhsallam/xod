@@ -236,7 +236,7 @@ namespace Xod.Services
                     byte[] exact = rawPage.ToExactArray();
                     XDocument doc = storageSerializer.Deserialize(exact);
                     // Its bytes are the file's when nothing of it waits to be written. The page keeps them: another
-                    // reader may hold it (RawPageBuffer.ReleasePooledBuffer).
+                    // reader may hold it (RawPageCache).
                     bool asOnDisk = !rawPage.IsNewFile && rawPage.DirtyStartOffset >= rawPage.DiskSyncedLength && rawPage.Length == rawPage.DiskSyncedLength;
                     file = new XFile(doc, type, filePath, Password) { DiskBytes = asOnDisk ? exact : null };
                     if (dirtyBatchRawPages.Remove(normalizedName))
@@ -603,7 +603,7 @@ namespace Xod.Services
         private void CacheSavedUnlocked(XFile file)
         {
             string normalizedName = Path.GetFileName(file.Path);
-            cachedRawPages.Remove(normalizedName); // its bytes stay with it (RawPageBuffer.ReleasePooledBuffer)
+            cachedRawPages.Remove(normalizedName); // its bytes stay with it (RawPageCache)
             if (!cachedFiles.TryGetValue(normalizedName, out var item))
             {
                 CacheFile(normalizedName, file, file.Path, FileCacheStatus.Shared);
@@ -768,10 +768,19 @@ namespace Xod.Services
 
         private static bool IsFullPage(XElement page) => page.Attribute("full")?.Value == "true";
 
+        // Where a new page's name is drawn from (a test draws its own).
+        private Func<string> pageCodes = ValueHelper.PickCode;
+
         // A new page's name, noted in this context's marker before anything of it is written (ISS-209: NotePageInFlight).
+        // A name is unique within a process (PickCode), not across processes: one already on disk is drawn again
+        // (ISS-211: two tables would share the page), a page this context has queued to delete too: its delete would take
+        // the new page. A name this context chose and hasn't written yet is never drawn again in this process.
         private string NewPageFileName()
         {
-            string name = $"{ValueHelper.PickCode()}.xpag";
+            string name;
+            do
+                name = $"{pageCodes()}.xpag";
+            while (File.Exists(Path.Combine(root, name)));
             NotePageInFlight(name);
             return name;
         }
@@ -863,7 +872,7 @@ namespace Xod.Services
             dirtyBufferedRawPages.Remove(normalizedName);
             saved.Remove(normalizedName);
             cachedFiles.Remove(normalizedName);
-            cachedRawPages.Remove(normalizedName); // its bytes stay with it (RawPageBuffer.ReleasePooledBuffer)
+            cachedRawPages.Remove(normalizedName); // its bytes stay with it (RawPageCache)
             if (onDisk && File.Exists(fullPath))
             {
                 // A data file waits for the write of the files that stop naming it, and is deleted after them

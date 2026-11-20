@@ -44,7 +44,7 @@ namespace Xod.Tests
             using var db = Open("set");
             var e = Assert.ThrowsAny<XodException>(() => db.Insert(new OcRow { Name = "a", Payload = new HashSet<int> { 1, 2 } }));
             Assert.Contains("Payload", e.Message);
-            Assert.Contains("can't read a collection back from an object property", e.Message);
+            Assert.Contains("can't read a collection back from an object", e.Message);
             Assert.Empty(db.Select<OcRow>());
         }
 
@@ -77,6 +77,63 @@ namespace Xod.Tests
             Assert.ThrowsAny<XodException>(() => db.Insert(new OcRow { Name = "b", Payload = new[] { 1, 2 } }));
             Assert.ThrowsAny<XodException>(() => db.Insert(new OcRow { Name = "c", Payload = new Dictionary<string, int> { ["k"] = 1 } }));
             Assert.Empty(db.Select<OcRow>());
+        }
+
+        public class OcGood
+        {
+            public int Id { get; set; }
+            public string Name { get; set; }
+        }
+
+        public class OcBag
+        {
+            public int Id { get; set; }
+            public List<object> Items { get; set; }
+        }
+
+        // ISS-217: an item of a List<object> is an object too. A collection there was written as a row of its own type,
+        // which failed with a raw XmlException (a generic type's name holds a backtick) naming nothing.
+        [Fact]
+        public void A_collection_in_a_list_of_object_is_refused_naming_the_property()
+        {
+            using var db = Open("bag");
+            var e = Assert.ThrowsAny<XodException>(() => db.Insert(new OcBag
+            {
+                Items = new List<object> { new OcGood { Name = "kept out" }, new HashSet<int> { 1 } }
+            }));
+            Assert.Contains("Items", e.Message);
+            Assert.Contains("can't read a collection back from an object", e.Message);
+            Assert.Empty(db.Select<OcBag>());
+            Assert.Empty(db.Select<OcGood>());
+        }
+
+        public class OcMap
+        {
+            public int Id { get; set; }
+            public Dictionary<string, object> Values { get; set; }
+        }
+
+        // A map's value is stored as text: a collection there read back null.
+        [Fact]
+        public void A_collection_as_a_map_value_is_refused_naming_the_property()
+        {
+            using var db = Open("map");
+            var e = Assert.ThrowsAny<XodException>(() => db.Insert(new OcMap
+            {
+                Values = new Dictionary<string, object> { ["n"] = 1, ["set"] = new HashSet<int> { 1 } }
+            }));
+            Assert.Contains("Values", e.Message);
+            Assert.Empty(db.Select<OcMap>());
+        }
+
+        // A list of object still holds rows of a class.
+        [Fact]
+        public void A_class_in_a_list_of_object_is_written()
+        {
+            using var db = Open("bag-class");
+            db.Insert(new OcBag { Items = new List<object> { new OcGood { Name = "g" } } });
+            Assert.Single(db.Select<OcBag>());
+            Assert.Equal("g", db.Select<OcGood>().Single().Name);
         }
 
         // A value that is no collection is still written: a string, a number.

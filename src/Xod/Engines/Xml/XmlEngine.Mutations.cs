@@ -422,9 +422,7 @@ namespace Xod.Engines.Xml
                 // No collection reads back from an object property, so none is written there (ISS-201: one was, and
                 // read back null; a declared collection a read can't give back is refused when its class loads).
                 if (ValueHelper.CollectionInObject(effectivePropType) is Type held)
-                    exceptionService.Throw(new XodException($"Property '{prop.PropertyName}' of {type.Name} is an object property " +
-                        $"holding a {held.Name}: XOD can't read a collection back from an object property. Declare the property " +
-                        "as the collection's type."));
+                    exceptionService.Throw(new XodException(PropertyService.ObjectCollectionMessage(prop.PropertyName, type.Name, held)));
                 propertyService.LoadType(effectivePropType);
             }
 
@@ -482,6 +480,10 @@ namespace Xod.Engines.Xml
 
                     foreach (var entry in ValueHelper.MapEntries(value))
                     {
+                        // A map's value is stored as text (StoredValue.ItemContent): a collection there read back null,
+                        // as from an object property or a list of object (ISS-217).
+                        if (entry.Value != null && ValueHelper.CollectionInObject(entry.Value.GetActualType()) is Type held)
+                            exceptionService.Throw(new XodException(PropertyService.ObjectCollectionMessage(prop.PropertyName, type.Name, held)));
                         if (entry.Key != null)
                         {
                             propertyElement.Add(new XElement("Entry",

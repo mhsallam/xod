@@ -134,6 +134,24 @@ namespace Xod.Helpers
             IsOfDatabase(file.Substring(0, file.Length - Services.PasswordSwitch.StagedSuffix.Length), databaseFile);
 
         /// <summary>
+        /// Whether, among <paramref name="files"/> (a folder's), a crash left something the recovery gives the database
+        /// file back from: the transaction journal (a commit's copy of what it replaced); the database file an older
+        /// version's transaction set aside; the database file a password change staged, beside its commit record. Not an
+        /// atomic write cut short (deleted: as if its write hadn't started), what is left of a table, a page or an index
+        /// (the database file isn't among it), nor a staged file without a record (a change that never committed is
+        /// deleted). Asked by <see cref="Services.IOService.HoldsDatabase"/>, before anything holds the database.
+        /// </summary>
+        internal static bool GivesBackDatabaseFile(IReadOnlyCollection<string> files, string databaseFile)
+        {
+            static string Without(string file, string suffix) => file.Substring(0, file.Length - suffix.Length);
+            bool record = files.Any(f => IsPasswordRecord(f, databaseFile));
+            return files.Any(f =>
+                IsJournal(f) ||
+                (IsSetAside(f, databaseFile) && IsDatabaseFile(Without(f, Services.IOService.SetAsideSuffix))) ||
+                (record && IsStaged(f, databaseFile) && IsDatabaseFile(Without(f, Services.PasswordSwitch.StagedSuffix))));
+        }
+
+        /// <summary>
         /// Refuses a path that doesn't name a database file, where one is the parameter: the recovery and the check of
         /// what is left take the database's file, not its folder, whose parent they would read.
         /// </summary>

@@ -13,7 +13,6 @@ namespace Xod.Services
         public int DiskSyncedLength;
         public int DirtyStartOffset = int.MaxValue;
         public bool IsNewFile;
-        public bool IsPooled;
         public int RowCount = -1;
         public int AccessCount;
         /// <summary>
@@ -25,27 +24,9 @@ namespace Xod.Services
 
         public ReadOnlySpan<byte> Span => Bytes.AsSpan(0, Length);
 
-        /// <summary>
-        /// Gives the page's array back to the pool: only for a buffer no reader can hold, one that never entered the
-        /// cache (IOService.PreloadPagesForCodes); entering it ends that (RawPageCache.Put, ISS-105). A
-        /// page that leaves the cache keeps its bytes, which the GC takes once the last reader drops the buffer: a
-        /// reader takes a page from the cache and reads it outside the cache's lock, beside another reader whose load
-        /// or document read drops that page, so a dropped page's array given back went to the next page loaded while
-        /// the first reader still read it. Its bytes were set to null, so that reader threw, or, holding the span, read
-        /// the other page's bytes at this page's offsets: another table's row, when the two have one shape
-        /// (XodPageBufferTests).
-        /// </summary>
-        public void ReleasePooledBuffer()
-        {
-            if (IsPooled && Bytes != null)
-            {
-                var b = Bytes;
-                Bytes = null;
-                IsPooled = false;
-                PageBufferPool.Return(b);
-            }
-        }
-
+        /// <summary>The page's bytes, its own array when the page fills it (a page read from disk, ISS-212). Its callers
+        /// take the page out of the cache first, under the lock, and a writer reaches a page only through the cache, so
+        /// nothing changes that array after (XFile.DiskBytes is never changed in place).</summary>
         public byte[] ToExactArray()
         {
             if (Bytes == null || Length <= 0) return Array.Empty<byte>();
