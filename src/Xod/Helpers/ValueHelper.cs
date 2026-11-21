@@ -202,6 +202,15 @@ namespace Xod.Helpers
             held != typeof(string) && !IsScalarType(held) && typeof(System.Collections.IEnumerable).IsAssignableFrom(held) ? held : null;
 
         /// <summary>
+        /// Whether an item of a list of <c>object</c> of type <paramref name="held"/> reads back: a row of a class, which
+        /// the list writes as a row of its own type. Not a value of any value type (a number, a struct: it read back as
+        /// its default), not a string (read back as a bare <c>object</c>, ISS-218), not a collection
+        /// (<see cref="CollectionInObject"/>, ISS-217).
+        /// </summary>
+        internal static bool ReadsBackAsListRow(Type held) =>
+            !held.IsValueType && held != typeof(string) && CollectionInObject(held) == null;
+
+        /// <summary>
         /// A map, which the writer stores as entries (PropertyTypeCategory.Dictionary): the one test. The non-generic
         /// <c>IDictionary</c> (a <c>Hashtable</c>, every <c>Dictionary&lt;,&gt;</c>), or a type that is or implements
         /// <c>IDictionary&lt;K, V&gt;</c> or <c>IReadOnlyDictionary&lt;K, V&gt;</c> (ISS-128: a property declared as either
@@ -240,6 +249,8 @@ namespace Xod.Helpers
         /// held); null where it can't be (ISS-213: these were refused, though a filled <c>Dictionary&lt;K, V&gt;</c> makes
         /// them):
         /// <list type="number">
+        /// <item>a <c>SortedDictionary&lt;string, V&gt;</c>, <c>SortedList&lt;string, V&gt;</c> or <c>SortedList</c>, by its
+        /// constructor taking a comparer, given the ordinal one (ISS-216);</item>
         /// <item>the type itself, made empty and filled as an <c>IDictionary</c>;</item>
         /// <item>a <c>Dictionary&lt;K, V&gt;</c> of its types, where the property can hold one (an interface);</item>
         /// <item>from a filled <c>Dictionary&lt;K, V&gt;</c>, by the type's public constructor taking its entries: one
@@ -260,11 +271,19 @@ namespace Xod.Helpers
 
         private static Func<IEnumerable<KeyValuePair<object, object>>, object> BuildMapMaker(Type type)
         {
+            Type[] named = MapArguments(type);
+            // .NET's sorted maps with string keys compare them ordinally: any keys distinct when the map was written,
+            // under whatever comparer, stay distinct (ISS-216: made with the default comparer, which follows the culture,
+            // two keys it finds equal, written under an ordinal comparer, were one key: a SortedDictionary or SortedList
+            // kept one, an ImmutableSortedDictionary threw at every read). These types alone: a class of the user's keeps
+            // the comparer its own constructor sets. A map's comparer isn't stored, so these read back in ordinal order.
+            if (OrdinalSortedMapOf(type) is ConstructorInfo sorting)
+                return entries => FillMap((System.Collections.IDictionary)sorting.Invoke(new object[] { StringComparer.Ordinal }), entries);
+
             if (!type.IsAbstract && !type.IsInterface && type.GetConstructor(Type.EmptyTypes) != null &&
                 typeof(System.Collections.IDictionary).IsAssignableFrom(type))
                 return entries => FillMap((System.Collections.IDictionary)CreateInstance(type), entries);
 
-            Type[] named = MapArguments(type);
             Type[] args = named ?? new[] { typeof(string), typeof(string) };
             Type dictionary = typeof(Dictionary<,>).MakeGenericType(args);
             System.Collections.IDictionary Filled(IEnumerable<KeyValuePair<object, object>> entries) =>
@@ -309,13 +328,28 @@ namespace Xod.Helpers
             return null;
         }
 
+        // The constructor taking a comparer, of SortedDictionary<string, V>, SortedList<string, V> or SortedList; null
+        // for any other type.
+        private static ConstructorInfo OrdinalSortedMapOf(Type type)
+        {
+            Type definition = type.IsGenericType ? type.GetGenericTypeDefinition() : null;
+            Type comparer =
+                type == typeof(System.Collections.SortedList) ? typeof(System.Collections.IComparer) :
+                (definition == typeof(SortedDictionary<,>) || definition == typeof(SortedList<,>)) && type.GetGenericArguments()[0] == typeof(string)
+                    ? typeof(IComparer<string>) : null;
+            return comparer == null ? null : type.GetConstructor(new[] { comparer });
+        }
+
         private static object MapByFactory<TKey, TValue>(System.Collections.IDictionary filled, int kind)
         {
             var source = (Dictionary<TKey, TValue>)filled;
             return kind switch
             {
                 0 => System.Collections.Immutable.ImmutableDictionary.CreateRange(source),
-                1 => System.Collections.Immutable.ImmutableSortedDictionary.CreateRange(source),
+                // String keys ordinally, as a sorted map made by its constructor takes them (ISS-216).
+                1 => typeof(TKey) == typeof(string)
+                    ? System.Collections.Immutable.ImmutableSortedDictionary.CreateRange((IComparer<TKey>)StringComparer.Ordinal, source)
+                    : System.Collections.Immutable.ImmutableSortedDictionary.CreateRange(source),
                 _ => System.Collections.Frozen.FrozenDictionary.ToFrozenDictionary(source),
             };
         }

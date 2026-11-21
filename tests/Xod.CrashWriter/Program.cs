@@ -98,7 +98,7 @@ public static class Program
 
         if (mode == "onebatch")
         {
-            // one transaction, committed once; XOD_CRASH_AFTER_ROWS makes the process die part-way
+            // one InsertRange, written at its end (no transaction); XOD_CRASH_AFTER_ROWS makes the process die part-way
             using var db = new XodContext(path, options: options);
             int batch = (int)(db.Count<CrashCustomer>() / BatchCustomers);
             db.InsertRange(BuildBatch(batch));

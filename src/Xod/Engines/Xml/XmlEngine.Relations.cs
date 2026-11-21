@@ -150,12 +150,20 @@ namespace Xod.Engines.Xml
                 // An item of a list of object is an object too: no collection reads back from one, so none is written,
                 // before any item is (ISS-217: one was written as a row of its own type, which failed with a raw
                 // XmlException, a generic type's name holding a backtick).
+                // A string or a value neither: such a list holds rows of a class, and a string read back as a bare
+                // object, a number or a struct as its default (ISS-218). One rule: ValueHelper.ReadsBackAsListRow.
                 if (childType == typeof(object))
                 {
                     foreach (var itm in children)
                     {
-                        if (itm != null && ValueHelper.CollectionInObject(itm.GetActualType()) is Type held)
-                            exceptionService.Throw(new XodException(PropertyService.ObjectCollectionMessage(prop.PropertyName, type.Name, held)));
+                        if (itm == null)
+                            continue;
+                        Type actual = itm.GetActualType();
+                        if (ValueHelper.ReadsBackAsListRow(actual))
+                            continue;
+                        exceptionService.Throw(new XodException(ValueHelper.CollectionInObject(actual) is Type held
+                            ? PropertyService.ObjectCollectionMessage(prop.PropertyName, type.Name, held)
+                            : PropertyService.ObjectListScalarMessage(prop.PropertyName, type.Name, actual)));
                     }
                 }
 

@@ -42,9 +42,10 @@ public class CrashOrder
 namespace Xod.Tests
 {
     /// <summary>
-    /// Gate layer 4 of TEST-PLAN-2.0: a process killed mid-write must leave an all-or-nothing database.
+    /// Gate layer 4 of TEST-PLAN-2.0: a process killed inside an <c>InsertRange</c> leaves none of that batch.
     ///
-    /// The child writes 25 customers with 3 orders each in one transaction, flushes, prints a marker and
+    /// The child writes 25 customers with 3 orders each in one <c>InsertRange</c> (its rows reach the disk only at its
+    /// end), flushes, prints a marker and
     /// repeats until this process kills it. After the kill the database is reopened and must satisfy:
     /// the counts are whole batches, every order resolves to its customer, and every row is still
     /// findable by its key - a half-written page or a half-applied batch fails one of those.

@@ -25,6 +25,12 @@ namespace Xod.Services
             $"Property '{property}' of {type} holds a {held.Name} as an object: XOD can't read a collection back from an object. " +
             "Declare the property, or a list's item type, as the collection's type.";
 
+        /// <summary>The refusal of a string or a value in a list of <c>object</c> (ISS-218): such a list holds rows of a
+        /// class (<see cref="ValueHelper.ReadsBackAsListRow"/>).</summary>
+        internal static string ObjectListScalarMessage(string property, string type, Type held) =>
+            $"Property '{property}' of {type} holds a {held.Name} in a list of object: such a list holds rows of a class, " +
+            $"and would read a {held.Name} back as an object. Declare the list's item type as the value's type.";
+
         /// <summary>The refusal of a declared collection a read can't give back, when its class loads (ISS-184).</summary>
         internal static string UnreadableCollectionMessage(string property, string type, Type unreadable) =>
             $"Property '{property}' of {type} is a {unreadable.Name}, which XOD can't read back: a collection property is an array, " +

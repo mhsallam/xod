@@ -151,6 +151,96 @@ namespace Xod.Tests
                 AssertFilled(db.Sql<MiFixed>("SELECT ReadOnly, Immutable, Sorted, ByInterface, Frozen FROM MiFixed").Single());
         }
 
+        // ISS-216: a sorted map with string keys is made with the ordinal comparer, the one under which any keys that were
+        // distinct when written stay distinct. Made with the default comparer, which follows the culture, two keys the
+        // culture finds equal ("ab" and "a" + soft hyphen + "b") written under an ordinal comparer were one key: a
+        // SortedDictionary or a SortedList kept one of the two, and an ImmutableSortedDictionary threw at every read.
+        public class MiSortedKeys
+        {
+            public int Id { get; set; }
+            public SortedDictionary<string, int> Sorted { get; set; }
+            public SortedList<string, int> Listed { get; set; }
+            public System.Collections.Immutable.ImmutableSortedDictionary<string, int> Immutable { get; set; }
+        }
+
+        [Fact]
+        public void A_sorted_map_keeps_keys_its_culture_finds_equal()
+        {
+            const string soft = "a\u00ADb";
+            var pairs = new[] { new KeyValuePair<string, int>("ab", 1), new KeyValuePair<string, int>(soft, 2) };
+            var culture = System.Globalization.CultureInfo.CurrentCulture;
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+            try
+            {
+                Assert.Equal(0, string.Compare("ab", soft, StringComparison.CurrentCulture)); // the culture finds them equal
+                string path = NewPath("sorted-keys");
+                using (var db = new XodContext(path))
+                {
+                    var sorted = new SortedDictionary<string, int>(StringComparer.Ordinal);
+                    var listed = new SortedList<string, int>(StringComparer.Ordinal);
+                    foreach (var p in pairs) { sorted[p.Key] = p.Value; listed[p.Key] = p.Value; }
+                    db.Insert(new MiSortedKeys
+                    {
+                        Sorted = sorted,
+                        Listed = listed,
+                        Immutable = System.Collections.Immutable.ImmutableSortedDictionary.CreateRange(StringComparer.Ordinal, pairs),
+                    });
+                }
+
+                using (var db = new XodContext(path))
+                {
+                    var row = db.Find<MiSortedKeys>(r => r.Id == 1);
+                    foreach (IDictionary<string, int> map in new IDictionary<string, int>[] { row.Sorted, row.Listed })
+                    {
+                        Assert.Equal(2, map.Count);
+                        Assert.Equal(1, map["ab"]);
+                        Assert.Equal(2, map[soft]);
+                    }
+                    Assert.Equal(2, row.Immutable.Count);
+                    Assert.Equal(2, row.Immutable[soft]);
+                }
+            }
+            finally
+            {
+                System.Globalization.CultureInfo.CurrentCulture = culture;
+            }
+        }
+
+        // A map class of the user's keeps the comparer its own constructor sets, though it also has one taking a comparer:
+        // only .NET's sorted maps are made with the ordinal one.
+        public sealed class Caseless : SortedDictionary<string, int>
+        {
+            public Caseless() : base(StringComparer.OrdinalIgnoreCase) { }
+            public Caseless(IComparer<string> comparer) : base(comparer) { }
+        }
+
+        public class MiCaseless
+        {
+            public int Id { get; set; }
+            public Caseless Map { get; set; }
+        }
+
+        [Fact]
+        public void A_map_class_keeps_the_comparer_its_constructor_sets()
+        {
+            string path = NewPath("caseless");
+            using (var db = new XodContext(path))
+                db.Insert(new MiCaseless { Map = new Caseless { ["Key"] = 1 } });
+            using (var db = new XodContext(path))
+                Assert.True(db.Find<MiCaseless>(r => r.Id == 1).Map.ContainsKey("KEY"));
+        }
+
+        // The order a sorted map with string keys reads back in is ordinal, whatever the culture.
+        [Fact]
+        public void A_sorted_map_reads_back_in_ordinal_order()
+        {
+            string path = NewPath("sorted-order");
+            using (var db = new XodContext(path))
+                db.Insert(new MiSortedKeys { Sorted = new SortedDictionary<string, int> { ["apple"] = 1, ["Banana"] = 2, ["cherry"] = 3 } });
+            using (var db = new XodContext(path))
+                Assert.Equal(new[] { "Banana", "apple", "cherry" }, db.Find<MiSortedKeys>(r => r.Id == 1).Sorted.Keys.ToArray());
+        }
+
         // A map class neither made by a parameterless constructor, nor from a Dictionary<K, V>, is still refused when its
         // type loads, as any collection a read can't give back is (ISS-184), saying which maps can be.
         public sealed class OnlyFromPairs : Dictionary<string, int>

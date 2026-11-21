@@ -85,6 +85,11 @@ namespace Xod.Tests
             public string Name { get; set; }
         }
 
+        public struct OcPoint
+        {
+            public int X { get; set; }
+        }
+
         public class OcBag
         {
             public int Id { get; set; }
@@ -124,6 +129,25 @@ namespace Xod.Tests
             }));
             Assert.Contains("Values", e.Message);
             Assert.Empty(db.Select<OcMap>());
+        }
+
+        // ISS-218: a list of object holds rows of a class. A string or a number there was written as a row of its own
+        // type and read back as a bare object, with no error.
+        [Fact]
+        public void A_string_or_a_number_in_a_list_of_object_is_refused_naming_the_property()
+        {
+            using var db = Open("bag-scalar");
+            var e = Assert.ThrowsAny<XodException>(() => db.Insert(new OcBag { Items = new List<object> { "s" } }));
+            Assert.Contains("Items", e.Message);
+            Assert.Contains("String", e.Message);
+            Assert.ThrowsAny<XodException>(() => db.Insert(new OcBag { Items = new List<object> { new OcGood { Name = "g" }, 5 } }));
+            // Any value: a number outside the scalars, a struct, a pair (each read back as its default, or failed raw).
+            Assert.ThrowsAny<XodException>(() => db.Insert(new OcBag { Items = new List<object> { (Half)1.5 } }));
+            Assert.ThrowsAny<XodException>(() => db.Insert(new OcBag { Items = new List<object> { new System.Numerics.BigInteger(9) } }));
+            Assert.ThrowsAny<XodException>(() => db.Insert(new OcBag { Items = new List<object> { new OcPoint { X = 3 } } }));
+            Assert.ThrowsAny<XodException>(() => db.Insert(new OcBag { Items = new List<object> { new KeyValuePair<string, int>("k", 1) } }));
+            Assert.Empty(db.Select<OcBag>());
+            Assert.Empty(db.Select<OcGood>());
         }
 
         // A list of object still holds rows of a class.
